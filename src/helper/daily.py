@@ -215,7 +215,9 @@ class DailyMixin:
                 after = sync_owned_items(p, before, ids)
             else:
                 after = p.create(daily_target_title(self), ids, self.marker(DAILY_CID), description='仅播放本地音乐；每日推荐会按已确认设置更新成员，其他歌单不受影响。')
-            if after['title'] != daily_target_title(self) or state_ids(after) != ids:
+            actual_ids = state_ids(after)
+            if (after['title'] != daily_target_title(self) or len(actual_ids) != len(ids)
+                    or set(actual_ids) != set(ids)):
                 raise SafetyError('每日歌单写入回读不符，停止自动维护')
             snap.update(status='applied', after=after)
             self._save_snapshot(snap)
@@ -266,7 +268,9 @@ class DailyMixin:
         if any((k not in fresh for k in desired)):
             raise SafetyError('上次推荐中的歌曲已从资料库移除或不可用，请重新生成')
         after = sync_owned_items(p, current, desired)
-        if state_ids(after) != desired or after['title'] != daily_target_title(self):
+        actual_ids = state_ids(after)
+        if (len(actual_ids) != len(desired) or set(actual_ids) != set(desired)
+                or after['title'] != daily_target_title(self)):
             raise SafetyError('修复后回读不一致，停止自动维护')
         snap.update(status='applied', after=after, repaired_at=now, error='')
         self._save_snapshot(snap)
@@ -316,7 +320,11 @@ class DailyMixin:
         try:
             if snap['before']:
                 after = sync_owned_items(p, current, [x['id'] for x in snap['before']['items']])
-                if fingerprint(after) != fingerprint(snap['before']):
+                expected_ids = [str(x['id']) for x in snap['before']['items']]
+                actual_ids = state_ids(after)
+                if (after.get('title') != snap['before'].get('title')
+                        or after.get('summary', '') != snap['before'].get('summary', '')
+                        or len(actual_ids) != len(expected_ids) or set(actual_ids) != set(expected_ids)):
                     raise SafetyError('恢复回读不一致')
                 restored = {**snap['before_daily_record'], 'fingerprint': fingerprint(after)}
             else:

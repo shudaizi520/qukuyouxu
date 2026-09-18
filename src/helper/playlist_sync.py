@@ -1,4 +1,4 @@
-"""Guarded replacement used ONLY for the dedicated daily recommendation playlist.
+"""Guarded membership replacement for the dedicated daily recommendation playlist.
 
 Keep the playlist ID, title and ownership marker, but converge membership to today's
 exact desired set. The transition is deliberately bounded: when old and new sets are
@@ -6,7 +6,6 @@ disjoint, add one anchor first (max old+1), remove stale members, then add the r
 This prevents a failed update from leaving old+new (for example 60 tracks for a
 30-track daily list).
 """
-from copy import deepcopy
 import time
 
 
@@ -57,17 +56,9 @@ def sync_owned_items(plex,before,desired):
         current=verify(expected)
 
     if len(current['items'])!=len(desired) or set(state_ids(current))!=desired_set:
-        raise SafetyError('每日歌单成员替换后数量或集合不一致，停止重排')
+        raise SafetyError('每日歌单成员替换后数量或集合不一致，停止更新')
 
-    # Reorder only after membership is exact. Plex's own client issues the MOVE
-    # requests in sequence and refreshes afterwards. Reading after every MOVE can
-    # return the old order for several seconds and falsely fail an otherwise
-    # successful update, so keep the expected order locally and verify once.
-    for position,tid in enumerate(desired):
-        if state_ids(current)[position]==tid:continue
-        moving=next(x for x in current['items'] if x['id']==tid)
-        previous=current['items'][position-1]['item_id'] if position else None
-        expected_items=deepcopy(current['items']);expected_items.remove(moving);expected_items.insert(position,moving)
-        plex.move_item(before['id'],moving['item_id'],previous)
-        current={**current,'items':expected_items}
-    return verify(desired)
+    # Membership is the product contract. Some Plex servers acknowledge MOVE but
+    # never apply it to audio playlists, so exact ordering must not turn a correct
+    # 50-song playlist into an unsafe/uncertain result.
+    return current
