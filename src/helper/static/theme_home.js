@@ -87,7 +87,8 @@
  }
  function renderManaged(data){
   const box=get('managedPlaylists');box.replaceChildren();
-  if(!(data.items||[]).length){const p=document.createElement('p');p.className='muted';p.textContent='还没有助手托管的分类歌单。';box.append(p);}
+  const managedCard=box.closest('.managed-playlists-card'),retiredRows=data.retired||[];
+  if(managedCard)managedCard.hidden=!(data.items||[]).length&&!retiredRows.length;
   for(const row of data.items||[]){
    const line=document.createElement('article');line.className='managed-playlist-row';
    const info=document.createElement('div'),title=document.createElement('strong'),meta=document.createElement('span');
@@ -100,7 +101,7 @@
    if(row.safe_to_forget){actions.lastChild.remove();actions.lastChild.title='只清除助手本地历史记录，不访问 Plex 删除接口';}
    line.append(info,actions);box.append(line);
   }
-  const retired=get('retiredPlaylists'),retiredRows=data.retired||[],disclosure=get('retiredDisclosure');retired.replaceChildren();
+  const retired=get('retiredPlaylists'),disclosure=get('retiredDisclosure');retired.replaceChildren();
   disclosure.hidden=!retiredRows.length;get('retiredCount').textContent=retiredRows.length?retiredRows.length+' 个':'';
   for(const row of retiredRows){const line=document.createElement('article');line.className='managed-playlist-row retired';const info=document.createElement('div'),title=document.createElement('strong'),meta=document.createElement('span');title.textContent=row.title;meta.textContent='已移除 · 可从快照恢复';info.append(title,meta);line.append(info,button('恢复歌单','secondary',async()=>{if(!await PCHUI.confirm('从安全快照恢复“'+row.title+'”？恢复后默认停止维护。'))return;await action(async()=>{const r=await post('/api/managed/restore',{confirm:true,snapshot_id:row.snapshot_id});note(r.message);await loadManaged(true);await refresh();});}));retired.append(line);}
  }

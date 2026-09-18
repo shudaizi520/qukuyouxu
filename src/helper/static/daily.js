@@ -5,7 +5,18 @@ async function request(path,method='GET',body){return PCHAuth.request(path,metho
 function n(v){return Number.isFinite(Number(v))?Number(v).toLocaleString('zh-CN'):'0';}function time(v){return v?new Date(v*1000).toLocaleString('zh-CN',{hour12:false}):'尚无';}
 async function action(fn){if(busy)return;busy=true;note('');try{await PCHUI.run(fn);try{await refresh();}catch(e){dailyPollError(e);}}catch(e){note(e.message,true);}finally{busy=false;schedulePolling();}}
 function setupNeeded(s){const c=s.settings||{};return !(c.plex_url&&c.token_present&&c.section);}
-function addSong(row,index){const el=document.createElement('div');el.className='song';const pos=document.createElement('span');pos.className='song-index';pos.textContent=String(index+1).padStart(2,'0');const left=document.createElement('div');const title=document.createElement('div');title.className='song-title';title.textContent=row.title||'未命名歌曲';left.append(title);const meta=document.createElement('div');meta.className='song-meta';meta.textContent=(row.artist||'未知歌手')+(row.album?' · '+row.album:'');left.append(meta);const reasonRows=row.reasons?.length?row.reasons:[row.bucket||row.source_bucket||'按当前推荐规则选入'];const why=document.createElement('div');why.className='reasons';why.textContent='推荐原因：'+reasonRows.join(' · ');left.append(why);const bucket=document.createElement('span');bucket.className='bucket';bucket.textContent=row.bucket||'推荐';const actions=document.createElement('div');actions.className='song-actions';const avoid=document.createElement('button');avoid.className='secondary';avoid.textContent='不再推荐';avoid.onclick=()=>action(async()=>{await post('/api/feedback',{kind:'track',id:String(row.id),value:'avoid'});note('已记录，下次生成时会排除这首歌。');});actions.append(avoid);if(row.artist){const artist=document.createElement('button');artist.className='secondary';artist.textContent='少推这个歌手';artist.onclick=()=>action(async()=>{if(!await PCHUI.confirm('以后减少 '+row.artist+' 的歌曲？当天通常最多保留 1 首。'))return;await post('/api/feedback',{kind:'artist',artist:row.artist,value:'avoid'});note('已记录；下次生成时会明显降权，通常最多 1 首。');});actions.append(artist);}el.append(pos,left,bucket,actions);$('songs').append(el);}
+function addSong(row,index){
+ const el=document.createElement('div');el.className='song';
+ const pos=document.createElement('span');pos.className='song-index';pos.textContent=String(index+1).padStart(2,'0');
+ const left=document.createElement('div');const title=document.createElement('div');title.className='song-title';title.textContent=row.title||'未命名歌曲';left.append(title);
+ const meta=document.createElement('div');meta.className='song-meta';meta.textContent=(row.artist||'未知歌手')+(row.album?' · '+row.album:'');left.append(meta);
+ const reasonRows=row.reasons?.length?row.reasons:[row.bucket||row.source_bucket||'按当前推荐规则选入'];const why=document.createElement('div');why.className='reasons';why.textContent='推荐原因：'+reasonRows.join(' · ');left.append(why);
+ const bucket=document.createElement('span');bucket.className='bucket';bucket.textContent=row.bucket||'推荐';
+ const menu=document.createElement('details');menu.className='song-menu';const summary=document.createElement('summary');summary.setAttribute('aria-label','歌曲操作');summary.textContent='•••';menu.append(summary);
+ const actions=document.createElement('div');actions.className='song-menu-items';const avoid=document.createElement('button');avoid.type='button';avoid.textContent='不再推荐';avoid.onclick=()=>action(async()=>{await post('/api/feedback',{kind:'track',id:String(row.id),value:'avoid'});note('已记录，下次生成时会排除这首歌。');});actions.append(avoid);
+ if(row.artist){const artist=document.createElement('button');artist.type='button';artist.textContent='少推这个歌手';artist.onclick=()=>action(async()=>{if(!await PCHUI.confirm('以后减少 '+row.artist+' 的歌曲？当天通常最多保留 1 首。'))return;await post('/api/feedback',{kind:'artist',artist:row.artist,value:'avoid'});note('已记录；下次生成时会明显降权，通常最多 1 首。');});actions.append(artist);}
+ menu.append(actions);el.append(pos,left,bucket,menu);$('songs').append(el);
+}
 function setFlow(stage){for(const [id,n] of [['flowGenerate',1],['flowPreview',2],['flowPublish',3]]){$(id).classList.toggle('active',n===stage);$(id).classList.toggle('done',n<stage);}}
 function render(s){
  current=s;clearDailyPollErrors();renderDailyOperation(s);$('version').textContent='v'+s.version;
@@ -20,7 +31,6 @@ function render(s){
  $('publish').hidden=!previewReady;$('publish').disabled=running||!publishable;
  $('publish').textContent=running&&job.kind==='daily_apply'?'正在发布…':'发布到 Plexamp';
  $('targetCount').textContent=n(cfg.size??30);$('actualCount').textContent=n(plan.items?.length||0);$('favoriteCount').textContent='≤'+n(Math.floor((cfg.size??30)*(cfg.favorite_percent??20)/100));$('avoidDays').textContent=n(plan.stats?.daily_avoid_window_days??cfg.daily_avoid_days??21)+'天';
- const webhook=s.webhook||{};const learning={disabled:'已关闭',not_connected:'未连接',connected_waiting:'已连接，等待播放记录',learning:'已记录 '+n(behavior.event_count||0)+' 个有效行为'};$('behaviorText').textContent=learning[webhook.state]||learning.not_connected;
  $('dailyToggle').checked=!!cfg.enabled;$('dailyToggle').disabled=running||!managed;$('scheduleText').textContent=cfg.enabled?String(cfg.hour??6).padStart(2,'0')+':00':managed?'关闭':'首次发布后可开启';
  renderDailyNotices(plan,blocking);$('bucketSummary').replaceChildren();
  for(const [k,v] of Object.entries(plan.stats?.bucket_counts||{})){const x=document.createElement('span');x.textContent=k+' '+v+' 首';$('bucketSummary').append(x);}
@@ -42,7 +52,7 @@ $('dailyToggle').onchange=()=>action(async()=>{const enabled=$('dailyToggle').ch
 
 function renderDailyNotices(plan,blocking){
  const meta=document.getElementById('dailyMeta');
- meta.replaceChildren();meta.hidden=!plan.id;
+ meta.replaceChildren();meta.hidden=true;
  if(plan.id){
   const stats=plan.stats||{};
   const target=typeof stats.daily_target_title==='string'&&stats.daily_target_title?stats.daily_target_title:'每日推荐';

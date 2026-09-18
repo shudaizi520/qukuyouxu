@@ -43,15 +43,13 @@ class PageRedesignV0426Tests(unittest.TestCase):
         parser.feed((STATIC / name).read_text(encoding="utf-8"))
         return parser
 
-    def test_daily_keeps_explanations_in_one_collapsed_details_area(self):
+    def test_daily_removes_repeated_explanation_area(self):
         page = self.parse("daily.html")
+        html = (STATIC / "daily.html").read_text(encoding="utf-8")
 
-        details = page.by_id("dailyDetails")
-        self.assertEqual("details", details["tag"])
-        self.assertFalse(details["hidden"])
-        self.assertFalse(details["open"])
-        behavior = page.by_id("behaviorText")
-        self.assertIn(details, behavior["ancestors"])
+        self.assertNotIn('id="dailyDetails"', html)
+        self.assertNotIn('id="behaviorText"', html)
+        self.assertTrue(page.by_id("dailyMessage")["hidden"])
         self.assertIn("daily-main-card", page.by_id("dailyTitle")["ancestors"][-2]["classes"])
         self.assertFalse(any(node["tag"] == "footer" for node in page.nodes))
 

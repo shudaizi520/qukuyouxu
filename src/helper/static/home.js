@@ -25,7 +25,7 @@ function renderQQAuth(auth,running){
 }
 async function refresh(skipPlexLink=false){
  if(polling)return;polling=true;
- try{current=await(await request('/api/workflow/status?release=1.0.2')).json();render(current);if(!libraryNavigationReady){libraryNavigationReady=true;revealLibraryTarget();}if(!skipPlexLink||!lastPlexLinkRefresh||Date.now()-lastPlexLinkRefresh>=PLEX_LINK_TTL_MS)await refreshPlexLink();return true;}finally{polling=false;}
+ try{current=await(await request('/api/workflow/status?release=1.0.3')).json();render(current);if(!libraryNavigationReady){libraryNavigationReady=true;revealLibraryTarget();}if(!skipPlexLink||!lastPlexLinkRefresh||Date.now()-lastPlexLinkRefresh>=PLEX_LINK_TTL_MS)await refreshPlexLink();return true;}finally{polling=false;}
 }
 function render(data){
  const w=data.workflow,s=w.state||{},sum=w.summary||{},job=w.job||{},running=!!job.running;
@@ -207,7 +207,7 @@ function renderLibraryPresentation(w,phase,running){
  }
  if(phase==='idle'){$('taskTitle').textContent='开始本轮整理';$('taskMessage').textContent=(w.summary?.managed?'已有 '+number(w.summary.managed)+' 个托管歌单，保留不变。':'')+'选择主题后，点击“检查新歌并预览”。';}
  const help={publishing:'正在同步，请勿重启应用。',attention:'保护已生效，未覆盖异常歌单。请查看运行详情。',paused:'进度已保留，可以继续整理。'};
- $('nextStep').hidden=!help[phase];if(help[phase])$('nextStep').textContent=help[phase];
+ $('nextStep').hidden=true;if(help[phase])$('nextStep').textContent=help[phase];
  $('reviewMessage').hidden=!(w.review?.expired||w.review?.cache_only);
  const cfg=w.settings||{};
  $('autoDescription').textContent=cfg.enabled?'已开启 · 每天北京时间 00:00 检查一次':'未开启';

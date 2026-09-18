@@ -42,13 +42,17 @@ class UIHierarchyV0414Tests(unittest.TestCase):
         for element_id in (
             "profileManager",
             "plexConnectionTools",
-            "webhookTools",
             "passwordTools",
         ):
             with self.subTest(element_id=element_id):
                 tag, attrs = page.elements[element_id]
                 self.assertEqual("details", tag)
                 self.assertNotIn("open", attrs)
+        tag, _attrs = page.elements["webhookTools"]
+        self.assertEqual("div", tag)
+        self.assertIn("webhookHelpToggle", page.elements)
+        _tag, help_attrs = page.elements["webhookHelp"]
+        self.assertIn("hidden", help_attrs)
         for control_id in (
             "dailySize",
             "dailyHour",

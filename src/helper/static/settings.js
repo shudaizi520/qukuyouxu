@@ -1,6 +1,6 @@
 'use strict';
 const $=id=>document.getElementById(id);
-let busy=false,current=null,plexPin='',plexTimer=null,plexDeadline=0,plexProfiles=[],activeProfile='default',batchPlans={},webhookTimer=null;
+let busy=false,current=null,plexPin='',plexTimer=null,plexDeadline=0,plexProfiles=[],activeProfile='default',batchPlans={},webhookTimer=null,learningEnabled=true,learningAccount='',webhookStatus={};
 function note(t,e=false){PCHUI.notify(t,{error:e});}
 function markSaved(button){button.textContent='已保存';button.classList.add('is-saved');}
 function markDirty(button){button.textContent='保存更改';button.classList.remove('is-saved');}
@@ -27,19 +27,28 @@ function renderOfficialSections(rows,saved){
  const value=String(saved||'');if(!value&&count){const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='请选择音乐资料库';placeholder.disabled=true;select.prepend(placeholder);}select.value=value;$('plexLibraryPanel').hidden=!count;
 }
 function renderAccounts(data){
- const select=$('behaviorUser'),wanted=String(data.behavior_account_id||'');select.replaceChildren();
- const first=document.createElement('option');first.value='';first.textContent=(data.accounts||[]).length===1?'自动选择唯一账户':'请选择 Plex 用户';select.append(first);
- for(const row of data.accounts||[]){const o=document.createElement('option');o.value=String(row.id);o.textContent=row.name+' · '+row.id;select.append(o);}
- select.value=wanted;
- $('behaviorEnabled').checked=data.behavior_enabled!==false;
+ const select=$('behaviorUser'),accounts=data.accounts||[],wanted=String(data.behavior_account_id||''),effective=wanted||(accounts.length===1?String(accounts[0].id):'');select.replaceChildren();
+ const first=document.createElement('option');first.value='';first.textContent=accounts.length?'请选择 Plex 用户':'暂无可用用户';select.append(first);
+ for(const row of accounts){const o=document.createElement('option');o.value=String(row.id);o.textContent=row.name+' · '+row.id;select.append(o);}
+ select.value=effective;
+ learningEnabled=data.behavior_enabled!==false;learningAccount=effective;$('behaviorEnabled').checked=learningEnabled;updateLearningState();
+}
+function updateLearningState(){
+ const state=webhookStatus?.state||'not_connected';let label='已关闭';
+ if(learningEnabled&&!learningAccount)label='选择账户';
+ else if(learningEnabled&&state==='learning')label='学习中';
+ else if(learningEnabled&&state==='connected_waiting')label='已接通';
+ else if(learningEnabled)label='设置 Webhook';
+ $('webhookState').textContent=label;
+ $('behaviorSave').disabled=learningEnabled&&!learningAccount;
 }
 function renderSavedConnection(saved){
  const value=saved||{},configured=!!value.configured,state=value.state||'not_configured';const libraryReady=!!value.library?.id;const visibleState=configured&&!libraryReady?'library_required':state;
  const labels={not_configured:'未连接',library_required:'请选择音乐库',saved:'已保存',online:'在线',unreachable:'暂时离线',auth_invalid:'需重新连接'};
  $('plexState').textContent=labels[visibleState]||'已保存';$('plexState').dataset.state=visibleState;
  $('plexConnectionLabel').textContent=labels[visibleState]||'管理';
- $('plexSavedSummary').hidden=!configured;$('connectPlex').textContent=configured?'重新连接':'连接 Plex';$('disconnectPlex').hidden=!configured;
- $('plexConnectionTools').open=!libraryReady||state==='auth_invalid';
+ $('plexSavedSummary').hidden=true;$('connectPlex').textContent=configured?'重新连接':'连接 Plex';$('disconnectPlex').hidden=!configured;
+ const showTools=!configured||!libraryReady||state==='auth_invalid';$('plexConnectionTools').hidden=!showTools;$('plexConnectionTools').open=showTools;
  if(!configured)return;
  $('savedAccount').textContent=value.account?.title||value.account?.username||'Plex 账户';
  $('savedServer').textContent=value.server?.name||'Plex 服务器';
@@ -48,9 +57,7 @@ function renderSavedConnection(saved){
 }
 function profileDisplayName(row){return row?.account?.username||row?.account?.title||row?.name||'Plex 账户';}
 function renderWebhook(webhook){
- const value=webhook||{},state=value.state||'not_connected';const labels={disabled:'已关闭',not_connected:'未接通',connected_waiting:'已接通，等待有效行为',learning:'学习中'};
- $('webhookState').textContent=labels[state]||'未接通';$('webhookUrl').textContent=location.origin+(value.endpoint_path||'/api/plex/webhook');
- if(state==='not_connected')$('webhookTools').open=true;
+ const value=webhook||{},state=value.state||'not_connected';webhookStatus=value;$('webhookUrl').textContent=location.origin+(value.endpoint_path||'/api/plex/webhook');updateLearningState();
  const messages={disabled:'已关闭',not_connected:'需要设置',connected_waiting:'已接通',learning:'接收正常'};
  $('webhookMessage').textContent=messages[state]||messages.not_connected;
  $('webhookLast').textContent=value.last_received_at?'最近收到：'+new Date(value.last_received_at*1000).toLocaleString('zh-CN',{hour12:false})+' · '+(value.last_event||'Plex 事件'):'在 Plex 保存地址后播放一首歌，收到事件后这里会自动显示“已接通”。';
@@ -73,6 +80,7 @@ function renderProfiles(data){
  $('currentProfileName').textContent=active?.account?.username||profileDisplayName(active);
  $('currentAvatar').textContent=profileDisplayName(active).trim().slice(0,1).toUpperCase();
  $('profileSummary').textContent=active?((active.server?.name||'Plex')+' · '+(active.library?.name||active.library?.id||'尚未选择曲库')):'尚未连接';
+ $('batchDailyTools').hidden=plexProfiles.length<2;
  renderManagedUsers();
 }
 function render(s,verified,saved){
@@ -141,7 +149,7 @@ function renderRecipients(rows,owner,warnings=[]){
 async function loadAvailablePeople(){const owner=ownerProfile();if(!owner?.library?.id)throw Error('请先连接 Plex 并选择音乐资料库。');$('profileRecipientList').innerHTML='<p class="dialog-empty">正在读取…</p>';const data=await responseJson('/api/plex/recipients?owner_profile_id='+encodeURIComponent(owner.id));renderRecipients(data.items||[],owner,data.warnings||[]);}
 $('plexProfile').onchange=()=>action(async()=>{await post('/api/plex/profiles/select',{profile_id:$('plexProfile').value});await refresh();});
 $('createProfile').onsubmit=e=>{e.preventDefault();action(async()=>{const name=$('newProfileName').value.trim();if(!name)throw Error('请填写新档案名称。');const result=await post('/api/plex/profiles/create',{name});$('newProfileName').value='';note(result.message+' 请点击“连接 Plex”。');await refresh();});};
-$('openAddUser').onclick=()=>{const owner=ownerProfile();if(!owner?.library?.id){$('plexConnectionTools').open=true;note('请先在 Plex 连接中选择音乐资料库。',true);$('officialSection').focus();return;}$('addUserDialog').showModal();action(loadAvailablePeople);};
+$('openAddUser').onclick=()=>{const owner=ownerProfile();if(!owner?.library?.id){$('plexConnectionTools').hidden=false;$('plexConnectionTools').open=true;note('请先选择音乐资料库。',true);$('officialSection').focus();return;}$('addUserDialog').showModal();action(loadAvailablePeople);};
 $('closeAddUser').onclick=()=>$('addUserDialog').close();
 $('findPeople').onclick=()=>action(loadAvailablePeople);
 function renderBatch(items){const box=$('batchResults');box.hidden=false;box.replaceChildren();batchPlans={};for(const row of items||[]){const line=document.createElement('div');line.className='batch-row';const name=document.createElement('strong');name.textContent=row.name||row.profile_id;const state=document.createElement('span');state.textContent=row.status==='ready'?`可发布 · ${row.count} 首`:row.status==='published'?`已发布 · ${row.result?.written||0} 首`:row.status==='blocked'?'已暂停':row.error||'失败';line.append(name,state);box.append(line);if(row.status==='ready'&&row.plan_id)batchPlans[row.profile_id]=row.plan_id;}$('batchPublish').disabled=!Object.keys(batchPlans).length;}
@@ -171,7 +179,7 @@ async function pollPlex(){
 async function resumePlexLogin(){
  const data=await post('/api/plex/login/resume',{});
  if(data.status==='idle')return;
- $('plexConnectionTools').open=true;
+ $('plexConnectionTools').hidden=false;$('plexConnectionTools').open=true;
  if(data.status==='pending'){
   plexPin=String(data.pin_id||'');plexDeadline=Math.min(Number(data.expires_at||0)*1000,Date.now()+10*60*1000);
   loginStatus(data.message||'等待你在 Plex 官方页面确认…');schedulePlexPolling();return;
@@ -187,7 +195,7 @@ async function resumePlexLogin(){
  }
 }
 $('connectPlex').onclick=()=>action(async()=>{
- $('plexConnectionTools').open=true;
+ $('plexConnectionTools').hidden=false;$('plexConnectionTools').open=true;
  const popup=window.open('about:blank','plexOfficialLogin','popup,width=860,height=720');
  if(popup){popup.document.title='连接 Plex';popup.document.body.textContent='正在跳转到 Plex 官方登录…';}
  try{
@@ -196,14 +204,16 @@ $('connectPlex').onclick=()=>action(async()=>{
   loginStatus(data.message||'请在 Plex 官方页面完成授权。');await pollPlex();
  }catch(e){stopPlexPolling();if(popup&&!popup.closed)popup.close();offerManualFallback();throw e;}
 });
-$('disconnectPlex').onclick=()=>action(async()=>{if(!await PCHUI.confirm('断开当前 Plex 账户？\n不会删除 Plex 中已有歌单和本地音乐缓存。',{confirmText:'断开 Plex'}))return;const result=await post('/api/plex/disconnect',{confirm:true});plexPin='';stopPlexPolling();await refresh();$('plexConnectionTools').open=true;note(result.message);});
+$('disconnectPlex').onclick=()=>action(async()=>{if(!await PCHUI.confirm('断开当前 Plex 账户？\n不会删除 Plex 中已有歌单和本地音乐缓存。',{confirmText:'断开 Plex'}))return;const result=await post('/api/plex/disconnect',{confirm:true});plexPin='';stopPlexPolling();await refresh();$('plexConnectionTools').hidden=false;$('plexConnectionTools').open=true;note(result.message);});
 $('showManualFallback').onclick=()=>{const p=$('manualFallback');p.hidden=false;$('showManualFallback').hidden=true;$('advancedPlex').open=true;};
 $('usePlexServer').onclick=()=>action(async()=>{
  if(!plexPin||!$('plexServer').value)throw Error('请选择 Plex 服务器。');
  const data=await post('/api/plex/login/connect',{confirm:true,pin_id:plexPin,machine:$('plexServer').value});plexPin='';stopPlexPolling();
  renderSections(data.sections,data.section);renderOfficialSections(data.sections,data.section);$('plexServerPanel').hidden=true;loginStatus(data.message);note('Plex 已连接。请选择音乐资料库并保存。');await refresh();
 });
-$('savePlexLibrary').onclick=()=>action(async()=>{if(!$('officialSection').value)throw Error('请选择音乐资料库。');const option=$('officialSection').selectedOptions[0];const r=await post('/api/plex/library/select',{section:$('officialSection').value,name:option?.textContent?.split(' · ')[0]||''});note(r.message||'音乐资料库已保存。');await refresh();});
+async function saveOfficialLibrary(){if(!$('officialSection').value)throw Error('请选择音乐资料库。');const option=$('officialSection').selectedOptions[0];const r=await post('/api/plex/library/select',{section:$('officialSection').value,name:option?.textContent?.split(' · ')[0]||''});note(r.message||'音乐资料库已保存。');await refresh();}
+$('savePlexLibrary').onclick=()=>action(saveOfficialLibrary);
+$('officialSection').onchange=()=>action(saveOfficialLibrary);
 $('plexForm').onsubmit=e=>{e.preventDefault();action(async()=>{if(!$('section').value)throw Error('请先选择音乐资料库。');const r=await post('/api/settings',{plex_url:$('plexUrl').value.trim(),plex_token:$('plexToken').value.trim(),section:$('section').value.trim(),account_label:$('accountLabel').value.trim()});note(r.message);await refresh();});};
 $('testPlex').onclick=()=>action(async()=>{const r=await post('/api/plex/check',{});renderSections(r.sections,$('section').value);$('plexState').textContent='已连接 · '+(r.server||'Plex');note('连接成功。');await refresh();});
 async function saveDailyPolicy(){await post('/api/daily/policy',{size:Number($('dailySize').value),rediscovery_days:Number($('rediscoveryDays').value),daily_avoid_days:Number($('dailyAvoidDays').value),favorite_percent:Number($('favoritePercent').value),artist_cap:Number($('artistCap').value),hour:Number($('dailyHour').value)});markSaved($('dailySave'));await refresh();}
@@ -214,7 +224,10 @@ $('dailyAuto').onchange=()=>{const enabled=$('dailyAuto').checked;action(async()
 $('libraryAuto').onchange=()=>{const enabled=$('libraryAuto').checked;action(async()=>{try{if(enabled&&!await PCHUI.confirm('开启每天 00:00 检查新增歌曲？',{confirmText:'开启'})){$('libraryAuto').checked=false;return;}const r=await post('/api/workflow/schedule',{enabled,confirm:enabled});note(r.message);}catch(error){$('libraryAuto').checked=!enabled;throw error;}finally{await refresh();}});};
 $('behaviorForm').onsubmit=e=>{e.preventDefault();action(async()=>{await post('/api/product/settings/verified',{behavior_enabled:$('behaviorEnabled').checked,behavior_account_id:$('behaviorUser').value});markSaved($('behaviorSave'));await refresh();});};
 $('behaviorForm').addEventListener('input',()=>markDirty($('behaviorSave')));
+$('behaviorEnabled').onchange=()=>{learningEnabled=$('behaviorEnabled').checked;updateLearningState();};
+$('behaviorUser').onchange=()=>{learningAccount=$('behaviorUser').value;updateLearningState();};
 $('copyWebhook').onclick=()=>action(async()=>{await copyWebhookAddress();note('地址已复制。');});
+$('webhookHelpToggle').onclick=()=>{$('webhookHelp').hidden=!$('webhookHelp').hidden;};
 $('passwordForm').onsubmit=e=>{e.preventDefault();action(async()=>{const a=$('newPassword').value,b=$('confirmPassword').value;if(a!==b)throw Error('两次输入的新密码不一致');const r=await post('/api/auth/password',{current_password:$('currentPassword').value,new_password:a,confirm_password:b});$('currentPassword').value='';$('newPassword').value='';$('confirmPassword').value='';note(r.message+'，其它旧登录会话已退出。');});};
 async function boot(){const panel=location.hash.slice(1);if(['accounts','recommend','learning','automation','system'].includes(panel))showSettingsPanel(panel);try{await refresh();await resumePlexLogin();}catch(e){note(e.message,true);}startWebhookPolling();}
 window.addEventListener('pch-auth-ready',boot);window.addEventListener('pch-auth-login',boot);window.addEventListener('pch-auth-logout',()=>{plexPin='';stopPlexPolling();});

@@ -75,7 +75,8 @@ class ProfileUIV040Tests(unittest.TestCase):
         script = (ROOT / "src/helper/static/settings.js").read_text(encoding="utf-8")
 
         self.assertIn("const libraryReady=!!value.library?.id", script)
-        self.assertIn("$('plexConnectionTools').open=!libraryReady", script)
+        self.assertIn("const showTools=!configured||!libraryReady||state==='auth_invalid'", script)
+        self.assertIn("$('plexConnectionTools').open=showTools", script)
         self.assertIn("placeholder.textContent='请选择音乐资料库'", script)
         self.assertIn("r.message||'音乐资料库已保存。'", script)
         guard = script.index("if(!owner?.library?.id)")
