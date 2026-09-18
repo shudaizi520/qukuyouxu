@@ -117,6 +117,34 @@ class _EventuallyConsistentDailyPlex(_DailyPlex):
         self._stale_state = before
 
 
+class _SlowReorderDailyPlex(_DailyPlex):
+    """Plex may keep returning the old ordering for several reads after MOVE."""
+
+    def __init__(self):
+        super().__init__(existing=True)
+        self.playlists_by_id["900"]["items"] = [
+            {"id": "4", "item_id": "4004"},
+            {"id": "3", "item_id": "4003"},
+            {"id": "2", "item_id": "4002"},
+            {"id": "1", "item_id": "4001"},
+        ]
+        self._stale_state = None
+        self._stale_reads = 0
+        self.move_calls = 0
+
+    def playlist_state(self, playlist_id):
+        if self._stale_reads:
+            self._stale_reads -= 1
+            return copy.deepcopy(self._stale_state)
+        return super().playlist_state(playlist_id)
+
+    def move_item(self, playlist_id, item_id, after=None):
+        self.move_calls += 1
+        self._stale_state = super().playlist_state(playlist_id)
+        super().move_item(playlist_id, item_id, after)
+        self._stale_reads = 6
+
+
 def _recommendation(*_args, **_kwargs):
     return {
         "items": [
@@ -212,6 +240,18 @@ class DailyFixedPlaylistTests(unittest.TestCase):
         self.assertTrue(store.get("daily_plan")["applied"])
         self.assertEqual("applied", store.get("snapshots")[-1]["status"])
         self.assertEqual(["1", "2"], [row["id"] for row in plex.playlist_state("900")["items"]])
+
+    def test_reorder_batches_moves_then_waits_for_delayed_final_read(self):
+        from helper.playlist_sync import sync_owned_items
+
+        plex = _SlowReorderDailyPlex()
+        before = plex.playlist_state("900")
+
+        with patch("helper.playlist_sync.time.sleep"):
+            result = sync_owned_items(plex, before, ["1", "2", "3", "4"])
+
+        self.assertEqual(["1", "2", "3", "4"], [row["id"] for row in result["items"]])
+        self.assertLessEqual(plex.move_calls, 4)
 
     def test_old_same_name_warning_does_not_keep_an_existing_preview_blocked(self):
         from helper.extra_web import public_daily

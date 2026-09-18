@@ -4,9 +4,9 @@
  <meta charset="utf-8">
  <meta name="viewport" content="width=device-width,initial-scale=1">
  <title>曲库有序 · 设置</title>
- <link rel="stylesheet" href="/static/product.css?v=1.0.4">
- <script defer src="/static/auth.js?v=1.0.4"></script>
- <script defer src="/static/settings.js?v=1.0.4"></script>
+ <link rel="stylesheet" href="/static/product.css?v=1.0.5">
+ <script defer src="/static/auth.js?v=1.0.5"></script>
+ <script defer src="/static/settings.js?v=1.0.5"></script>
 </head>
 <body data-view="settings" data-auth-state="checking">
 <div id="bootScreen" class="auth-boot"><div class="boot-mark">♫</div><strong>曲库有序</strong><span>正在进入你的音乐库…</span></div>
@@ -21,7 +21,7 @@
 
 <div id="workspace" hidden>
  <header class="topbar">
-  <a class="brand" href="/"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v1.0.4</small></span></a>
+  <a class="brand" href="/"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v1.0.5</small></span></a>
   <nav><a href="/">每日推荐</a><a href="/mixes">智能歌单</a><a href="/library">曲库整理</a><a href="/status">运行状态</a><a class="active" href="/settings">设置</a></nav>
   <button class="logout" data-auth-logout hidden>退出</button>
  </header>
@@ -101,7 +101,7 @@
 
    <section id="settings-system" class="settings-panel" hidden>
     <div class="settings-page-head"><h2>系统</h2></div>
-    <section class="settings-section settings-form-rows"><div class="settings-row"><span>QQ 曲库资料</span><a class="secondary button" href="/library">管理授权</a></div><div class="settings-row"><span>运行状态</span><a class="secondary button" href="/status">查看</a></div><div class="settings-row"><span>软件版本</span><strong id="systemVersion" class="settings-static-value">1.0.4</strong></div></section>
+    <section class="settings-section settings-form-rows"><div class="settings-row"><span>QQ 曲库资料</span><a class="secondary button" href="/library">管理授权</a></div><div class="settings-row"><span>运行状态</span><a class="secondary button" href="/status">查看</a></div><div class="settings-row"><span>软件版本</span><strong id="systemVersion" class="settings-static-value">1.0.5</strong></div></section>
     <details id="passwordTools" class="settings-section settings-expander"><summary><span>登录密码</span><span id="accountName">admin</span></summary><div class="settings-expander-body"><form id="passwordForm" class="form-grid"><div class="field"><label for="currentPassword">当前密码</label><input id="currentPassword" type="password" autocomplete="current-password"></div><div class="field"><label for="newPassword">新密码</label><input id="newPassword" type="password" autocomplete="new-password" minlength="8"></div><div class="field"><label for="confirmPassword">确认新密码</label><input id="confirmPassword" type="password" autocomplete="new-password" minlength="8"></div><div class="field full"><button class="primary" type="submit">修改密码</button></div></form></div></details>
    </section>
   </div>

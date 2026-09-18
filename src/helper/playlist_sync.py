@@ -10,8 +10,8 @@ from copy import deepcopy
 import time
 
 
-READ_AFTER_WRITE_ATTEMPTS = 5
-READ_AFTER_WRITE_DELAY = 0.05
+READ_AFTER_WRITE_ATTEMPTS = 10
+READ_AFTER_WRITE_DELAY = 1.0
 
 
 def sync_owned_items(plex,before,desired):
@@ -59,13 +59,15 @@ def sync_owned_items(plex,before,desired):
     if len(current['items'])!=len(desired) or set(state_ids(current))!=desired_set:
         raise SafetyError('每日歌单成员替换后数量或集合不一致，停止重排')
 
-    # Reorder only after membership is exact. A MOVE failure leaves the correct
-    # members and count, merely not the preferred ordering.
+    # Reorder only after membership is exact. Plex's own client issues the MOVE
+    # requests in sequence and refreshes afterwards. Reading after every MOVE can
+    # return the old order for several seconds and falsely fail an otherwise
+    # successful update, so keep the expected order locally and verify once.
     for position,tid in enumerate(desired):
         if state_ids(current)[position]==tid:continue
         moving=next(x for x in current['items'] if x['id']==tid)
         previous=current['items'][position-1]['item_id'] if position else None
         expected_items=deepcopy(current['items']);expected_items.remove(moving);expected_items.insert(position,moving)
         plex.move_item(before['id'],moving['item_id'],previous)
-        current=verify([x['id'] for x in expected_items])
-    return current
+        current={**current,'items':expected_items}
+    return verify(desired)
