@@ -6,10 +6,10 @@ import sys
 
 
 class ProjectEntrypointTests(unittest.TestCase):
-    def test_public_release_version_is_1_0_1(self):
+    def test_public_release_version_is_1_0_2(self):
         from helper import __version__
 
-        self.assertEqual("1.0.1", __version__)
+        self.assertEqual("1.0.2", __version__)
 
     def test_project_uses_one_modern_license_declaration(self):
         root = Path(__file__).resolve().parents[1]

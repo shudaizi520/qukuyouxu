@@ -16,6 +16,7 @@ from .base import BASE_POLICY
 SIMILARITY_FALLBACK_NOTICE = 'Plex 相似接口没有可用结果，本批使用歌手、专辑、流派和已有分类关系寻找相近歌曲。'
 
 def public_daily(store):
+    from .daily import active_daily_blocks
     p = store.get('daily_plan')
     if not p:
         return None
@@ -24,6 +25,7 @@ def public_daily(store):
         warning for warning in (result.get('warnings') or [])
         if warning != SIMILARITY_FALLBACK_NOTICE
     ]
+    result['blocked'] = active_daily_blocks(result)
     return result
 
 def public_daily_repair(store):

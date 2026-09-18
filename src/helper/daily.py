@@ -9,6 +9,7 @@ from .playlist_sync import sync_owned_items
 from .audience import filter_childrens_context
 DAILY_CID = 'daily'
 CST = timezone(timedelta(hours=8))
+OBSOLETE_SAME_NAME_BLOCK = '存在同名非本助手托管的“每日推荐”，不接管'
 
 def day_at(now):
     return datetime.fromtimestamp(now, CST).strftime('%Y-%m-%d')
@@ -18,6 +19,10 @@ def number_time(v):
         return float(v or 0)
     except (TypeError, ValueError):
         return 0.0
+
+
+def active_daily_blocks(plan):
+    return [reason for reason in (plan.get('blocked') or []) if reason != OBSOLETE_SAME_NAME_BLOCK]
 
 
 def rolling_preserve_ids(before, tracks, behavior_events, published_at):
@@ -103,17 +108,21 @@ class DailyMixin:
         before = None
         if any((x.get('category_id') == DAILY_CID and x.get('status') in ('prepared', 'uncertain', 'restoring') for x in self.store.get('snapshots'))):
             blocked.append('上一次每日歌单写入结果待核对，禁止自动重试')
+        target_title = daily_target_title(self)
         if managed:
             try:
                 if managed.get('scope') != self.daily_scope() or managed.get('machine') != identity['machine']:
                     raise SafetyError('每日歌单所属账户或服务器已变化')
                 before = p.playlist_state(managed['id'])
-                if self.marker(DAILY_CID) not in before.get('summary', '') or fingerprint(before) != managed['fingerprint']:
-                    raise SafetyError('每日歌单被手动修改或管理标记不符，不覆盖')
+                if before.get('title') != target_title:
+                    raise SafetyError('每日歌单名称已变化，请改回“每日推荐”后重试')
             except Exception as exc:
                 blocked.append(safe_error(exc))
-        elif any((x.get('title') == daily_target_title(self) for x in p.playlists())):
-            blocked.append('存在同名非本助手托管的“每日推荐”，不接管')
+        else:
+            same_name = next((row for row in p.playlists() if row.get('title') == target_title), None)
+            same_name_id = str((same_name or {}).get('id') or (same_name or {}).get('ratingKey') or '')
+            if same_name_id:
+                before = p.playlist_state(same_name_id)
         seed_ids = []
         generated = {x['id'] for x in self.store.get('managed').values()}
         if managed:
@@ -169,8 +178,12 @@ class DailyMixin:
             raise SafetyError('每日预览或偏好已变化，请重新生成')
         if plan.get('applied'):
             raise SafetyError('这份每日推荐已经发布，不重复写入')
-        if plan.get('blocked'):
-            raise SafetyError('每日推荐暂不能发布：' + '；'.join(plan['blocked']))
+        blocked = active_daily_blocks(plan)
+        if blocked:
+            raise SafetyError('每日推荐暂不能发布：' + '；'.join(blocked))
+        if plan.get('blocked') != blocked:
+            plan['blocked'] = blocked
+            self.store.set('daily_plan', plan)
         if not 0 <= now - plan['created_at'] <= 1800 or plan['date'] != day_at(now):
             raise SafetyError('每日预览已过期，请重新生成')
         if any((x.get('category_id') == DAILY_CID and x.get('status') in ('prepared', 'uncertain', 'restoring') for x in self.store.get('snapshots'))):
@@ -186,10 +199,15 @@ class DailyMixin:
         managed = self.store.get('daily_managed')
         if before:
             current = p.playlist_state(before['id'])
-            if not managed or managed['id'] != before['id'] or fingerprint(current) != fingerprint(before) or (fingerprint(current) != managed['fingerprint']) or (self.marker(DAILY_CID) not in current.get('summary', '')):
+            if fingerprint(current) != fingerprint(before):
                 raise SafetyError('每日歌单在预览后被修改，不覆盖')
-        elif managed or any((x.get('title') == daily_target_title(self) for x in p.playlists())):
-            raise SafetyError('每日歌单状态变化或出现同名歌单，请重新预览')
+        elif managed:
+            raise SafetyError('每日歌单状态变化，请重新生成')
+        else:
+            same_name = next((row for row in p.playlists() if row.get('title') == daily_target_title(self)), None)
+            same_name_id = str((same_name or {}).get('id') or (same_name or {}).get('ratingKey') or '')
+            if same_name_id:
+                before = p.playlist_state(same_name_id)
         snap = {'id': uuid.uuid4().hex, 'kind': 'daily', 'category_id': DAILY_CID, 'title': daily_target_title(self), 'created_at': now, 'status': 'prepared', 'before': before, 'after': None, 'add': ids, 'marker': self.marker(DAILY_CID), 'plan_id': plan_id, 'machine': plan['machine'], 'scope': plan['scope'], 'before_daily_record': managed}
         self._save_snapshot(snap)
         try:
@@ -197,7 +215,7 @@ class DailyMixin:
                 after = sync_owned_items(p, before, ids)
             else:
                 after = p.create(daily_target_title(self), ids, self.marker(DAILY_CID), description='仅播放本地音乐；每日推荐会按已确认设置更新成员，其他歌单不受影响。')
-            if after['title'] != daily_target_title(self) or self.marker(DAILY_CID) not in after.get('summary', '') or state_ids(after) != ids:
+            if after['title'] != daily_target_title(self) or state_ids(after) != ids:
                 raise SafetyError('每日歌单写入回读不符，停止自动维护')
             snap.update(status='applied', after=after)
             self._save_snapshot(snap)
@@ -237,8 +255,8 @@ class DailyMixin:
         if p.identity()['machine'] != snap.get('machine'):
             raise SafetyError('Plex服务器身份已变化，不能修复')
         current = p.playlist_state(before['id'])
-        if current['title'] != daily_target_title(self) or self.marker(DAILY_CID) not in current.get('summary', ''):
-            raise SafetyError('当前歌单不是本助手拥有的每日推荐，拒绝修改')
+        if current['title'] != daily_target_title(self):
+            raise SafetyError('当前歌单名称不是“每日推荐”，拒绝修改')
         if len(set(state_ids(current))) != len(current['items']):
             raise SafetyError('当前每日推荐含重复条目，需要人工核对')
         allowed = set(state_ids(before)) | set(desired)
@@ -248,7 +266,7 @@ class DailyMixin:
         if any((k not in fresh for k in desired)):
             raise SafetyError('上次推荐中的歌曲已从资料库移除或不可用，请重新生成')
         after = sync_owned_items(p, current, desired)
-        if state_ids(after) != desired or after['title'] != daily_target_title(self) or self.marker(DAILY_CID) not in after.get('summary', ''):
+        if state_ids(after) != desired or after['title'] != daily_target_title(self):
             raise SafetyError('修复后回读不一致，停止自动维护')
         snap.update(status='applied', after=after, repaired_at=now, error='')
         self._save_snapshot(snap)
@@ -283,7 +301,7 @@ class DailyMixin:
         if p.identity()['machine'] != snap['machine']:
             raise SafetyError('服务器身份已变化')
         current = p.playlist_state(record['id'])
-        if fingerprint(current) != fingerprint(snap['after']) or self.marker(DAILY_CID) not in current.get('summary', ''):
+        if fingerprint(current) != fingerprint(snap['after']):
             raise SafetyError('每日歌单被手动改动，停止自动恢复')
         if snap['before']:
             raw = p.tracks(self.store.get('settings')['section'])

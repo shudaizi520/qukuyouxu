@@ -11,7 +11,7 @@ class DailyUiV0424Tests(unittest.TestCase):
         script = (ROOT / "src/helper/static/daily.js").read_text(encoding="utf-8")
 
         self.assertIn('id="fullRefresh"', page)
-        self.assertIn("整批换一批", page)
+        self.assertIn(">换一批</button>", page)
         self.assertIn("force_full:true", script)
         self.assertIn("保留没听过的歌", page)
 

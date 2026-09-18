@@ -53,8 +53,22 @@ class PageRedesignV0426Tests(unittest.TestCase):
         behavior = page.by_id("behaviorText")
         self.assertIn(details, behavior["ancestors"])
         self.assertIn("daily-main-card", page.by_id("dailyTitle")["ancestors"][-2]["classes"])
-        self.assertTrue(page.by_id("publishHint")["hidden"])
         self.assertFalse(any(node["tag"] == "footer" for node in page.nodes))
+
+    def test_daily_first_use_shows_one_clear_generate_action(self):
+        page = self.parse("daily.html")
+        html = (STATIC / "daily.html").read_text(encoding="utf-8")
+        script = (STATIC / "daily.js").read_text(encoding="utf-8")
+
+        self.assertFalse(page.by_id("generate")["hidden"])
+        self.assertTrue(page.by_id("fullRefresh")["hidden"])
+        self.assertTrue(page.by_id("publish")["hidden"])
+        self.assertIn('id="generate" class="primary wide">生成今日歌单</button>', html)
+        self.assertIn('id="fullRefresh" class="secondary" hidden>换一批</button>', html)
+        self.assertNotIn('id="recheckDaily"', html)
+        self.assertNotIn('id="publishHint"', html)
+        self.assertNotIn("reviewDailyOwnership", script)
+        self.assertNotIn("发布检查", script)
 
     def test_status_leads_with_metrics_and_collapses_diagnostics_and_history(self):
         page = self.parse("status.html")

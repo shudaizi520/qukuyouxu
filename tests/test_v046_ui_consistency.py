@@ -57,7 +57,7 @@ class UIConsistencyV046Tests(unittest.TestCase):
         page = (ROOT / "src/helper/static/daily.html").read_text(encoding="utf-8")
 
         self.assertIn("$('targetCount').textContent=n(cfg.size??30)", script)
-        self.assertIn("'这'+n(cfg.size??30)+'首只是在预览中", script)
+        self.assertIn("n(plan.items?.length||cfg.size||30)+' 首歌曲已准备好", script)
         self.assertNotIn("$('targetCount').textContent='30'", script)
         self.assertIn('<strong id="targetCount">—</strong>', page)
 
