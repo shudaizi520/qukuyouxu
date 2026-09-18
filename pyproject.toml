@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qukuyouxu"
+dynamic = ["version"]
+description = "面向中文 Plex 音乐库的自动推荐与智能歌单助手"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "AGPL-3.0-only"
+authors = [{name = "曲库有序 contributors"}]
+keywords = ["plex", "plexamp", "music", "playlist", "recommendation"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Framework :: FastAPI",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Multimedia :: Sound/Audio",
+]
+dependencies = [
+  "fastapi==0.141.1",
+  "starlette==1.6.0",
+  "uvicorn==0.40.0",
+  "requests==2.34.2",
+]
+
+[project.optional-dependencies]
+qq = [
+  "opencc-python-reimplemented==0.1.7",
+  "qqmusic-api-python==0.7.2",
+]
+
+[project.scripts]
+qukuyouxu = "helper.web:main"
+qukuyouxu-cache = "helper.cache_cli:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "helper.__version__"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+helper = ["static/*"]

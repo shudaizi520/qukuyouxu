@@ -1,0 +1,20 @@
+services:
+  qukuyouxu:
+    image: ${QUKUYOUXU_IMAGE:-qukuyouxu:local}
+    build: .
+    container_name: qukuyouxu
+    restart: unless-stopped
+    ports:
+      - "9511:9511"
+    environment:
+      PORT: "9511"
+      DATA_ROOT: /data
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-}
+    volumes:
+      - qukuyouxu-data:/data
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  qukuyouxu-data:

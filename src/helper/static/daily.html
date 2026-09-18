@@ -1,0 +1,28 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><title>曲库有序 · 每日推荐</title><link rel="stylesheet" href="/static/product.css?v=0.4.24"><script defer src="/static/auth.js?v=0.4.24"></script><script defer src="/static/daily.js?v=0.4.24"></script><script defer src="/static/refined.js?v=0.4.24"></script></head><body data-view="daily" data-auth-state="checking">
+<div id="bootScreen" class="auth-boot"><div class="boot-mark">♫</div><strong>曲库有序</strong><span>正在进入你的音乐库…</span></div>
+<section id="authShell" class="auth-shell" hidden>
+ <div class="auth-card">
+  <div class="auth-brand"><span class="brand-mark">♫</span><div><strong>曲库有序</strong><small>本地 Plex 音乐助手</small></div></div>
+  <div id="loginPanel"><span class="eyebrow">WELCOME BACK</span><h1>登录</h1><form id="loginForm" class="auth-form"><label>用户名<input id="loginUser" autocomplete="username" value="admin" required></label><label>密码<input id="loginPassword" type="password" autocomplete="current-password" required></label><button class="primary" type="submit">登录</button></form></div>
+  <div id="setupPanel" hidden><span class="eyebrow">FIRST SETUP</span><h1>创建管理员账户</h1><form id="setupForm" class="auth-form"><label>用户名<input id="setupUser" autocomplete="username" value="admin" required></label><label>新密码<input id="setupPassword" type="password" autocomplete="new-password" minlength="8" required></label><label>确认密码<input id="setupConfirm" type="password" autocomplete="new-password" minlength="8" required></label><button class="primary" type="submit">建立账户并进入</button></form></div>
+  <p id="authMessage" class="auth-message" hidden></p>
+ </div>
+</section>
+<div id="workspace" hidden>
+<header class="topbar"><a class="brand" href="/"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v0.4.24</small></span></a><nav><a class="active" href="/">每日推荐</a><a href="/mixes">智能歌单</a><a href="/library">曲库整理</a><a href="/status">运行状态</a><a href="/settings">设置</a></nav><button class="logout" data-auth-logout hidden>退出</button></header>
+<main class="wrap"><div id="notice" class="notice" hidden></div>
+<section class="hero daily-page-head"><div><h1>今日推荐</h1></div></section>
+<section id="setupPrompt" class="card setup-card" hidden><span class="eyebrow">首次设置 · FIRST SETUP</span><h2>先连接 Plex 音乐库</h2><p class="muted"></p><a class="primary link" href="/settings#accounts">去完成设置</a></section>
+<div id="dailyArea">
+<section hidden class="flow-strip" aria-label="手动推荐流程"><div class="flow-step" id="flowGenerate"><span>1</span><div><strong>生成</strong><small>只生成预览</small></div></div><div class="flow-line"></div><div class="flow-step" id="flowPreview"><span>2</span><div><strong>预览</strong><small>检查30首</small></div></div><div class="flow-line"></div><div class="flow-step" id="flowPublish"><span>3</span><div><strong>发布</strong><small>更新每日推荐</small></div></div></section>
+<section id="repairCard" class="card repair-card" hidden><div class="panel-title"><div><span class="eyebrow">SAFE REPAIR</span><h2>上次发布没有收尾</h2></div><span class="bucket warn">需要确认</span></div><p id="repairText" class="muted"></p><button id="repairDaily" class="primary">安全修复</button></section>
+<section class="daily-overview" aria-label="推荐概况">
+<div class="overview-stat"><span>推荐数量</span><strong id="targetCount">—</strong></div>
+<div class="overview-stat"><span>本批生成</span><strong id="actualCount">0</strong></div>
+<div class="overview-stat"><span>收藏歌曲</span><strong id="favoriteCount">≤4</strong></div>
+<div class="overview-stat"><span>避免重复</span><strong id="avoidDays">7天</strong></div>
+<div class="overview-schedule"><span>自动更新</span><label class="switch-row" for="dailyToggle"><strong id="scheduleText">关闭</strong><input id="dailyToggle" type="checkbox" aria-label="每日自动更新"></label></div>
+</section>
+<article class="card daily-main-card"><div class="panel-title"><h2 id="dailyTitle">准备生成今天的30首</h2><span id="dailyState" class="bucket">待生成</span></div><section class="daily-controls"><div class="button-row daily-inline-actions"><button id="generate" class="primary wide">更新今日推荐</button><button id="publish" class="secondary wide" disabled>发布到 Plexamp</button><button id="fullRefresh" class="secondary">整批换一批</button></div><div id="dailyFeedback" aria-live="polite"><span id="dailyJobFeedback"></span></div><div class="daily-aux-actions"><button id="recheckDaily" class="secondary wide" hidden>重新检查并生成预览</button><p id="publishHint" role="status" class="compact" hidden></p></div></section><p id="dailyMessage" class="daily-message">生成预览后再确认发布</p><div id="dailyMeta" class="daily-meta" role="group" aria-label="歌单信息" hidden></div><div id="warnings"></div><div class="song-tools"><div class="summary-line" id="bucketSummary"></div><button id="showReasons" class="reason-toggle secondary" type="button" aria-pressed="false">显示推荐原因</button></div><div id="songs" class="song-list"></div><div id="emptySongs" class="empty">尚未生成今日推荐</div></article>
+<details id="dailyDetails" class="card page-disclosure"><summary><strong>推荐与学习详情</strong><span>查看</span></summary><div class="page-disclosure-body"><div class="detail-row"><span>更新方式</span><strong>保留没听过的歌，补充已播放空位</strong></div><div class="detail-row"><span>播放学习</span><strong id="behaviorText">—</strong></div><div class="detail-row"><span>完整状态</span><a class="link" href="/status">查看运行状态</a></div></div></details>
+</div></main></div></body></html>
