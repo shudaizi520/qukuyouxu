@@ -93,6 +93,29 @@ class Engine(RenamingMixin, DailyMixin):
         self.store.set('metadata_audit',audit)
         catalog=Catalog(effective)
         if hasattr(self.qq,'prepare_run'):self.qq.prepare_run(self.store,cfg.get('source_hours',24)*3600,force_sources,self.progress)
+        from .theme import DEFAULT_THEME, BY_KEY, provision_sources, theme_key
+        theme_cfg={**DEFAULT_THEME,**(self.store.get('theme_settings') or {})}
+        if theme_cfg.get('enabled'):
+            tags=self.store.get('qq_tags',[]) or []
+            if not tags:
+                self.progress('读取 QQ 主题目录')
+                tags=self.qq.tags()
+            sources,missing=provision_sources(self.store.get('sources'),tags,theme_cfg.get('selected',[]))
+            usable=[]
+            for source in sources:
+                if source.get('kind')=='local_theme' and source.get('theme_generated'):
+                    key=theme_key(source,tags)
+                    if key:missing.append(key)
+                    continue
+                usable.append(source)
+            self.store.set_many({
+                'qq_tags':tags,
+                'sources':usable,
+                'theme_unavailable':[
+                    {'key':key,'name':BY_KEY[key]['name'],'reason':'当前版本没有可靠来源，暂不生成该歌单'}
+                    for key in dict.fromkeys(missing) if key in BY_KEY
+                ],
+            })
         playlists=p.playlists();cache=self.store.get('cache');managed=self.store.get('managed');overrides=self.store.get('overrides')
         snapshots=self.store.get('snapshots');groups=[];covered=set();now=time.time()
         for src in self.store.get('sources'):

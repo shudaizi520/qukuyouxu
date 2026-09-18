@@ -11,6 +11,7 @@ from fastapi.responses import Response
 from .managed_cleanup_v0317 import forget_missing_managed_playlist
 from .qq_auth_v0320 import QQAuthError, QQAuthManager
 from .scoped_store import ScopedStore
+from .theme import DEFAULT_THEME, TOPICS, theme_key
 from .workflow_state import current_review_plan, incremental_is_current
 
 
@@ -108,13 +109,17 @@ def build_workflow_status(store, engine, qq_status):
     matched = int((saved_plan or {}).get("covered") or 0)
     review_count = int((saved_plan or {}).get("metadata_review_count") or 0)
     topics = _topic_sources(store)
-    selected = [str(row.get("id")) for row in topics if row.get("enabled", True) is not False]
-    theme_errors = []
-    cache = store.get("cache", {}) or {}
-    for row in topics:
-        entry = cache.get(str(row.get("id")), {}) or {}
-        if entry.get("error") and not entry.get("data"):
-            theme_errors.append({"key": str(row.get("id")), "name": str(row.get("name") or "")})
+    if hasattr(engine, "theme_status"):
+        theme_status = dict(engine.theme_status() or {})
+    else:
+        theme_settings = copy.deepcopy(DEFAULT_THEME)
+        theme_settings.update(store.get("theme_settings", {}) or {})
+        theme_status = {
+            "settings": theme_settings,
+            "topics": copy.deepcopy(TOPICS),
+            "unavailable": list(store.get("theme_unavailable", []) or []),
+            "skipped_references": [],
+        }
     result = (plan or {}).get("result")
     if result:
         result = {
@@ -130,7 +135,7 @@ def build_workflow_status(store, engine, qq_status):
             "summary": {"library_count": len(catalog) or int((saved_plan or {}).get("library_count") or 0), "matched": matched, "review_count": review_count, "managed": len(store.get("managed", {}) or {})},
             "settings": {"initialized": bool(store.get("managed", {}) or (saved_plan and saved_plan.get("applied"))), "enabled": bool(settings.get("auto_enabled")), "schedule": "daily_midnight_beijing", "next_run": store.get("library_auto_next_at")},
             "review": _review(plan, sources), "qq_auth": dict(qq_status or {}),
-            "theme": {"settings": {"enabled": bool(topics), "selected": selected}, "topics": [{"key": str(row.get("id")), "name": str(row.get("name") or row.get("id") or "")} for row in topics], "unavailable": theme_errors, "skipped_references": []},
+            "theme": theme_status,
             "single": engine.single_status() if hasattr(engine, "single_status") else {"state": {}},
             "incremental": {key: incremental.get(key) for key in ("status", "message", "new_count", "processed", "updated_at")},
             "notice": "",
@@ -141,17 +146,23 @@ def build_workflow_status(store, engine, qq_status):
 def save_theme_settings(store, selected, enabled):
     if not isinstance(enabled, bool) or not isinstance(selected, list):
         raise ValueError("主题设置格式无效")
-    selected = {str(value) for value in selected}
+    selected = [str(value) for value in selected]
+    if len(selected) != len(set(selected)):
+        raise ValueError("主题选项不能重复")
     sources = list(store.get("sources", []) or [])
-    allowed = {str(row.get("id")) for row in sources if str(row.get("kind") or "").startswith("qq_")}
-    if not selected.issubset(allowed):
+    allowed = {str(row["key"]) for row in TOPICS}
+    if not set(selected).issubset(allowed):
         raise ValueError("主题选项已经变化，请刷新后重新选择")
+    settings = {**DEFAULT_THEME, **(store.get("theme_settings", {}) or {})}
+    settings.update({"enabled": enabled, "selected": selected})
+    tags = store.get("qq_tags", []) or []
     for row in sources:
-        if str(row.get("id")) in allowed:
-            row["enabled"] = bool(enabled and str(row.get("id")) in selected)
+        key = theme_key(row, tags)
+        if key in allowed:
+            row["enabled"] = bool(enabled and key in selected)
             if not row["enabled"]:
                 row["approved"] = False
-    store.set_many({"sources": sources, "plan": None})
+    store.set_many({"theme_settings": settings, "sources": sources, "plan": None})
     return {"message": "主题选择已保存；下次整理时生效。"}
 
 
