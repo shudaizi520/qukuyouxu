@@ -1,6 +1,7 @@
 import asyncio
 import json
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -51,6 +52,26 @@ def asgi_request(*args, **kwargs):
 
 
 class ReleaseBlockerTests(unittest.TestCase):
+    def test_starting_a_new_preview_invalidates_the_old_confirmation(self):
+        from helper.engine import Engine
+        from helper.store import Store
+
+        with tempfile.TemporaryDirectory() as root:
+            store = Store(Path(root))
+            store.set("plan", {"id": "old-plan", "applied": False, "groups": []})
+            engine = Engine(store)
+            release = threading.Event()
+            engine.preview = lambda *_args, **_kwargs: release.wait(2)
+
+            engine.start_job("preview")
+            try:
+                self.assertIsNone(store.get("plan"))
+            finally:
+                release.set()
+                deadline = time.time() + 2
+                while engine.job["running"] and time.time() < deadline:
+                    time.sleep(0.01)
+
     def _app(self, root, **kwargs):
         from helper.store import Store
         from helper.web import create_app

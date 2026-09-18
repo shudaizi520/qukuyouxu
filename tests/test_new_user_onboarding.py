@@ -90,6 +90,28 @@ class _FreshQQ:
 
 
 class FreshUserThemeOnboardingTests(unittest.TestCase):
+    def test_running_library_status_exposes_pause_and_progress(self):
+        with tempfile.TemporaryDirectory() as root:
+            store = Store(Path(root))
+            engine = _FreshEngine()
+            engine.job = {
+                "running": True,
+                "kind": "preview",
+                "message": "正在整理分类",
+                "progress_current": 3,
+                "progress_total": 7,
+            }
+
+            workflow = build_workflow_status(
+                store,
+                engine,
+                {"logged_in": True, "phase": "ready"},
+            )["workflow"]
+
+            self.assertTrue(workflow["job"]["can_pause"])
+            self.assertEqual(3, workflow["job"]["progress_current"])
+            self.assertEqual(7, workflow["job"]["progress_total"])
+
     def test_first_admin_can_open_a_usable_empty_library_workflow(self):
         from helper.web import create_app
 

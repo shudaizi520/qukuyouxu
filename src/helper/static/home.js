@@ -25,7 +25,7 @@ function renderQQAuth(auth,running){
 }
 async function refresh(skipPlexLink=false){
  if(polling)return;polling=true;
- try{current=await(await request('/api/workflow/status?release=1.0.3')).json();render(current);if(!libraryNavigationReady){libraryNavigationReady=true;revealLibraryTarget();}if(!skipPlexLink||!lastPlexLinkRefresh||Date.now()-lastPlexLinkRefresh>=PLEX_LINK_TTL_MS)await refreshPlexLink();return true;}finally{polling=false;}
+ try{current=await(await request('/api/workflow/status?release=1.0.4')).json();render(current);if(!libraryNavigationReady){libraryNavigationReady=true;revealLibraryTarget();}if(!skipPlexLink||!lastPlexLinkRefresh||Date.now()-lastPlexLinkRefresh>=PLEX_LINK_TTL_MS)await refreshPlexLink();return true;}finally{polling=false;}
 }
 function render(data){
  const w=data.workflow,s=w.state||{},sum=w.summary||{},job=w.job||{},running=!!job.running;
@@ -49,9 +49,16 @@ function render(data){
  const stageNames=['checking','enriching','planning','publishing'];let stage=stageNames.indexOf(phase);
  if(phase==='review')stage=3;if(phase==='ready')stage=4;if(themeFailed&&['cooldown','theme_error'].includes(phase))stage=2;
  document.querySelectorAll('.steps li').forEach((li,i)=>{li.className=i<stage?'done':i===stage&&running?'active':'';});
- const showProgress=!themeFailed&&(phase==='enriching'||phase==='paused'||phase==='cooldown'||(phase==='external'&&ss.status==='running'))&&ss.library_count;
+ const jobTotal=Number(job.progress_total||0),jobCurrent=Number(job.progress_current||0);
+ const singleTotal=Number(ss.library_count||0),singleCurrent=Number(ss.processed||0);
+ const progressTotal=jobTotal||singleTotal,progressCurrent=jobTotal?jobCurrent:singleCurrent;
+ const showProgress=!themeFailed&&((running&&['checking','enriching','planning','publishing','external'].includes(phase))||phase==='paused'||phase==='cooldown');
  $('progressArea').hidden=!showProgress;
- if(showProgress){$('progress').max=ss.library_count;$('progress').value=ss.processed||0;$('progressText').textContent='正在检查歌曲 '+number(ss.processed)+' / '+number(ss.library_count);$('progressPercent').textContent=Math.round((ss.processed||0)/ss.library_count*100)+'%';$('progressDetail').textContent='进度会自动保存，可以关闭网页；下次继续时不会从头开始。';}
+ if(showProgress){
+  $('progressText').textContent=job.message||s.message||titles[phase]||'正在整理';
+  if(progressTotal>0){$('progress').max=progressTotal;$('progress').value=Math.min(progressCurrent,progressTotal);$('progressPercent').textContent=Math.round(Math.min(progressCurrent,progressTotal)/progressTotal*100)+'% · '+number(progressCurrent)+' / '+number(progressTotal);}
+  else{$('progress').removeAttribute('value');$('progress').max=1;$('progressPercent').textContent='';}
+ }
  $('incrementalAction').disabled=running||w.needs_setup||cooling;
  $('mainAction').disabled=running||w.needs_setup||(cooling&&phase!=='review')||(!qqLogged&&phase!=='review');
  $('cachedAction').hidden=!(themeFailed||phase==='cooldown'||s.cache_only);$('cachedAction').disabled=running||w.needs_setup;
@@ -60,8 +67,9 @@ function render(data){
  $('mainAction').textContent=phase==='review'?'查看并确认分类':phase==='paused'||phase==='cooldown'?'继续整理':phase==='error'||phase==='attention'?'重新检查并整理':'整理新增歌曲 →';
  if(themeFailed&&phase!=='review')$('mainAction').textContent='重新联网整理一次';
  if(!qqLogged&&phase!=='review')$('mainAction').textContent='先完成 QQ 授权';
- $('pause').hidden=!(running&&(String(job.kind||'').startsWith('workflow_')||job.kind==='incremental'));$('pause').disabled=false;
- $('refreshReview').hidden=phase!=='review';$('refreshReview').disabled=running||(cooling&&!w.review?.cache_only);
+ $('pause').hidden=!(running&&job.can_pause);$('pause').disabled=false;
+ $('incrementalAction').hidden=running;$('mainAction').hidden=running;$('cachedAction').hidden=running||!(themeFailed||phase==='cooldown'||s.cache_only);
+ $('refreshReview').disabled=running||(cooling&&!w.review?.cache_only);
  $('attentionLink').hidden=!(['attention','error','theme_error'].includes(phase)||sum.review_count>0);
  const tips={checking:'正在执行，无需操作。关闭网页不会取消 NAS 任务。',enriching:'首次可能较久；新增歌曲会复用缓存，不是每次都重查全库。',planning:'资料处理完成，正在生成歌单结果，请稍候。',publishing:'正在提交已确认的变更，请不要重启应用。',review:'下一步：在下面勾选歌单，点击“确认选中歌单并同步”。',ready:'以后加歌：先让 Plex 扫描入库，再点一次整理；也可以开启下面的自动开关。',paused:'继续整理会复用检查点。自动开关与当前任务的暂停是两回事。',cooldown:'已完成的资料保留；不要反复点击或重新开始全库。',error:'先看下方“本次结果与排查”。已完成资料保留，不需要重装。',attention:'安全保护已跳过异常歌单，不会覆盖你的手工修改。详情见“本次结果与排查”。',external:'请等待高级任务完成，再使用首页的一键流程。'};
  $('nextStep').textContent=tips[phase]||'首次同步会在这里等你确认，不会直接修改 Plex 歌单。';
@@ -106,27 +114,19 @@ function renderUpstreamError(err,w,hold,cooling){
 }
 function renderReview(review,running){
  $('reviewPanel').hidden=!review;if(!review){reviewId='';return;}
+ const usableGroups=review.groups.filter(group=>!group.blocked.length);
+ $('selectAll').disabled=!usableGroups.length;
  $('reviewMessage').textContent=review.expired?review.problem:'勾选需要的歌单，确认后才同步。首次确认的管理范围会记住，新分类或设置变化仍会先问你。';
  if(review.cache_only&&!review.expired)$('reviewMessage').textContent='本次仅使用已有有效缓存，没有联网扩充主题。过期、缺失或不完整来源不参与写入；请选择需要同步的结果。';
  if(reviewId!==review.id){
   reviewId=review.id;$('reviewRows').replaceChildren();
-  for(const g of review.groups){
+  for(const g of usableGroups){
    const tr=document.createElement('tr');const td=addText(tr,'td','');const box=document.createElement('input');box.type='checkbox';box.value=g.id;box.checked=!!g.default_selected;box.disabled=!!g.blocked.length;box.setAttribute('aria-label','同步 '+g.title);box.onchange=updateSelection;td.append(box);
-   const name=addText(tr,'td',g.title);addText(name,'small',g.dimension==='album_year'?'按专辑版本年（辅助）':g.dimension==='track_year'?'按曲目记录年（辅助）':g.kind==='theme'?'主题精选':'语种 / 风格 / 版本');
-   const counts=addText(tr,'td',number(g.count));if(g.kind==='theme')addText(counts,'small','原有 '+number(g.existing_count||0)+' 首');
-   addText(tr,'td',number(g.add_count));const info=addText(tr,'td',g.blocked.length?'跳过：'+g.blocked.join('；'):g.action==='create'?'新建歌单':g.action==='append'?'只补入新歌':'无需变化');
-   if(g.kind==='theme'){
-    if(g.reference_count)addText(info,'small',g.reference_count+' 份参考 · 编号核对 '+(g.verified_mid_count||0)+' 首');
-    if(g.theme_stats?.coverage_limited)addText(info,'small','部分参考不可读取；本次只采用完整读回的公开来源，不是该类别全部内容。');
-    const stops={end:'已到本类别返回末页',plateau:'连续两批无新增，暂止扩展',budget:'已读本轮范围，不是QQ全量'};
-    if(g.theme_stats?.stop)addText(info,'small',stops[g.theme_stats.stop]||'');
-    const b=document.createElement('button');b.type='button';b.className='evidence-button';b.textContent='查看新增 / 来源';
-    b.onclick=()=>action(async()=>{if(window.openThemeEvidence)await window.openThemeEvidence(g.id,g.add_count>0);});info.append(b);
-   }
+   addText(tr,'td',g.title);addText(tr,'td',number(g.count));addText(tr,'td',number(g.add_count));
    $('reviewRows').append(tr);
   }
  }
- $('confirmReview').disabled=running||review.expired;updateSelection();
+ $('confirmReview').disabled=running||review.expired||!usableGroups.length;updateSelection();
 }
 async function loadMetadataReview(offset=0){
  const r=await(await request('/api/metadata?review_only=true&offset='+offset+'&limit=50')).json();
@@ -149,7 +149,7 @@ async function openMetadataReview(){
  await loadMetadataReview(0);$('metadataReviewPanel').scrollIntoView({block:'start'});
 }
 function selected(){return [...$('reviewRows').querySelectorAll('input:checked:not(:disabled)')].map(n=>n.value);}
-function updateSelection(){const all=[...$('reviewRows').querySelectorAll('input:not(:disabled)')];const n=selected().length;$('selectedCount').textContent=n?'已选择 '+n+' 个歌单':'尚未选择歌单';$('selectAll').checked=!!all.length&&n===all.length;$('selectAll').indeterminate=n>0&&n<all.length;$('confirmReview').disabled=!!current?.workflow?.job?.running||!!current?.workflow?.review?.expired;}
+function updateSelection(){const all=[...$('reviewRows').querySelectorAll('input:not(:disabled)')];const n=selected().length;$('selectedCount').textContent=n?'已选择 '+n+' 个歌单':'';$('selectAll').checked=!!all.length&&n===all.length;$('selectAll').indeterminate=n>0&&n<all.length;$('confirmReview').disabled=!!current?.workflow?.job?.running||!!current?.workflow?.review?.expired||!n;}
 async function run(){
  if(!current)return;
  if(current.workflow.state.phase==='review'){$('reviewPanel').scrollIntoView({block:'start'});return;}

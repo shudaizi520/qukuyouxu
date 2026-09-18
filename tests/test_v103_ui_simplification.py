@@ -48,8 +48,11 @@ class UISimplificationV103Tests(unittest.TestCase):
         page = self.parse("daily.html")
 
         playlist = page.by_id("dailyPlaylist")
-        for control in ("generate", "fullRefresh", "publish", "dailyToggle"):
+        for control in ("generate", "fullRefresh", "publish"):
             self.assertIn(playlist, page.by_id(control)["ancestors"])
+        page_head = next(node for node in page.nodes if "daily-page-head" in node["classes"])
+        self.assertIn(page_head, page.by_id("dailyToggle")["ancestors"])
+        self.assertNotIn(playlist, page.by_id("dailyToggle")["ancestors"])
         self.assertFalse(any("daily-overview" in node["classes"] for node in page.nodes))
         self.assertTrue(page.by_id("dailyMessage")["hidden"])
 
@@ -58,9 +61,13 @@ class UISimplificationV103Tests(unittest.TestCase):
         html = (STATIC / "home.html").read_text(encoding="utf-8")
 
         task = page.by_id("task")
-        for control in ("incrementalAction", "mainAction", "pause", "autoToggle"):
+        for control in ("incrementalAction", "mainAction", "pause", "progressArea"):
             self.assertIn(task, page.by_id(control)["ancestors"])
+        overview = page.by_id("libraryOverview")
+        self.assertIn(overview, page.by_id("autoToggle")["ancestors"])
+        self.assertNotIn(task, page.by_id("autoToggle")["ancestors"])
         self.assertNotIn("workflow-path", html)
+        self.assertNotIn("<th>说明</th>", html)
         self.assertTrue(page.by_id("taskMessage")["hidden"])
         self.assertTrue(page.by_id("progressDetail")["hidden"])
         self.assertTrue(page.by_id("nextStep")["hidden"])

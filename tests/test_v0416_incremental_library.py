@@ -28,6 +28,28 @@ class IncrementalLibraryV0416Tests(unittest.TestCase):
             "duration": 299, "available": True, "guid": "local://1", "paths": [],
         }
 
+    def test_pause_after_scan_stops_before_any_playlist_write(self):
+        from helper.library_engine import LibraryEngine
+        from helper.store import Store
+
+        with tempfile.TemporaryDirectory() as root:
+            store = Store(Path(root))
+            store.set("managed", {"base:language:国语": {"id": "playlist-1"}})
+            engine = LibraryEngine(store)
+
+            def completed_scan_with_pause(**_kwargs):
+                engine.single_pause.set()
+                return {"status": "completed", "new_count": 1, "processed": 1, "message": "扫描完成"}
+
+            with patch.object(engine, "_enrich_singles", side_effect=completed_scan_with_pause), \
+                    patch.object(engine, "_preview_base") as preview_base, \
+                    patch.object(engine, "_preview") as preview_theme:
+                result = engine.refresh_new_tracks()
+
+            self.assertEqual("paused", result["status"])
+            preview_base.assert_not_called()
+            preview_theme.assert_not_called()
+
     def test_new_only_reuses_expired_record_when_track_identity_is_unchanged(self):
         from helper.library_engine import LibraryEngine
         from helper.single import SINGLE_POLICY, match_fingerprint

@@ -7,6 +7,11 @@ This prevents a failed update from leaving old+new (for example 60 tracks for a
 30-track daily list).
 """
 from copy import deepcopy
+import time
+
+
+READ_AFTER_WRITE_ATTEMPTS = 5
+READ_AFTER_WRITE_DELAY = 0.05
 
 
 def sync_owned_items(plex,before,desired):
@@ -18,11 +23,16 @@ def sync_owned_items(plex,before,desired):
     if fingerprint(current)!=fingerprint(before):raise SafetyError('每日歌单在写入前被修改，停止')
     if len(set(state_ids(current)))!=len(current['items']):raise SafetyError('每日歌单已有重复曲目，先核对，不自动清理')
     def verify(expected):
-        fresh=plex.playlist_state(before['id'])
-        if (fresh['id']!=before['id'] or fresh['title']!=before['title'] or
-                fresh.get('summary','')!=before.get('summary','') or state_ids(fresh)!=expected):
-            raise SafetyError('每日歌单变更后回读不一致，停止后续修改')
-        return fresh
+        # Plex can briefly serve the pre-write playlist after a successful
+        # append/remove/move.  Retry only the read; never repeat the mutation.
+        for attempt in range(READ_AFTER_WRITE_ATTEMPTS):
+            fresh=plex.playlist_state(before['id'])
+            if (fresh['id']==before['id'] and fresh['title']==before['title'] and
+                    fresh.get('summary','')==before.get('summary','') and state_ids(fresh)==expected):
+                return fresh
+            if attempt+1<READ_AFTER_WRITE_ATTEMPTS:
+                time.sleep(READ_AFTER_WRITE_DELAY*(attempt+1))
+        raise SafetyError('每日歌单变更后回读不一致，停止后续修改')
 
     desired_set=set(desired)
     existing=set(state_ids(current))

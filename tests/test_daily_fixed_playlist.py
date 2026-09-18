@@ -88,6 +88,35 @@ class _DailyPlex:
         state["items"].insert(position + 1, moving)
 
 
+class _EventuallyConsistentDailyPlex(_DailyPlex):
+    """Plex may return the pre-write playlist once before its new state appears."""
+
+    def __init__(self):
+        super().__init__(existing=True)
+        self._stale_state = None
+
+    def playlist_state(self, playlist_id):
+        if self._stale_state is not None:
+            stale, self._stale_state = self._stale_state, None
+            return copy.deepcopy(stale)
+        return super().playlist_state(playlist_id)
+
+    def append(self, playlist_id, ids):
+        before = super().playlist_state(playlist_id)
+        super().append(playlist_id, ids)
+        self._stale_state = before
+
+    def remove_items(self, playlist_id, item_ids):
+        before = super().playlist_state(playlist_id)
+        super().remove_items(playlist_id, item_ids)
+        self._stale_state = before
+
+    def move_item(self, playlist_id, item_id, after=None):
+        before = super().playlist_state(playlist_id)
+        super().move_item(playlist_id, item_id, after)
+        self._stale_state = before
+
+
 def _recommendation(*_args, **_kwargs):
     return {
         "items": [
@@ -170,6 +199,19 @@ class DailyFixedPlaylistTests(unittest.TestCase):
         self.assertEqual("900", result["playlist_id"])
         self.assertEqual(0, plex.create_calls)
         self.assertEqual(["3", "4"], [row["id"] for row in plex.playlist_state("900")["items"]])
+
+    def test_publish_waits_for_plex_read_after_write_visibility(self):
+        plex = _EventuallyConsistentDailyPlex()
+        store, engine = self.make_engine(plex)
+        with patch("helper.daily.recommend_rotating", side_effect=_recommendation):
+            plan = engine.preview_daily(now=1_800_000_000)
+
+        result = engine.publish_daily(plan["id"], now=1_800_000_010)
+
+        self.assertEqual("900", result["playlist_id"])
+        self.assertTrue(store.get("daily_plan")["applied"])
+        self.assertEqual("applied", store.get("snapshots")[-1]["status"])
+        self.assertEqual(["1", "2"], [row["id"] for row in plex.playlist_state("900")["items"]])
 
     def test_old_same_name_warning_does_not_keep_an_existing_preview_blocked(self):
         from helper.extra_web import public_daily

@@ -14,6 +14,7 @@ from .metadata import prepare_catalog
 from .match import Catalog, match, normalize, title_key, artist_key, flags
 
 class SafetyError(ValueError): pass
+class WorkflowPaused(Exception): pass
 
 def digest(value):
     return hashlib.sha256(json.dumps(value,sort_keys=True,ensure_ascii=False,separators=(',',':')).encode()).hexdigest()
@@ -59,7 +60,7 @@ def retain_snapshots(rows,referenced_ids,now,days=365,per_stream=50):
 
 class Engine(RenamingMixin, DailyMixin):
     def __init__(self,store,plex_factory=None,qq=None):
-        self.store=store;self.gate=threading.Lock();self.stop=threading.Event()
+        self.store=store;self.gate=threading.Lock();self.stop=threading.Event();self.workflow_pause=threading.Event()
         self.plex_factory=plex_factory or (lambda cfg:PlexClient(cfg['plex_url'],cfg['plex_token'],store=self.store))
         self.qq=qq or QQClient();self.status_lock=threading.Lock();self.job={'running':False,'message':'尚未运行','error':''}
 
@@ -78,16 +79,38 @@ class Engine(RenamingMixin, DailyMixin):
     def marker(self,cid):return f"[PCH:{self.store.get('installation_id')}:{cid}]"
     def progress(self,message):
         with self.status_lock:self.job['message']=message
+    def workflow_progress(self,current,total):
+        with self.status_lock:
+            self.job['progress_current']=max(0,int(current or 0))
+            self.job['progress_total']=max(0,int(total or 0))
+    def _check_workflow_pause(self):
+        if self.workflow_pause.is_set():
+            message='整理已暂停，已完成的资料已保存'
+            self.store.set('workflow_pause_state',{'active':True,'kind':'preview','message':message,'updated_at':time.time()})
+            raise WorkflowPaused(message)
+    def request_workflow_pause(self):
+        with self.status_lock:
+            running=bool(self.job.get('running'));kind=str(self.job.get('kind') or '')
+        if not running or kind not in ('preview','incremental'):
+            raise SafetyError('当前步骤不能暂停')
+        if kind=='incremental' and hasattr(self,'request_single_pause'):
+            self.workflow_pause.set()
+            return self.request_single_pause()
+        self.workflow_pause.set()
+        self.progress('正在暂停，当前步骤完成后保存进度')
+        return {'message':'正在暂停，当前步骤完成后会保存进度'}
     def preview(self,force_sources=False):
         with self.exclusive():return self._preview(force_sources)
 
     def _preview(self,force_sources=False):
+        self._check_workflow_pause()
         cfg=self.store.get('settings')
         if not cfg.get('plex_url') or not cfg.get('plex_token') or not cfg.get('section'):
             raise SafetyError('先配置Plex地址、Token和音乐资料库')
         self.progress('读取 Plex 音乐资料库（不写入）')
         p=self.plex_factory(cfg);identity=p.identity()
         tracks=p.tracks(cfg['section'])
+        self._check_workflow_pause()
         if not tracks:raise SafetyError('Plex资料库没有曲目；不会清空已有分类')
         effective,audit=prepare_catalog(tracks,self.store.get('metadata_overrides',{}))
         self.store.set('metadata_audit',audit)
@@ -100,6 +123,7 @@ class Engine(RenamingMixin, DailyMixin):
             if not tags:
                 self.progress('读取 QQ 主题目录')
                 tags=self.qq.tags()
+                self._check_workflow_pause()
             sources,missing=provision_sources(self.store.get('sources'),tags,theme_cfg.get('selected',[]))
             usable=[]
             for source in sources:
@@ -118,8 +142,10 @@ class Engine(RenamingMixin, DailyMixin):
             })
         playlists=p.playlists();cache=self.store.get('cache');managed=self.store.get('managed');overrides=self.store.get('overrides')
         snapshots=self.store.get('snapshots');groups=[];covered=set();now=time.time()
-        for src in self.store.get('sources'):
-            if not src.get('enabled',True):continue
+        active_sources=[src for src in self.store.get('sources') if src.get('enabled',True)]
+        self.workflow_progress(0,len(active_sources))
+        for source_index,src in enumerate(active_sources,1):
+            self._check_workflow_pause()
             cid=src['id']; entry=cache.get(cid,{});error=''
             self.progress('检查分类来源：'+src['name'])
             source_sig=digest({k:v for k,v in src.items() if k not in ('approved','enabled')})
@@ -135,6 +161,7 @@ class Engine(RenamingMixin, DailyMixin):
                 except Exception as exc:
                     entry={**entry,'last_attempt':now,'error':safe_error(exc)}
                 cache[cid]=entry;self.store.set('cache',cache)
+                self._check_workflow_pause()
             error=entry.get('error','')
             title=managed.get(cid,{}).get('title') or short_title(src['name']); desired=[];unmatched=[];matched_rows=[];matches=set(); blocked=[]
             if error:blocked.append('来源刷新失败（保留缓存但暂停写入）：'+error)
@@ -173,6 +200,8 @@ class Engine(RenamingMixin, DailyMixin):
                            'total':len(entry.get('data',{}).get('tracks',[])),'matched':len(desired),'desired':desired,'add':add,
                            'unmatched':unmatched,'matched_rows':matched_rows,'action':action,'blocked':blocked,'before':current,
                            'approved':src.get('approved',False),'reference_count':entry.get('data',{}).get('reference_count',len(entry.get('data',{}).get('origins',[])))})
+            self.workflow_progress(source_index,len(active_sources))
+        self._check_workflow_pause()
         plan={'id':uuid.uuid4().hex,'created_at':time.time(),'signature':self.signature(),'machine':identity['machine'],
               'library_count':len(tracks),'covered':len(covered),'coverage':round(100*len(covered)/len(tracks),2),
               'unclassified':[t for t in tracks if t['id'] not in covered],'groups':groups,
@@ -298,7 +327,10 @@ class Engine(RenamingMixin, DailyMixin):
     def start_job(self,kind,**kwargs):
         with self.status_lock:
             if self.job['running'] or self.gate.locked():raise SafetyError('已有任务在执行，请等完成')
-            self.job={'running':True,'kind':kind,'message':'任务开始','error':'','started_at':time.time()}
+            self.workflow_pause.clear()
+            self.store.set('workflow_pause_state',None)
+            if kind=='preview':self.store.set('plan',None)
+            self.job={'running':True,'kind':kind,'message':'任务开始','error':'','started_at':time.time(),'progress_current':0,'progress_total':0}
         def work():
             try:
                 if kind=='preview':self.preview(kwargs.get('force_sources',False))
@@ -318,6 +350,8 @@ class Engine(RenamingMixin, DailyMixin):
                 elif kind=='single_enrich':self.enrich_singles()
                 else:raise SafetyError('未知任务')
                 if kind!='incremental':self.progress('任务完成，请查看预览或写入结果')
+            except WorkflowPaused as exc:
+                with self.status_lock:self.job['message']=str(exc);self.job['error']=''
             except Exception as exc:
                 with self.status_lock:self.job['error']=safe_error(exc)
                 self.store.log(safe_error(exc),'error')

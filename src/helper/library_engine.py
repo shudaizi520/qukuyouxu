@@ -25,6 +25,16 @@ class LibraryEngine(SingleMixin, BaseMixin, Engine):
                 'processed': int(single.get('processed') or 0), 'base': None, 'theme': None,
                 'updated_at': time.time(), 'message': single.get('message') or '',
             }
+            def finish_if_paused():
+                if not (self.single_pause.is_set() or self.workflow_pause.is_set()):
+                    return False
+                result.update(status='paused', updated_at=time.time(), message='新增歌曲检查已暂停，进度已经保存')
+                self.store.set('incremental_status', result)
+                self.progress(result['message'])
+                return True
+
+            if finish_if_paused():
+                return result
             if single.get('status') != 'completed':
                 self.store.set('incremental_status', result)
                 self.progress(result['message'] or '新增歌曲检查已暂停，进度已经保存')
@@ -39,13 +49,19 @@ class LibraryEngine(SingleMixin, BaseMixin, Engine):
             if any(str(key).startswith('base:') for key in managed):
                 self.progress('新增歌曲资料已保存，正在补入已有基础分类歌单')
                 plan = self._preview_base()
+                if finish_if_paused():
+                    return result
                 result['base'] = self._apply_base(plan['id'], automatic=True)
+                if finish_if_paused():
+                    return result
 
             sources = self.store.get('sources', []) or []
             approved = {str(row.get('id')) for row in sources if row.get('approved') and row.get('enabled', True)}
             if approved:
                 self.progress('正在补入已经确认过的主题歌单')
                 plan = self._preview(False)
+                if finish_if_paused():
+                    return result
                 result['theme'] = self._apply(plan['id'], automatic=True)
 
             errors = []

@@ -8,6 +8,7 @@ import time
 from fastapi import Request
 from fastapi.responses import Response
 
+from . import __version__
 from .managed_cleanup_v0317 import forget_missing_managed_playlist
 from .qq_auth_v0320 import QQAuthError, QQAuthManager
 from .scoped_store import ScopedStore
@@ -87,6 +88,7 @@ def build_workflow_status(store, engine, qq_status):
     incremental_current = incremental_is_current(saved_plan, incremental)
     running = bool(job.get("running"))
     error = str(job.get("error") or "")
+    paused = dict(store.get("workflow_pause_state", {}) or {})
     if running:
         kind = str(job.get("kind") or "")
         phase = "publishing" if kind in {"apply", "auto"} else "enriching" if kind == "incremental" else "checking"
@@ -95,6 +97,8 @@ def build_workflow_status(store, engine, qq_status):
             phase = "planning"
     elif error:
         phase, message = "error", error
+    elif paused.get("active"):
+        phase, message = "paused", str(paused.get("message") or "整理已暂停，进度已保留。")
     elif incremental_current:
         status = str(incremental.get("status") or "completed")
         phase = "paused" if status in {"paused", "blocked"} else "attention" if status in {"attention", "error"} else "ready"
@@ -127,11 +131,14 @@ def build_workflow_status(store, engine, qq_status):
             "blocked": int(result.get("skipped") or 0), "errors": [str(value)[:300] for value in result.get("errors", [])],
         }
     return {
-        "version": "0.3.20",
+        "version": __version__,
         "workflow": {
             "needs_setup": not all(settings.get(key) for key in ("plex_url", "plex_token", "section")),
             "state": {"phase": phase, "message": message, "cache_only": bool((plan or {}).get("cache_only")), "result": result},
-            "job": {key: job.get(key) for key in ("running", "kind", "message", "error", "started_at", "finished_at")},
+            "job": {
+                **{key: job.get(key) for key in ("running", "kind", "message", "error", "started_at", "finished_at", "progress_current", "progress_total")},
+                "can_pause": bool(running and str(job.get("kind") or "") in {"preview", "incremental"}),
+            },
             "summary": {"library_count": len(catalog) or int((saved_plan or {}).get("library_count") or 0), "matched": matched, "review_count": review_count, "managed": len(store.get("managed", {}) or {})},
             "settings": {"initialized": bool(store.get("managed", {}) or (saved_plan and saved_plan.get("applied"))), "enabled": bool(settings.get("auto_enabled")), "schedule": "daily_midnight_beijing", "next_run": store.get("library_auto_next_at")},
             "review": _review(plan, sources), "qq_auth": dict(qq_status or {}),
@@ -224,7 +231,7 @@ def _cache_only_preview(store, engine):
 def _redacted_report(store, engine, qq_status):
     plan = store.get("plan") or {}
     return {
-        "version": "0.3.20", "generated_at": time.time(), "job": dict(getattr(engine, "job", {}) or {}),
+        "version": __version__, "generated_at": time.time(), "job": dict(getattr(engine, "job", {}) or {}),
         "qq": dict(qq_status or {}), "events": list(store.get("events", []) or [])[-100:],
         "summary": {"library_count": int(plan.get("library_count") or 0), "covered": int(plan.get("covered") or 0), "groups": len(plan.get("groups", []) or []), "managed": len(store.get("managed", {}) or {})},
     }
@@ -315,8 +322,8 @@ def attach_routes(app, store, engine, body, ensure_idle):
     @app.post("/api/workflow/pause")
     def workflow_pause():
         job = dict(getattr(engine, "job", {}) or {})
-        if job.get("running") and job.get("kind") == "incremental":
-            return engine.request_single_pause()
+        if job.get("running") and job.get("kind") in {"preview", "incremental"}:
+            return engine.request_workflow_pause()
         raise ValueError("当前步骤不能中途暂停；完成后会自动停在确认页，关闭网页不会取消任务")
 
     @app.get("/api/workflow/report")
