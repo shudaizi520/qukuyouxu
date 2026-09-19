@@ -21,8 +21,9 @@ function setFlow(stage){for(const [id,n] of [['flowGenerate',1],['flowPreview',2
 function render(s){
  current=s;clearDailyPollErrors();renderDailyOperation(s);$('version').textContent='v'+s.version;
  const need=setupNeeded(s);$('setupPrompt').hidden=!need;$('dailyArea').hidden=need;
- const job=s.job||{},running=!!job.running,cfg=s.daily_settings||{},plan=s.daily_plan||{},managed=s.daily_managed||null,behavior=s.behavior||{},repair=s.daily_repair||null;
- const previewReady=!!(plan.id&&!plan.applied),blocking=dailyBlockReasons(plan),publishable=previewReady&&!blocking.length;
+ const job=s.job||{},running=!!job.running,cfg=s.daily_settings||{},plan=s.daily_plan||{},published=s.daily_published||null,managed=s.daily_managed||null,repair=s.daily_repair||null;
+ const previewReady=!!(plan.id&&!plan.applied),source=previewReady?plan:(published||plan),isPublished=!previewReady&&!!published,blocking=dailyBlockReasons(plan),publishable=previewReady&&!blocking.length;
+ const active=s.active_profile||{},library=active.library||{},profileParts=[active.name,library.name].filter(Boolean);$('activeProfileLabel').textContent=profileParts.join(' · ');
  $('repairCard').hidden=!repair||need;$('repairDaily').disabled=running||!repair;
  if(repair)$('repairText').textContent='上次发布没有完成，请点击“修复上次发布”后再继续。';
  $('generate').hidden=previewReady;$('generate').disabled=need||running;
@@ -30,18 +31,19 @@ function render(s){
  $('fullRefresh').hidden=!previewReady;$('fullRefresh').disabled=need||running;$('fullRefresh').textContent='换一批';
  $('publish').hidden=!previewReady;$('publish').disabled=running||!publishable;
  $('publish').textContent=running&&job.kind==='daily_apply'?'正在发布…':'发布到 Plexamp';
- $('targetCount').textContent=n(cfg.size??30);$('actualCount').textContent=n(plan.items?.length||0);$('favoriteCount').textContent='≤'+n(Math.floor((cfg.size??30)*(cfg.favorite_percent??20)/100));$('avoidDays').textContent=n(plan.stats?.daily_avoid_window_days??cfg.daily_avoid_days??21)+'天';
+ $('targetCount').textContent=n(cfg.size??30);$('actualCount').textContent=n(source.items?.length||source.count||0);$('favoriteCount').textContent='≤'+n(Math.floor((cfg.size??30)*(cfg.favorite_percent??20)/100));$('avoidDays').textContent=n(source.stats?.daily_avoid_window_days??cfg.daily_avoid_days??21)+'天';
  $('dailyToggle').checked=!!cfg.enabled;$('dailyToggle').disabled=running||!managed;$('scheduleText').textContent=cfg.enabled?String(cfg.hour??6).padStart(2,'0')+':00':managed?'关闭':'首次发布后可开启';
- renderDailyNotices(plan,blocking);$('bucketSummary').replaceChildren();
- for(const [k,v] of Object.entries(plan.stats?.bucket_counts||{})){const x=document.createElement('span');x.textContent=k+' '+v+' 首';$('bucketSummary').append(x);}
- if(plan.stats)$('favoriteCount').textContent=n(plan.stats.favorite_selected_count||0)+' / '+n(Math.floor((cfg.size??30)*(cfg.favorite_percent??20)/100));
- $('songs').replaceChildren();(plan.items||[]).forEach(addSong);$('emptySongs').hidden=!!(plan.items||[]).length;
+ renderDailyNotices(source,blocking);$('bucketSummary').replaceChildren();
+ for(const [k,v] of Object.entries(source.stats?.bucket_counts||{})){const x=document.createElement('span');x.textContent=k+' '+v+' 首';$('bucketSummary').append(x);}
+ if(source.stats)$('favoriteCount').textContent=n(source.stats.favorite_selected_count||0)+' / '+n(Math.floor((cfg.size??30)*(cfg.favorite_percent??20)/100));
+ $('songs').replaceChildren();(source.items||[]).forEach(addSong);$('emptySongs').hidden=!!(source.items||[]).length;
+ if(!$('emptySongs').hidden)$('emptySongs').textContent=isPublished?'已发布 '+n(source.count||0)+' 首':'点击“生成今日歌单”开始';
  $('dailyTitle').textContent='今日歌单';
  if(previewReady&&blocking.length){$('dailyState').textContent='暂不可发布';$('dailyMessage').textContent='请重新生成后再试。';setFlow(2);}
  else if(previewReady){$('dailyState').textContent='待发布';$('dailyMessage').textContent=n(plan.items?.length||cfg.size||30)+' 首歌曲已准备好，发布后会更新 Plex 中的“每日推荐”。';setFlow(2);}
- else if(plan.applied){$('dailyState').textContent='已发布';$('dailyMessage').textContent='已更新 Plex 中的“每日推荐”。';setFlow(3);}
+ else if(isPublished||plan.applied){$('dailyState').textContent='已发布';$('dailyMessage').textContent='已更新 Plex 中的“每日推荐”。';setFlow(3);}
  else{$('dailyState').textContent='待生成';$('dailyMessage').textContent='先生成并预览，确认发布后才会修改 Plex。';setFlow(1);}
- if(lastPlan!==String(plan.id||'')){lastPlan=String(plan.id||'');window.scrollTo({top:0,behavior:'smooth'});}
+ if(lastPlan!==String(source.id||source.plan_id||'')){lastPlan=String(source.id||source.plan_id||'');window.scrollTo({top:0,behavior:'smooth'});}
 }
 async function refresh(){if(polling)return current;polling=true;try{const s=await(await request('/api/status')).json();render(s);return s;}finally{polling=false;}}
 $('generate').onclick=()=>action(async()=>{const baseline=String(current?.daily_plan?.id||'');await post('/api/jobs/daily_preview',{});beginDailyOperation('daily_preview',baseline);});
@@ -90,6 +92,7 @@ window.addEventListener('pagehide',stopPolling);
 window.addEventListener('pch-auth-ready',startPolling);
 window.addEventListener('pch-auth-login',startPolling);
 window.addEventListener('pch-auth-logout',stopPolling);
+window.addEventListener('pch-profile-change',startPolling);
 
 /* Track only requests started here; server state, not a timer, proves success. */
 function dailyPollError(e){

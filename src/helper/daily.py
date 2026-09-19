@@ -46,6 +46,28 @@ def rolling_preserve_ids(before, tracks, behavior_events, published_at):
             result.append(track_id)
     return result
 
+
+def published_daily_view(plan, playlist, published_at):
+    """Keep a token-free, durable projection of the last verified publish."""
+    items = []
+    for row in plan.get('items', []) or []:
+        public = {}
+        for key in ('id', 'title', 'artist', 'album', 'bucket'):
+            if row.get(key) is not None:
+                public[key] = str(row.get(key))
+        if row.get('reasons') is not None:
+            public['reasons'] = [str(value)[:240] for value in row.get('reasons', []) if value]
+        items.append(public)
+    return {
+        'plan_id': str(plan.get('id') or ''),
+        'playlist_id': str(playlist.get('id') or ''),
+        'title': str(playlist.get('title') or ''),
+        'date': str(plan.get('date') or ''),
+        'published_at': published_at,
+        'count': len(items),
+        'items': items,
+    }
+
 class DailyMixin:
 
     def daily_signature(self):
@@ -225,7 +247,8 @@ class DailyMixin:
             history = self.store.get('daily_history', [])
             history.append({'date': plan['date'], 'created_at': now, 'ids': ids, 'song_keys': [x['song_key'] for x in plan['items']], 'plan_id': plan_id})
             plan.update(applied=True, result={'written': len(ids), 'playlist_id': after['id'], 'date': plan['date']})
-            self.store.set_many({'daily_managed': record, 'daily_history': history[-90:], 'daily_plan': plan})
+            published = published_daily_view(plan, after, now)
+            self.store.set_many({'daily_managed': record, 'daily_history': history[-90:], 'daily_plan': plan, 'daily_published_view': published})
             self.store.log('每日推荐已发布：' + str(len(ids)) + '首；歌单ID保留用于后续更新')
             return plan['result']
         except Exception as exc:

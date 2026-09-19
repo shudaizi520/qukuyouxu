@@ -28,6 +28,65 @@ def public_daily(store):
     result['blocked'] = active_daily_blocks(result)
     return result
 
+def public_daily_published(store):
+    """Return the durable, token-free view of the last verified publish."""
+    view = store.get('daily_published_view')
+    if view:
+        items = []
+        for row in view.get('items', []) or []:
+            public = {
+                key: row.get(key)
+                for key in ('id', 'title', 'artist', 'album', 'bucket', 'reasons')
+                if row.get(key) is not None
+            }
+            items.append(public)
+        return {
+            'plan_id': str(view.get('plan_id') or ''),
+            'playlist_id': str(view.get('playlist_id') or ''),
+            'title': str(view.get('title') or ''),
+            'date': str(view.get('date') or ''),
+            'published_at': view.get('published_at'),
+            'count': int(view.get('count') or len(items)),
+            'items': items,
+        }
+
+    managed = store.get('daily_managed')
+    if not managed:
+        return None
+    history = store.get('daily_history', []) or []
+    latest = history[-1] if history else {}
+    ids = latest.get('ids', []) or []
+    return {
+        'plan_id': str(latest.get('plan_id') or ''),
+        'playlist_id': str(managed.get('id') or ''),
+        'title': str(managed.get('title') or ''),
+        'date': str(managed.get('date') or latest.get('date') or ''),
+        'published_at': managed.get('published_at') or latest.get('created_at'),
+        'count': len(ids),
+        'items': [],
+    }
+
+def public_active_profile(store):
+    """Expose only the current profile labels needed by the page heading."""
+    registry = getattr(store, 'registry', None)
+    profile_id = str(getattr(store, 'profile_id', '') or '')
+    if registry is None or not profile_id:
+        return None
+    try:
+        profile = registry.get(profile_id)
+    except (KeyError, ValueError):
+        return None
+    account = profile.get('account') or {}
+    library = profile.get('library') or {}
+    return {
+        'id': profile_id,
+        'name': str(account.get('username') or account.get('title') or profile.get('name') or profile_id),
+        'library': {
+            'id': str(library.get('id') or ''),
+            'name': str(library.get('name') or ''),
+        },
+    }
+
 def public_daily_repair(store):
     for snap in reversed(store.get('snapshots') or []):
         if snap.get('kind') != 'daily':
@@ -56,7 +115,7 @@ def extensions_status(store):
     active_sessions = active_session_count(store.get('behavior_sessions', {}) or {})
     behavior = {'enabled': product.get('behavior_enabled', True), 'event_count': len(events), 'positive_tracks': sum((1 for row in profile.values() if (row.get('score') or 0) > 0)), 'negative_tracks': sum((1 for row in profile.values() if (row.get('score') or 0) < 0)), 'active_sessions': active_sessions, 'updated_at': behavior_status.get('updated_at'), 'status': behavior_status.get('status', 'waiting')}
     base_store = getattr(store, 'base', store)
-    return {'source_settings': store.get('source_settings', {'reference_limit': 12}), 'metadata_summary': {'review': sum((counts.get(k, 0) for k in ('conflict', 'incomplete', 'stale_correction'))), 'confirmed': counts.get('confirmed', 0), 'breakdown': dict(counts)}, 'base_settings': {**DEFAULT_BASE, **(store.get('base_settings') or {})}, 'base_plan': public_base(store), 'base_notice': store.get('base_notice', ''), 'daily_settings': {**DEFAULT_DAILY, **store.get('daily_settings', {})}, 'daily_plan': public_daily(store), 'daily_managed': {k: managed.get(k) for k in ('id', 'title', 'date')} if managed else None, 'daily_repair': public_daily_repair(store), 'daily_notice': store.get('daily_notice', ''), 'behavior': behavior, 'status_refresh_ms': 5000 if behavior['active_sessions'] else 45000, 'webhook': webhook_health(base_store, store), 'product_settings': {'behavior_enabled': product.get('behavior_enabled', True), 'behavior_user': str(product.get('behavior_user') or '')[:120]}, 'feedback': store.get('feedback', {'tracks': {}, 'artists': {}})}
+    return {'source_settings': store.get('source_settings', {'reference_limit': 12}), 'metadata_summary': {'review': sum((counts.get(k, 0) for k in ('conflict', 'incomplete', 'stale_correction'))), 'confirmed': counts.get('confirmed', 0), 'breakdown': dict(counts)}, 'base_settings': {**DEFAULT_BASE, **(store.get('base_settings') or {})}, 'base_plan': public_base(store), 'base_notice': store.get('base_notice', ''), 'daily_settings': {**DEFAULT_DAILY, **store.get('daily_settings', {})}, 'daily_plan': public_daily(store), 'daily_published': public_daily_published(store), 'daily_managed': {k: managed.get(k) for k in ('id', 'title', 'date')} if managed else None, 'daily_repair': public_daily_repair(store), 'daily_notice': store.get('daily_notice', ''), 'behavior': behavior, 'status_refresh_ms': 5000 if behavior['active_sessions'] else 45000, 'webhook': webhook_health(base_store, store), 'active_profile': public_active_profile(store), 'product_settings': {'behavior_enabled': product.get('behavior_enabled', True), 'behavior_user': str(product.get('behavior_user') or '')[:120]}, 'feedback': store.get('feedback', {'tracks': {}, 'artists': {}})}
 
 def attach_routes(app, store, engine, body, ensure_idle):
 
