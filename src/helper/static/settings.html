@@ -57,7 +57,7 @@
      <div class="settings-section-title"><h3>每日推荐用户</h3><button class="primary compact-button" type="button" id="openAddUser">添加用户</button></div>
      <div id="managedUserList" class="settings-user-list" aria-live="polite"></div>
      <div id="webhookTools" class="profile-webhook-tools"><div class="settings-section-title"><h3>Plex 播放事件</h3><span id="webhookMessage" aria-live="polite">正在检查</span></div><div class="webhook-setup-action"><code id="webhookUrl" aria-label="Plex Webhook 地址"></code><span class="webhook-action-buttons"><button id="copyWebhook" class="secondary" type="button">复制地址</button><a class="primary link" href="https://app.plex.tv/desktop/#!/settings/webhooks" target="_blank" rel="noopener noreferrer">打开 Webhooks</a><button id="webhookHelpToggle" class="secondary" type="button">设置帮助</button></span></div><p id="webhookHelp" class="settings-status-line" hidden>在 Plex Webhooks 中添加上方地址，然后播放一首歌。</p><p id="webhookLast" class="settings-status-line"></p></div>
-     <div id="batchDailyTools" class="settings-row batch-daily-tools" hidden><strong>批量每日推荐</strong><div class="batch-daily-controls"><label class="batch-auto-toggle"><span>全部每日更新</span><span id="batchDailyAutoPartial" class="batch-auto-partial" hidden>部分开启</span><input id="batchDailyAuto" class="toggle" type="checkbox"></label><div class="settings-actions"><button id="batchPreview" class="secondary" type="button">生成预览</button><button id="batchPublish" class="primary" type="button" disabled>发布</button></div></div></div>
+     <div id="batchDailyTools" class="settings-row batch-daily-tools" hidden><strong>批量每日推荐</strong><div class="settings-actions"><button id="batchPreview" class="secondary" type="button">生成预览</button><button id="batchPublish" class="primary" type="button" disabled>发布</button></div></div>
      <div id="batchResults" class="batch-results compact-results" hidden></div>
     </section>
    </section>
@@ -77,10 +77,10 @@
 
    <section id="settings-automation" class="settings-panel" hidden>
     <div class="settings-page-head"><h2>自动任务</h2></div>
-    <section class="settings-section settings-form-rows">
-     <label class="settings-row"><span><strong>当前用户每日更新</strong><small id="dailyAutoStatus">未开启</small></span><input id="dailyAuto" class="toggle" type="checkbox"></label>
-     <label class="settings-row"><span>更新时间</span><select id="dailyHour" aria-label="每日推荐更新时间"></select></label>
-     <label class="settings-row"><span><strong>检查新增歌曲</strong><small id="libraryAutoStatus">未开启</small></span><input id="libraryAuto" class="toggle" type="checkbox"></label>
+    <section class="settings-section automation-list">
+     <div id="dailyAutomation" class="automation-row"><strong>每日推荐</strong><div class="automation-controls"><span>每天</span><select id="dailyAutomationHour" class="automation-hour" aria-label="每日推荐执行时间"></select><input id="dailyAutomationEnabled" class="toggle" type="checkbox" aria-label="启用每日推荐"></div></div>
+     <div id="smartAutomation" class="automation-row"><strong>智能歌单</strong><div class="automation-controls"><select id="smartIntervalDays" aria-label="智能歌单更新周期"><option value="3">每 3 天</option><option value="5">每 5 天</option><option value="7">每 7 天</option><option value="10">每 10 天</option><option value="14">每 14 天</option><option value="20">每 20 天</option></select><select id="smartAutomationHour" class="automation-hour" aria-label="智能歌单执行时间"></select><input id="smartAutomationEnabled" class="toggle" type="checkbox" aria-label="启用智能歌单"></div></div>
+     <div id="libraryAutomation" class="automation-row"><strong>新增歌曲整理</strong><div class="automation-controls"><span>每天</span><select id="libraryAutomationHour" class="automation-hour" aria-label="新增歌曲整理执行时间"></select><input id="libraryAutomationEnabled" class="toggle" type="checkbox" aria-label="启用新增歌曲整理"></div></div>
     </section>
    </section>
 

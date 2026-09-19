@@ -55,7 +55,9 @@ class UIHierarchyV0414Tests(unittest.TestCase):
         self.assertIn("hidden", help_attrs)
         for control_id in (
             "dailySize",
-            "dailyHour",
+            "dailyAutomationHour",
+            "smartAutomationHour",
+            "libraryAutomationHour",
             "rediscoveryDays",
             "dailyAvoidDays",
             "artistCap",
@@ -72,7 +74,7 @@ class UIHierarchyV0414Tests(unittest.TestCase):
         automation_start = settings.index('id="settings-automation"')
         automation_end = settings.index('id="settings-system"', automation_start)
         self.assertNotIn("检查新增歌曲", settings[recommend_start:recommend_end])
-        self.assertIn("检查新增歌曲", settings[automation_start:automation_end])
+        self.assertIn("新增歌曲整理", settings[automation_start:automation_end])
         script = (STATIC / "settings.js").read_text(encoding="utf-8")
         self.assertIn("播放学习", script)
         self.assertNotIn('data-settings-target="learning"', settings)

@@ -32,7 +32,6 @@ function render(s){
  $('publish').hidden=!previewReady;$('publish').disabled=running||!publishable;
  $('publish').textContent=running&&job.kind==='daily_apply'?'正在发布…':'发布到 Plexamp';
  $('targetCount').textContent=n(cfg.size??30);$('actualCount').textContent=n(source.items?.length||source.count||0);$('favoriteCount').textContent='≤'+n(Math.floor((cfg.size??30)*(cfg.favorite_percent??20)/100));$('avoidDays').textContent=n(source.stats?.daily_avoid_window_days??cfg.daily_avoid_days??21)+'天';
- $('dailyToggle').checked=!!cfg.enabled;$('dailyToggle').disabled=running||!managed;$('scheduleText').textContent=cfg.enabled?String(cfg.hour??6).padStart(2,'0')+':00':managed?'关闭':'首次发布后可开启';
  renderDailyNotices(source,blocking);$('bucketSummary').replaceChildren();
  for(const [k,v] of Object.entries(source.stats?.bucket_counts||{})){const x=document.createElement('span');x.textContent=k+' '+v+' 首';$('bucketSummary').append(x);}
  if(source.stats)$('favoriteCount').textContent=n(source.stats.favorite_selected_count||0)+' / '+n(Math.floor((cfg.size??30)*(cfg.favorite_percent??20)/100));
@@ -50,8 +49,6 @@ $('generate').onclick=()=>action(async()=>{const baseline=String(current?.daily_
 $('fullRefresh').onclick=()=>action(async()=>{const baseline=String(current?.daily_plan?.id||'');await post('/api/jobs/daily_preview',{force_full:true});beginDailyOperation('daily_preview',baseline);});
 $('publish').onclick=()=>action(async()=>{const p=current?.daily_plan;if(!p?.id)return;await post('/api/jobs/daily_apply',{confirm:true,plan_id:p.id});beginDailyOperation('daily_apply',String(p.id));});
 $('repairDaily').onclick=()=>action(async()=>{const r=current?.daily_repair;if(!r?.snapshot_id)return;if(!await PCHUI.confirm('确认安全修复上次每日推荐？'))return;await post('/api/jobs/daily_repair',{confirm:true,snapshot_id:r.snapshot_id});note('正在修复。');});
-$('dailyToggle').onchange=()=>action(async()=>{const enabled=$('dailyToggle').checked;const r=await post('/api/daily/schedule',{enabled});note(r.message);});
-
 function renderDailyNotices(plan,blocking){
  const meta=document.getElementById('dailyMeta');
  meta.replaceChildren();meta.hidden=true;

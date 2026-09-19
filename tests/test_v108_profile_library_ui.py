@@ -81,8 +81,8 @@ class ProfileLibraryUIV108Tests(unittest.TestCase):
 
         self.assertNotIn("showSettingsPanel('recommend')", script)
         self.assertIn("/api/profiles/daily/batch-status", script)
-        self.assertIn("/api/profiles/daily/batch-schedule", script)
-        self.assertFalse(page.by_id("batchDailyAuto")["hidden"])
+        self.assertNotIn("/api/profiles/daily/batch-schedule", script)
+        self.assertNotIn('id="batchDailyAuto"', (ROOT / "src/helper/static/settings.html").read_text(encoding="utf-8"))
 
     def test_playback_learning_is_a_profile_row_switch_not_a_separate_settings_page(self):
         html = (ROOT / "src/helper/static/settings.html").read_text(encoding="utf-8")

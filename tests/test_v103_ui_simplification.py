@@ -44,15 +44,14 @@ class UISimplificationV103Tests(unittest.TestCase):
         parser.feed((STATIC / name).read_text(encoding="utf-8"))
         return parser
 
-    def test_daily_keeps_actions_and_schedule_in_the_playlist_module(self):
+    def test_daily_keeps_manual_actions_without_a_duplicate_schedule_switch(self):
         page = self.parse("daily.html")
+        html = (STATIC / "daily.html").read_text(encoding="utf-8")
 
         playlist = page.by_id("dailyPlaylist")
         for control in ("generate", "fullRefresh", "publish"):
             self.assertIn(playlist, page.by_id(control)["ancestors"])
-        page_head = next(node for node in page.nodes if "daily-page-head" in node["classes"])
-        self.assertIn(page_head, page.by_id("dailyToggle")["ancestors"])
-        self.assertNotIn(playlist, page.by_id("dailyToggle")["ancestors"])
+        self.assertNotIn('id="dailyToggle"', html)
         self.assertFalse(any("daily-overview" in node["classes"] for node in page.nodes))
         self.assertTrue(page.by_id("dailyMessage")["hidden"])
 
@@ -96,11 +95,11 @@ class UISimplificationV103Tests(unittest.TestCase):
         self.assertNotIn("还差 1 步", html)
         self.assertNotIn("请选择要学习的 Plex 用户", html)
 
-    def test_disabling_library_auto_update_is_an_explicit_confirmed_action(self):
+    def test_automatic_tasks_use_the_single_global_endpoint(self):
         script = (STATIC / "settings.js").read_text(encoding="utf-8")
 
-        self.assertIn("{enabled,confirm:true}", script)
-        self.assertNotIn("{enabled,confirm:enabled}", script)
+        self.assertIn("/api/automation", script)
+        self.assertNotIn("/api/workflow/schedule", script)
 
     def test_library_review_shows_the_reason_when_every_playlist_is_blocked(self):
         script = (STATIC / "home.js").read_text(encoding="utf-8")

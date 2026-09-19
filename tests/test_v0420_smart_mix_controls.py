@@ -242,11 +242,11 @@ class SmartMixControlsV0420Tests(unittest.TestCase):
 
         self.assertIn("另有 ${plan.items.length-10} 首，下面仅展示前 10 首；发布时一并写入", script)
         self.assertIn("/api/mixes/remove", script)
-        self.assertIn("/api/mixes/auto-schedule", script)
+        self.assertNotIn("/api/mixes/auto-schedule", script)
         self.assertIn('class="danger remove-mix"', page)
-        self.assertIn('id="smartMixAuto"', page)
-        self.assertIn("每周自动更新", page)
-        self.assertIn(".mix-master", css)
+        self.assertNotIn('id="smartMixAuto"', page)
+        self.assertNotIn("每周自动更新", page)
+        self.assertNotIn(".mix-master", css)
 
     def test_profile_scheduler_dispatches_a_due_weekly_update_once(self):
         from helper.automation import PROFILE_STATE_KEY, save_automation_settings
