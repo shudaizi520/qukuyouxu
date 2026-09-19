@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from contextvars import ContextVar
+import hashlib
 import json
 import time
 import uuid
@@ -18,6 +19,22 @@ PROFILE_KINDS = frozenset({"owner", "home", "shared"})
 
 def _text(value, limit=160):
     return str(value or "").strip()[:limit]
+
+
+def profile_identity(profile):
+    """Return the stable Plex user/server/library identity for one profile."""
+    profile = profile or {}
+    return (
+        _text(profile.get("kind"), 20),
+        _text((profile.get("account") or {}).get("id"), 80),
+        _text((profile.get("server") or {}).get("machine"), 160),
+        _text((profile.get("library") or {}).get("id"), 40),
+    )
+
+
+def _library_profile_id(identity):
+    payload = json.dumps(identity, ensure_ascii=True, separators=(",", ":"))
+    return "p-" + hashlib.sha256(payload.encode("utf-8")).hexdigest()[:20]
 
 
 def _profile_from_legacy(store, now):
@@ -114,6 +131,58 @@ def _initial_state(profile):
     }
 
 
+def _scoped_changes(profile, state):
+    profile_id = validate_profile_id(profile["id"])
+    return {
+        f"profile:{profile_id}:{key}": value
+        for key, value in state.items()
+        if key not in GLOBAL_KEYS
+    }
+
+
+def _library_reset_state(profile, source=None):
+    """Build clean library state while retaining only portable preferences."""
+    clean = _initial_state(profile)
+    if source is not None:
+        clean["daily_settings"] = dict(source.get("daily_settings", {}) or clean["daily_settings"])
+        clean["base_settings"] = dict(source.get("base_settings", {}) or clean["base_settings"])
+        previous = dict(source.get("settings", {}) or {})
+        for key in ("interval_minutes", "source_hours", "min_tracks"):
+            if key in previous:
+                clean["settings"][key] = previous[key]
+
+    saved = {
+        "account": dict(profile.get("account") or {}),
+        "server": dict(profile.get("server") or {}),
+        "library": dict(profile.get("library") or {}),
+    }
+    clean.update({
+        "plex_saved": saved,
+        "plex_reconnect_identity": {},
+        "catalog": [],
+        "metadata_audit": [],
+        "qq_playlist_index": {},
+        "qq_tags": [],
+        "plan": None,
+        "base_plan": None,
+        "daily_plan": None,
+        "daily_previous_plan": None,
+        "daily_managed": None,
+        "daily_detached_playlists": [],
+        "retired_managed": {},
+        "smart_mix_settings": {},
+        "smart_mix_plans": {},
+        "smart_mix_managed": {},
+        "smart_mix_removed": {},
+        "plex_history_cache": {},
+        "workflow_pending": None,
+        "library_auto_next_at": None,
+        "library_progress": None,
+        "daily_published_view": None,
+    })
+    return clean
+
+
 class ProfileRegistry:
     def __init__(self, store):
         self.store = store
@@ -165,6 +234,20 @@ class ProfileRegistry:
                 for key, row in value["profiles"].items()
                 if not enabled_only or row.get("enabled") is not False]
 
+    def find_identity(self, kind, account_id, machine, library_id, enabled_only=False):
+        expected = (
+            _text(kind, 20),
+            _text(account_id, 80),
+            _text(machine, 160),
+            _text(library_id, 40),
+        )
+        for profile in self._load()["profiles"].values():
+            if enabled_only and profile.get("enabled") is False:
+                continue
+            if profile_identity(profile) == expected:
+                return _public(profile)
+        return None
+
     def select(self, profile_id):
         profile_id = validate_profile_id(profile_id)
         value = self._load()
@@ -192,12 +275,85 @@ class ProfileRegistry:
             "account": dict(account or {}), "server": dict(server or {}),
             "library": dict(library or {}), "token": token, "enabled": True,
         }
-        scoped = ScopedStore(self.store, profile_id)
-        changes = _initial_state(profile)
-        changes[REGISTRY_KEY] = None
-        scoped.set_many({key: item for key, item in changes.items() if key != REGISTRY_KEY})
         value["profiles"][profile_id] = profile
-        self._save(value)
+        changes = _scoped_changes(profile, _initial_state(profile))
+        changes[REGISTRY_KEY] = value
+        self.store.set_many(changes)
+        return _public(profile)
+
+    def create_for_library(self, source_profile_id, library, profile_id=None):
+        source_profile_id = validate_profile_id(source_profile_id)
+        source_profile = self.get(source_profile_id)
+        private_source = self._load()["profiles"][source_profile_id]
+        library = {
+            "id": _text((library or {}).get("id"), 40),
+            "name": _text((library or {}).get("name"), 160),
+        }
+        if not library["id"]:
+            raise ValueError("请选择音乐资料库")
+        identity = (
+            private_source.get("kind"),
+            (private_source.get("account") or {}).get("id"),
+            (private_source.get("server") or {}).get("machine"),
+            library["id"],
+        )
+        existing = self.find_identity(*identity)
+        if existing:
+            if existing.get("enabled") is False:
+                return self.restore(existing["id"])
+            return existing
+
+        value = self._load()
+        profile_id = validate_profile_id(profile_id or _library_profile_id(tuple(map(str, identity))))
+        if profile_id in value["profiles"]:
+            raise ValueError("Plex 档案标识已经存在")
+        profile = {
+            "id": profile_id,
+            "name": source_profile.get("name") or library["name"] or "我的 Plex",
+            "kind": private_source.get("kind"),
+            "created_at": time.time(),
+            "account": dict(private_source.get("account") or {}),
+            "server": dict(private_source.get("server") or {}),
+            "library": library,
+            "token": _text(private_source.get("token"), 512),
+            "enabled": True,
+        }
+        source = ScopedStore(self.store, source_profile_id)
+        clean = _library_reset_state(profile, source)
+        value["profiles"][profile_id] = profile
+        changes = _scoped_changes(profile, clean)
+        changes[REGISTRY_KEY] = value
+        self.store.set_many(changes)
+        return _public(profile)
+
+    def switch_unmanaged_library(self, profile_id, library):
+        profile_id = validate_profile_id(profile_id)
+        scoped = ScopedStore(self.store, profile_id)
+        from .profile_web import connection_is_protected
+
+        if connection_is_protected(scoped):
+            raise ValueError("该档案已有托管歌单，不能直接切换音乐资料库")
+        library = {
+            "id": _text((library or {}).get("id"), 40),
+            "name": _text((library or {}).get("name"), 160),
+        }
+        if not library["id"]:
+            raise ValueError("请选择音乐资料库")
+
+        value = self._load()
+        profile = value["profiles"].get(profile_id)
+        if not profile:
+            raise ValueError("Plex 档案不存在")
+        candidate = {**profile, "library": library}
+        existing = self.find_identity(*profile_identity(candidate))
+        if existing and existing["id"] != profile_id:
+            raise ValueError("该音乐资料库已有独立档案")
+
+        profile["library"] = library
+        clean = _library_reset_state(profile, scoped)
+        changes = _scoped_changes(profile, clean)
+        changes[REGISTRY_KEY] = value
+        self.store.set_many(changes)
         return _public(profile)
 
     def update(self, profile_id, **fields):
