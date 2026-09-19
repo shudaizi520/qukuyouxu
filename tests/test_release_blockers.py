@@ -4,7 +4,12 @@ import tempfile
 import threading
 import time
 import unittest
+import sys
 from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
 
 
 async def _asgi_request(app, path, method="GET", headers=None, body=None):
