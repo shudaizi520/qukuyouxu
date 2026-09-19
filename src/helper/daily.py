@@ -367,9 +367,11 @@ class DailyMixin:
             self._save_snapshot(snap)
             raise SafetyError('恢复每日歌单的结果待核对，自动更新已暂停') from None
 
-    def daily_due(self, now=None):
+    def daily_due(self, now=None, schedule=None):
         now = time.time() if now is None else now
         daily = {**DEFAULT_DAILY, **self.store.get('daily_settings', {})}
+        if schedule:
+            daily.update({key: schedule[key] for key in ('enabled', 'hour') if key in schedule})
         record = self.store.get('daily_managed')
         pending = self.store.get('daily_plan') or {}
         manual_waiting = bool(pending.get('origin') == 'manual' and (not pending.get('applied')) and (pending.get('date') == day_at(now)) and (0 <= now - number_time(pending.get('created_at')) <= 1800))
@@ -378,10 +380,10 @@ class DailyMixin:
                     and (datetime.fromtimestamp(now, CST).hour >= daily['hour'])
                     and (now - self.store.get('daily_last_attempt', 0) >= 1800))
 
-    def daily_auto(self):
+    def daily_auto(self, schedule=None):
         with self.exclusive():
             now = time.time()
-            if not self.daily_due(now):
+            if not self.daily_due(now, schedule=schedule):
                 return {'message': '今天已发布、尚未到时间或自动更新暂停'}
             self.store.set('daily_last_attempt', now)
             plan = self._preview_daily(now, origin='auto')

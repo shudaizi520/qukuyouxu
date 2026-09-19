@@ -16,10 +16,7 @@ class _Engine:
         self.status_lock = threading.Lock()
         self.job_during_operation = None
 
-    def daily_due(self, now=None):
-        return bool(self.store.get("daily_due_for_test", False))
-
-    def daily_auto(self):
+    def daily_auto(self, schedule=None):
         self.job_during_operation = dict(self.job)
         self.calls.append(("daily", self.store.profile_id, self.store.get("settings")["plex_token"]))
         return {"ok": True}
@@ -52,6 +49,29 @@ class ProfileRuntimeV040Tests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
+    def enable_due_daily(self, runtime, profile_ids, now):
+        from helper.automation import PROFILE_STATE_KEY, save_automation_settings
+        from helper.scoped_store import ScopedStore
+
+        saved = save_automation_settings(self.base, {
+            "daily": {"enabled": True, "hour": 6},
+            "smart": {"enabled": False, "interval_days": 7, "hour": 3},
+            "library": {"enabled": False, "hour": 0},
+        })
+        for profile_id in profile_ids:
+            scoped = ScopedStore(self.base, profile_id)
+            scoped.set("daily_managed", {"id": f"daily-{profile_id}"})
+            scoped.set(PROFILE_STATE_KEY, {
+                "revision": saved["revision"],
+                "tasks": {
+                    "daily": {
+                        "config": saved["daily"],
+                        "next_at": now,
+                        "slot": now,
+                    }
+                },
+            })
+
     def test_fixed_engines_keep_tokens_and_history_isolated(self):
         from helper.profile_runtime import ProfileRuntime
 
@@ -78,23 +98,18 @@ class ProfileRuntimeV040Tests(unittest.TestCase):
 
     def test_due_profiles_run_serially_in_registry_order(self):
         from helper.profile_runtime import ProfileRuntime
-        from helper.scoped_store import ScopedStore
-
-        ScopedStore(self.base, "default").set("daily_due_for_test", True)
-        ScopedStore(self.base, "friend-42").set("daily_due_for_test", True)
         calls = []
         runtime = ProfileRuntime(self.base, self.registry, engine_factory=lambda store: _Engine(store, calls))
+        self.enable_due_daily(runtime, ["default", "friend-42"], 100)
         result = runtime.run_due(now=100)
         self.assertEqual(["default", "friend-42"], [row["profile_id"] for row in result])
         self.assertEqual(["default", "friend-42"], [row[1] for row in calls])
 
     def test_scheduled_operation_publishes_running_and_finished_job_state(self):
         from helper.profile_runtime import ProfileRuntime
-        from helper.scoped_store import ScopedStore
-
-        ScopedStore(self.base, "default").set("daily_due_for_test", True)
         calls = []
         runtime = ProfileRuntime(self.base, self.registry, engine_factory=lambda store: _Engine(store, calls))
+        self.enable_due_daily(runtime, ["default"], 1_000)
 
         with patch("helper.profile_runtime.time.time", return_value=1_007):
             result = runtime.run_due(now=1_000)
@@ -114,12 +129,12 @@ class ProfileRuntimeV040Tests(unittest.TestCase):
         from helper.scoped_store import ScopedStore
 
         class FailingEngine(_Engine):
-            def daily_auto(self):
+            def daily_auto(self, schedule=None):
                 self.job_during_operation = dict(self.job)
                 raise RuntimeError("temporary failure")
 
-        ScopedStore(self.base, "default").set("daily_due_for_test", True)
         runtime = ProfileRuntime(self.base, self.registry, engine_factory=lambda store: FailingEngine(store, []))
+        self.enable_due_daily(runtime, ["default"], 2_000)
 
         with patch("helper.profile_runtime.time.time", return_value=2_009):
             result = runtime.run_due(now=2_000)

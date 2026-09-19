@@ -249,6 +249,7 @@ class SmartMixControlsV0420Tests(unittest.TestCase):
         self.assertIn(".mix-master", css)
 
     def test_profile_scheduler_dispatches_a_due_weekly_update_once(self):
+        from helper.automation import PROFILE_STATE_KEY, save_automation_settings
         from helper.profile_runtime import ProfileRuntime
         from helper.profiles import ProfileRegistry
         from helper.scoped_store import ScopedStore
@@ -269,10 +270,21 @@ class SmartMixControlsV0420Tests(unittest.TestCase):
             registry = ProfileRegistry(base)
             owner = ScopedStore(base, "default")
             settings = owner.get("settings")
-            settings.update(plex_token="owner-secret", auto_enabled=False)
-            owner.set("settings", settings)
+            settings.update(plex_token="owner-secret")
+            owner.set_many({
+                "settings": settings,
+                "smart_mix_managed": {"weekly": {"id": "playlist-1"}},
+            })
             runtime = ProfileRuntime(base, registry, engine_factory=RuntimeEngine)
-            with patch("helper.smart_mix_web.smart_mix_auto_due", return_value=["weekly"]), patch(
+            saved = save_automation_settings(base, {
+                "daily": {"enabled": False, "hour": 6},
+                "smart": {"enabled": True, "interval_days": 7, "hour": 3},
+                "library": {"enabled": False, "hour": 0},
+            })
+            owner.set(PROFILE_STATE_KEY, {"revision": saved["revision"], "tasks": {
+                "smart": {"config": saved["smart"], "next_at": NOW, "slot": NOW},
+            }})
+            with patch(
                 "helper.smart_mix_web.run_smart_mix_auto", return_value={"items": {"weekly": {"status": "published"}}}
             ) as run:
                 result = runtime.run_due(now=NOW)

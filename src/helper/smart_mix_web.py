@@ -465,13 +465,13 @@ def run_weekly_auto(engine, now=None):
     }
 
 
-def run_smart_mix_auto(engine, now=None):
+def run_smart_mix_auto(engine, now=None, due_kinds=None, slot=None):
     """Run all three built-in weekly jobs independently under one switch."""
     now = time.time() if now is None else float(now)
-    due = smart_mix_auto_due(engine, now)
+    due = smart_mix_auto_due(engine, now) if due_kinds is None else [kind for kind in due_kinds if kind in AUTO_KINDS]
     if not due:
         raise SafetyError("智能歌单尚未到更新时间")
-    slot = weekly_schedule_slot(now)
+    slot = weekly_schedule_slot(now) if slot is None else float(slot)
     settings = smart_mix_settings(engine.store)
     managed = engine.store.get(MANAGED_KEY, {}) or {}
     results = {}

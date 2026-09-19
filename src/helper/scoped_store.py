@@ -11,6 +11,7 @@ GLOBAL_KEYS = frozenset({
     "auth_bootstrap_token",
     "plex_profiles_v1",
     "profiles_migration_v1",
+    "automation_settings_v1",
 })
 
 

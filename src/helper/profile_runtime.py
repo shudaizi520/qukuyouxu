@@ -89,51 +89,95 @@ class ProfileRuntime:
                 self.job_gate.release()
 
     def run_due(self, now=None):
+        from .automation import (
+            PROFILE_STATE_KEY,
+            TASK_ORDER,
+            advance_slot,
+            automation_settings,
+            ensure_profile_schedule,
+        )
+
         now = time.time() if now is None else float(now)
+        if self.job_gate.locked():
+            return []
+        settings = automation_settings(self.base_store, self.registry, self, now=now)
         results = []
-        for profile in self.registry.list_public():
-            if profile.get("enabled") is False:
+        profiles = [row for row in self.registry.list_public() if row.get("enabled") is not False]
+        for task in TASK_ORDER:
+            if not settings[task]["enabled"]:
                 continue
-            engine = self.engine(profile["id"])
-            if engine.job.get("running"):
-                continue
-            settings = engine.store.get("settings", {}) or {}
-            if not settings.get("plex_token"):
-                continue
-            kind = ""
-            try:
-                if engine.daily_due(now):
-                    kind = "daily"
-                    result = self._run_job(engine, kind, engine.daily_auto, now)
-                else:
-                    library_due = False
-                    next_at = float(engine.store.get("library_auto_next_at", 0) or 0)
-                    if settings.get("auto_enabled") and next_at <= 0:
-                        engine.store.set("library_auto_next_at", next_beijing_midnight(now))
-                    elif settings.get("auto_enabled") and now >= next_at:
-                        library_due = True
-                    if library_due:
-                        kind = "library"
-                        refresh = getattr(engine, "refresh_new_tracks", None)
-                        operation = refresh if refresh else engine.auto
-                        result = self._run_job(engine, kind, operation, now)
+            for profile in profiles:
+                engine = self.engine(profile["id"])
+                profile_settings = engine.store.get("settings", {}) or {}
+                if engine.job.get("running") or not profile_settings.get("plex_token"):
+                    continue
+                state = ensure_profile_schedule(engine.store, settings, now)
+                scheduled = state["tasks"][task]
+                if float(scheduled.get("next_at") or 0) > now:
+                    continue
+                if not self._eligible_for_task(engine, task):
+                    scheduled["next_at"] = advance_slot(scheduled.get("slot"), now, task, settings)
+                    scheduled["slot"] = scheduled["next_at"]
+                    engine.store.set(PROFILE_STATE_KEY, state)
+                    continue
+                kind = "smart_mixes" if task == "smart" else task
+                result = None
+                try:
+                    operation = self._scheduled_operation(engine, task, scheduled, settings, now)
+                    result = self._run_job(engine, kind, operation, now)
+                    results.append({"profile_id": profile["id"], "kind": kind, "result": result})
+                except Exception as exc:
+                    engine.store.log(str(exc)[:300], "error")
+                    results.append({"profile_id": profile["id"], "kind": kind, "error": type(exc).__name__})
+                finally:
+                    retry = self._smart_retry(engine, result) if task == "smart" else None
+                    if retry:
+                        scheduled["next_at"] = retry["next_at"]
+                        scheduled["retry_kinds"] = retry["kinds"]
                     else:
-                        from .smart_mix_web import run_smart_mix_auto, smart_mix_auto_due
-                        if not smart_mix_auto_due(engine, now):
-                            continue
-                        kind = "smart_mixes"
-                        result = self._run_job(engine, kind, lambda: run_smart_mix_auto(engine, now), now)
-                results.append({"profile_id": profile["id"], "kind": kind, "result": result})
-            except Exception as exc:
-                engine.store.log(str(exc)[:300], "error")
-                results.append({"profile_id": profile["id"], "kind": kind or "check", "error": type(exc).__name__})
-            finally:
-                if kind == "library":
-                    engine.store.set_many({
-                        "library_auto_last_attempt": now,
-                        "library_auto_next_at": next_beijing_midnight(now),
-                    })
+                        scheduled.pop("retry_kinds", None)
+                        scheduled["next_at"] = advance_slot(scheduled.get("slot"), now, task, settings)
+                        scheduled["slot"] = scheduled["next_at"]
+                    engine.store.set(PROFILE_STATE_KEY, state)
         return results
+
+    @staticmethod
+    def _eligible_for_task(engine, task):
+        keys = {
+            "library": "managed",
+            "smart": "smart_mix_managed",
+            "daily": "daily_managed",
+        }
+        return bool(engine.store.get(keys[task], {}) or {})
+
+    @staticmethod
+    def _scheduled_operation(engine, task, scheduled, settings, now):
+        if task == "library":
+            return getattr(engine, "refresh_new_tracks", None) or engine.auto
+        if task == "daily":
+            return lambda: engine.daily_auto(schedule=settings["daily"])
+
+        from .smart_mix_web import run_smart_mix_auto
+
+        managed = engine.store.get("smart_mix_managed", {}) or {}
+        due_kinds = scheduled.get("retry_kinds") or list(managed)
+        return lambda: run_smart_mix_auto(
+            engine,
+            now,
+            due_kinds=due_kinds,
+            slot=scheduled.get("slot"),
+        )
+
+    @staticmethod
+    def _smart_retry(engine, result):
+        items = (result or {}).get("items", {}) if isinstance(result, dict) else {}
+        failed = [kind for kind, row in items.items() if row.get("status") == "error"]
+        if not failed:
+            return None
+        retry_state = (engine.store.get("smart_mix_settings", {}) or {}).get("auto_retry_state", {}) or {}
+        times = [float((retry_state.get(kind) or {}).get("next_retry_at") or 0) for kind in failed]
+        times = [value for value in times if value > 0]
+        return {"kinds": failed, "next_at": min(times)} if times else None
 
     def scheduler(self):
         while not self.stop.wait(60):

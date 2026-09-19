@@ -112,6 +112,7 @@ class LibraryMaintenanceV0415Tests(unittest.TestCase):
         self.assertEqual(1789747200, next_beijing_midnight(1789660800))
 
     def test_library_automation_waits_for_its_next_midnight_and_runs_once(self):
+        from helper.automation import PROFILE_STATE_KEY, save_automation_settings
         from helper.profile_runtime import ProfileRuntime
         from helper.profiles import ProfileRegistry
         from helper.scoped_store import ScopedStore
@@ -122,17 +123,25 @@ class LibraryMaintenanceV0415Tests(unittest.TestCase):
             registry = ProfileRegistry(base)
             owner = ScopedStore(base, "default")
             settings = owner.get("settings")
-            settings.update(plex_token="owner-secret", auto_enabled=True)
-            owner.set_many({"settings": settings, "library_auto_next_at": 1000})
+            settings.update(plex_token="owner-secret")
+            owner.set_many({"settings": settings, "managed": {"theme": {"id": "playlist-1"}}})
             calls = []
             runtime = ProfileRuntime(base, registry, engine_factory=lambda store: _Engine(store, calls))
+            saved = save_automation_settings(base, {
+                "daily": {"enabled": False, "hour": 6},
+                "smart": {"enabled": False, "interval_days": 7, "hour": 3},
+                "library": {"enabled": True, "hour": 0},
+            })
+            owner.set(PROFILE_STATE_KEY, {"revision": saved["revision"], "tasks": {
+                "library": {"config": saved["library"], "next_at": 1000, "slot": 1000},
+            }})
 
             self.assertEqual([], runtime.run_due(now=999))
             first = runtime.run_due(now=1000)
             self.assertEqual([("library", "default")], calls)
             self.assertEqual("library", first[0]["kind"])
             self.assertEqual([], runtime.run_due(now=1001))
-            self.assertGreater(owner.get("library_auto_next_at"), 1001)
+            self.assertGreater(owner.get(PROFILE_STATE_KEY)["tasks"]["library"]["next_at"], 1001)
 
 
 if __name__ == "__main__":
