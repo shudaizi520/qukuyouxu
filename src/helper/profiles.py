@@ -198,6 +198,27 @@ class ProfileRegistry:
     def _save(self, value):
         self.store.set(REGISTRY_KEY, value)
 
+    def _replace_scoped_state(self, profile, state, registry):
+        """Atomically replace one complete profile namespace with clean state."""
+        profile_id = validate_profile_id(profile["id"])
+        prefix = f"profile:{profile_id}:"
+        values = _scoped_changes(profile, state)
+        values[REGISTRY_KEY] = registry
+        encoded = [
+            (key, json.dumps(value, ensure_ascii=False))
+            for key, value in values.items()
+        ]
+        with self.store.lock, self.store._db() as db:
+            db.execute(
+                "DELETE FROM state WHERE substr(k,1,?)=?",
+                (len(prefix), prefix),
+            )
+            db.executemany(
+                "INSERT INTO state(k,v) VALUES (?,?) "
+                "ON CONFLICT(k) DO UPDATE SET v=excluded.v",
+                encoded,
+            )
+
     def _saved_active_id(self):
         value = self._load()
         active = str(value.get("active_profile_id") or "default")
@@ -353,9 +374,7 @@ class ProfileRegistry:
 
         profile["library"] = library
         clean = _library_reset_state(profile, scoped)
-        changes = _scoped_changes(profile, clean)
-        changes[REGISTRY_KEY] = value
-        self.store.set_many(changes)
+        self._replace_scoped_state(profile, clean, value)
         return _public(profile)
 
     def update(self, profile_id, **fields):
@@ -368,6 +387,33 @@ class ProfileRegistry:
             if key in fields:
                 profile[key] = fields[key]
         self._save(value)
+        return _public(profile)
+
+    def refresh_access(self, profile_id, token, enabled=None):
+        """Atomically keep registry identity and runtime connection credentials aligned."""
+        profile_id = validate_profile_id(profile_id)
+        token = _text(token, 512)
+        if token and (len(token) < 8 or not token.isascii()):
+            raise ValueError("Plex Token 格式不正确")
+        value = self._load()
+        profile = value["profiles"].get(profile_id)
+        if not profile:
+            raise ValueError("Plex 档案不存在")
+        profile["token"] = token
+        if enabled is not None:
+            profile["enabled"] = bool(enabled)
+        scoped = ScopedStore(self.store, profile_id)
+        settings = dict(scoped.get("settings", {}) or DEFAULT_SETTINGS)
+        settings.update({
+            "plex_token": token,
+            "plex_url": str((profile.get("server") or {}).get("url") or settings.get("plex_url") or ""),
+            "section": str((profile.get("library") or {}).get("id") or settings.get("section") or ""),
+            "account_label": str((profile.get("account") or {}).get("username") or profile.get("name") or "")[:80],
+        })
+        self.store.set_many({
+            REGISTRY_KEY: value,
+            f"profile:{profile_id}:settings": settings,
+        })
         return _public(profile)
 
     def archive(self, profile_id):

@@ -47,10 +47,15 @@ def connection_identity(store):
 
 
 def connection_is_protected(store):
+    unresolved = any(
+        row.get("status") in ("prepared", "uncertain", "restoring")
+        for row in (store.get("snapshots", []) or [])
+        if isinstance(row, dict)
+    )
     return bool(
         store.get("managed", {}) or store.get("daily_managed")
         or store.get("retired_managed", {}) or store.get("smart_mix_managed", {})
-        or store.get("smart_mix_removed", {})
+        or store.get("smart_mix_removed", {}) or unresolved
     )
 
 

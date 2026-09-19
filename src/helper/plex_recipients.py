@@ -281,15 +281,14 @@ class PlexRecipientService:
         machine = str((owner.get("server") or {}).get("machine") or "")
         existing = self.registry.find_identity(kind, account.get("id"), machine, library["id"])
         if existing:
-            self.registry.update(existing["id"], token=token, enabled=True)
-            return self.registry.restore(existing["id"])
+            return self.registry.refresh_access(existing["id"], token, enabled=True)
 
         sibling = next((row for row in self.registry.list_public()
                         if row.get("kind") == kind
                         and str((row.get("account") or {}).get("id") or "") == str(account.get("id") or "")
                         and str((row.get("server") or {}).get("machine") or "") == machine), None)
         if sibling:
-            self.registry.update(sibling["id"], token=token)
+            self.registry.refresh_access(sibling["id"], token)
             return self.registry.create_for_library(sibling["id"], library)
 
         profile_id = _recipient_profile_id(kind, source_id)
@@ -330,7 +329,8 @@ class PlexRecipientService:
         if not library:
             raise ValueError("当前 Plex 用户无权访问这个音乐资料库")
         if str((profile.get("library") or {}).get("id") or "") == library_id:
-            return {"profile": profile, "mode": "unchanged"}
+            refreshed = self.registry.refresh_access(profile_id, profile.get("token"))
+            return {"profile": refreshed, "mode": "unchanged"}
 
         identity = (
             profile.get("kind"),
@@ -340,9 +340,10 @@ class PlexRecipientService:
         )
         existing = self.registry.find_identity(*identity)
         if existing:
-            if existing.get("enabled") is False:
-                existing = self.registry.restore(existing["id"])
-            return {"profile": existing, "mode": "switched"}
+            refreshed = self.registry.refresh_access(
+                existing["id"], profile.get("token"), enabled=True
+            )
+            return {"profile": refreshed, "mode": "switched"}
 
         scoped = ScopedStore(self.store, profile_id)
         if connection_is_protected(scoped):

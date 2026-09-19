@@ -230,7 +230,7 @@ class DailyMixin:
             same_name_id = str((same_name or {}).get('id') or (same_name or {}).get('ratingKey') or '')
             if same_name_id:
                 before = p.playlist_state(same_name_id)
-        snap = {'id': uuid.uuid4().hex, 'kind': 'daily', 'category_id': DAILY_CID, 'title': daily_target_title(self), 'created_at': now, 'status': 'prepared', 'before': before, 'after': None, 'add': ids, 'marker': self.marker(DAILY_CID), 'plan_id': plan_id, 'machine': plan['machine'], 'scope': plan['scope'], 'before_daily_record': managed}
+        snap = {'id': uuid.uuid4().hex, 'kind': 'daily', 'category_id': DAILY_CID, 'title': daily_target_title(self), 'created_at': now, 'status': 'prepared', 'before': before, 'after': None, 'add': ids, 'marker': self.marker(DAILY_CID), 'plan_id': plan_id, 'machine': plan['machine'], 'scope': plan['scope'], 'before_daily_record': managed, 'before_published_view': self.store.get('daily_published_view')}
         self._save_snapshot(snap)
         try:
             if before:
@@ -299,11 +299,16 @@ class DailyMixin:
         self._save_snapshot(snap)
         previous_plan = self.store.get('daily_plan') or self.store.get('daily_previous_plan') or {}
         date = (previous_plan.get('date') if previous_plan.get('id') == snap.get('plan_id') else None) or day_at(snap.get('created_at') or now)
-        record = {'id': after['id'], 'title': after['title'], 'fingerprint': fingerprint(after), 'snapshot_id': snap['id'], 'machine': snap['machine'], 'scope': snap['scope'], 'date': date}
+        record = {'id': after['id'], 'title': after['title'], 'fingerprint': fingerprint(after), 'snapshot_id': snap['id'], 'machine': snap['machine'], 'scope': snap['scope'], 'date': date, 'published_at': now}
         history = self.store.get('daily_history', [])
         if not any((h.get('plan_id') == snap.get('plan_id') for h in history)):
             history.append({'date': date, 'created_at': now, 'ids': desired, 'song_keys': [], 'plan_id': snap.get('plan_id')})
-        changes = {'daily_managed': record, 'daily_history': history[-90:], 'daily_notice': f'上次每日推荐发布已安全收敛为 {len(desired)} 首；旧曲目未继续累加。自动更新仍保持关闭，请重新生成下一批。'}
+        repaired_view = (
+            published_daily_view(previous_plan, after, now)
+            if previous_plan.get('id') == snap.get('plan_id') and previous_plan.get('items')
+            else None
+        )
+        changes = {'daily_managed': record, 'daily_history': history[-90:], 'daily_published_view': repaired_view, 'daily_notice': f'上次每日推荐发布已安全收敛为 {len(desired)} 首；旧曲目未继续累加。自动更新仍保持关闭，请重新生成下一批。'}
         if previous_plan.get('id') == snap.get('plan_id'):
             previous_plan = {**previous_plan, 'applied': True, 'result': {'written': len(desired), 'playlist_id': after['id'], 'date': date, 'repaired': True}}
             if self.store.get('daily_plan', {}).get('id') == previous_plan.get('id'):
@@ -354,7 +359,7 @@ class DailyMixin:
                 restored = None
             snap['status'] = 'restored'
             self._save_snapshot(snap)
-            self.store.set_many({'daily_managed': restored, 'daily_plan': None, 'daily_history': [h for h in self.store.get('daily_history', []) if h.get('plan_id') != snap['plan_id']]})
+            self.store.set_many({'daily_managed': restored, 'daily_plan': None, 'daily_history': [h for h in self.store.get('daily_history', []) if h.get('plan_id') != snap['plan_id']], 'daily_published_view': snap.get('before_published_view')})
             self.store.log('已恢复每日推荐变更；自动每日更新已暂停')
             return {'message': '每日推荐已恢复；自动更新暂停，分类歌单未动'}
         except Exception as exc:

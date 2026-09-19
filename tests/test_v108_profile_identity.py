@@ -81,6 +81,23 @@ class ProfileIdentityV108Tests(unittest.TestCase):
         self.assertEqual([], self.source.get("catalog"))
         self.assertEqual([], self.source.get("daily_history"))
 
+    def test_unmanaged_switch_removes_unlisted_library_state_and_prefix_caches(self):
+        self.source.set_many({
+            "single_result:old-scope:1": {"id": "1", "status": "matched"},
+            "name_plan": {"id": "old-name-plan"},
+            "incremental_status": {"status": "completed"},
+            "daily_similarity_cache": {"old": {"ids": ["1"]}},
+            "webhook_seen": {"old": True},
+        })
+
+        self.registry.switch_unmanaged_library(
+            "default", {"id": "15", "name": "经典音乐"}
+        )
+
+        self.assertEqual({}, self.source.get_prefix("single_result:"))
+        for key in ("name_plan", "incremental_status", "daily_similarity_cache", "webhook_seen"):
+            self.assertIsNone(self.source.get(key))
+
     def test_protected_profile_cannot_switch_in_place(self):
         self.source.set("daily_managed", {"id": "playlist-1"})
 

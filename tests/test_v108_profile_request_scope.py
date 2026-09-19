@@ -107,12 +107,13 @@ class ProfileRequestScopeV108Tests(unittest.TestCase):
     def test_disabled_explicit_profile_is_rejected(self):
         self.registry.archive("friend-a")
 
-        status, _ = asgi_request(
+        status, response = asgi_request(
             self.app, "/api/test/profile-marker",
             headers={**self.headers, "X-Plex-Profile": "friend-a"},
         )
 
         self.assertEqual(400, status)
+        self.assertEqual("profile_unavailable", response["code"])
 
     def test_unscoped_profile_list_allows_stale_tab_recovery(self):
         self.registry.archive("friend-a")
@@ -132,6 +133,8 @@ class ProfileRequestScopeV108Tests(unittest.TestCase):
         self.assertIn("profile", script)
         self.assertIn("setProfile", script)
         self.assertIn("sessionStorage", script)
+        self.assertIn("profile_unavailable", script)
+        self.assertIn("syncProfile", script)
 
 
 if __name__ == "__main__":

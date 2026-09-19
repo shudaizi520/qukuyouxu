@@ -86,6 +86,7 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
         path = str(req.scope.get('path') or '')
         public_api = ('/api/auth/status', '/api/auth/login', '/api/auth/setup', '/api/auth/logout')
         profile_context = profiles.fixed_active()
+        requested_profile = ''
         if path.startswith('/api/') and path != '/api/plex/webhook':
             if path not in public_api:
                 session_user = auth.session_user(req.cookies.get(COOKIE_NAME))
@@ -120,7 +121,11 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
             with profile_context:
                 r = await call_next(req)
         except ValueError as exc:
-            return JSONResponse({'error': str(exc)[:300]}, status_code=400)
+            message = str(exc)[:300]
+            payload = {'error': message}
+            if requested_profile and message in ('Plex 档案已停用', 'Plex 档案不存在'):
+                payload['code'] = 'profile_unavailable'
+            return JSONResponse(payload, status_code=400)
         r.headers['Cache-Control'] = 'no-store'
         r.headers['X-Content-Type-Options'] = 'nosniff'
         r.headers['X-Frame-Options'] = 'DENY'

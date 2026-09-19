@@ -150,6 +150,69 @@ class DailyPublishedViewV108Tests(unittest.TestCase):
         self.assertIn("activeProfileLabel", page.ids)
         self.assertNotIn("instruction-card", page.classes)
 
+    def test_repair_rebuilds_the_published_view_from_the_repaired_plan(self):
+        from tests.test_daily_fixed_playlist import _recommendation
+
+        store, engine = self.make_engine()
+        with patch("helper.daily.recommend_rotating", side_effect=_recommendation):
+            plan = engine.preview_daily(now=NOW - 20)
+        plex = engine.plex_factory(store.get("settings"))
+        before = plex.create("每日推荐", ["3", "4"], engine.marker("daily"))
+        snapshot = {
+            "id": "repair-1", "kind": "daily", "category_id": "daily", "title": "每日推荐",
+            "created_at": NOW - 10, "status": "uncertain", "before": before,
+            "after": None, "add": ["1", "2"], "plan_id": plan["id"],
+            "machine": "machine-a", "scope": engine.daily_scope(), "before_daily_record": None,
+            "before_published_view": None,
+        }
+        store.set_many({
+            "snapshots": [snapshot], "daily_plan": plan,
+            "daily_published_view": {**PUBLISHED, "items": [{"id": "9", "title": "旧显示"}]},
+        })
+
+        engine.repair_daily("repair-1", now=NOW)
+
+        view = store.get("daily_published_view")
+        self.assertEqual(["1", "2"], [row["id"] for row in view["items"]])
+        self.assertEqual(before["id"], view["playlist_id"])
+
+    def test_rollback_restores_the_previous_published_view(self):
+        store, engine = self.make_engine()
+        plex = engine.plex_factory(store.get("settings"))
+        current = plex.create("每日推荐", ["1", "2"], engine.marker("daily"))
+        before = {**current, "items": [{"id": "3", "item_id": "old-3"}]}
+        previous = {
+            **PUBLISHED, "playlist_id": current["id"],
+            "items": [{"id": "3", "title": "原歌曲"}], "count": 1,
+        }
+        snapshot = {
+            "id": "restore-1", "kind": "daily", "category_id": "daily", "title": "每日推荐",
+            "created_at": NOW - 10, "status": "applied", "before": before, "after": current,
+            "add": ["1", "2"], "plan_id": "new-plan", "machine": "machine-a",
+            "scope": engine.daily_scope(),
+            "before_daily_record": {
+                "id": current["id"], "title": "每日推荐", "snapshot_id": "older",
+                "machine": "machine-a", "scope": engine.daily_scope(),
+            },
+            "before_published_view": previous,
+        }
+        store.set_many({
+            "snapshots": [snapshot],
+            "daily_managed": {
+                "id": current["id"], "title": "每日推荐", "snapshot_id": "restore-1",
+                "machine": "machine-a", "scope": engine.daily_scope(),
+            },
+            "daily_history": [
+                {"plan_id": "old-plan", "ids": ["3"]},
+                {"plan_id": "new-plan", "ids": ["1", "2"]},
+            ],
+            "daily_published_view": {**PUBLISHED, "items": [{"id": "1", "title": "新歌曲"}]},
+        })
+
+        engine._restore_daily_snapshot(snapshot)
+
+        self.assertEqual(previous, store.get("daily_published_view"))
+
 
 if __name__ == "__main__":
     unittest.main()

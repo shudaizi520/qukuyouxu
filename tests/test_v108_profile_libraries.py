@@ -106,11 +106,42 @@ class ProfileLibrariesV108Tests(unittest.TestCase):
         self.assertEqual("11", self.registry.get("default")["library"]["id"])
         self.assertEqual("15", result["profile"]["library"]["id"])
 
+    def test_unresolved_playlist_snapshot_also_creates_a_new_profile(self):
+        from helper.scoped_store import ScopedStore
+
+        scoped = ScopedStore(self.base, "default")
+        scoped.set("snapshots", [{"id": "pending", "kind": "daily", "status": "uncertain"}])
+
+        result = self.service.select_profile_library("default", "15")
+
+        self.assertEqual("created", result["mode"])
+        self.assertEqual("11", self.registry.get("default")["library"]["id"])
+        self.assertEqual("uncertain", scoped.get("snapshots")[0]["status"])
+
     def test_unmanaged_library_selection_switches_existing_profile(self):
         result = self.service.select_profile_library("shared-248098626", "15")
 
         self.assertEqual("switched", result["mode"])
         self.assertEqual("shared-248098626", result["profile"]["id"])
+
+    def test_selecting_existing_sibling_refreshes_registry_and_runtime_token(self):
+        from helper.scoped_store import ScopedStore
+
+        sibling = self.registry.create_for_library(
+            "default", {"id": "15", "name": "经典音乐"}
+        )
+        self.registry.update(sibling["id"], token="old-token")
+        sibling_store = ScopedStore(self.base, sibling["id"])
+        settings = dict(sibling_store.get("settings"))
+        settings["plex_token"] = "old-token"
+        sibling_store.set("settings", settings)
+        self.registry.update("default", token="renewed-owner-token")
+
+        result = self.service.select_profile_library("default", "15")
+
+        self.assertEqual(sibling["id"], result["profile"]["id"])
+        self.assertEqual("renewed-owner-token", self.registry.get(sibling["id"])["token"])
+        self.assertEqual("renewed-owner-token", sibling_store.get("settings")["plex_token"])
 
     def test_library_not_returned_by_target_token_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "无权访问"):
