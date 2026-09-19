@@ -17,13 +17,17 @@ class GithubWorkflowTests(unittest.TestCase):
         self.assertIn("python -m pip check", workflow)
         self.assertIn("python tools/check_repository.py", workflow)
 
-    def test_release_workflow_only_publishes_version_tags_for_both_architectures(self):
+    def test_release_workflow_publishes_images_and_a_github_release(self):
         workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
         self.assertIn("v*.*.*", workflow)
+        self.assertIn("contents: write", workflow)
         self.assertIn("packages: write", workflow)
         self.assertIn("linux/amd64,linux/arm64", workflow)
         self.assertIn("docker/build-push-action@v6", workflow)
         self.assertIn('python tools/check_release_version.py "$GITHUB_REF_NAME"', workflow)
+        self.assertIn('gh release create "$GITHUB_REF_NAME"', workflow)
+        self.assertIn("--generate-notes", workflow)
+        self.assertIn("--latest", workflow)
         self.assertNotIn("build-args: |", workflow)
 
 
