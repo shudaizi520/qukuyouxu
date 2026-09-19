@@ -56,22 +56,25 @@ class AuthManager:
         return self.credentials() is None
 
     def create_account(self, username: str, password: str):
-        if self.credentials() is not None:
-            raise ValueError('管理员账户已经建立')
         username = validate_username(username); password = validate_password(password)
         salt = os.urandom(16); digest = derive_password(password, salt)
         now = time.time()
-        self.store.set_many({
-            'auth_credentials': {
-                'username': username,
-                'salt': _b64(salt),
-                'password_hash': _b64(digest),
-                'iterations': PBKDF2_ITERATIONS,
-                'created_at': now,
-                'password_changed_at': now,
-            },
-            'auth_sessions': [],
-        })
+        # Keep the first-registration check and write under one process-wide store
+        # lock so two simultaneous browsers cannot both become administrator.
+        with self.store.lock:
+            if self.credentials() is not None:
+                raise ValueError('管理员账户已经建立')
+            self.store.set_many({
+                'auth_credentials': {
+                    'username': username,
+                    'salt': _b64(salt),
+                    'password_hash': _b64(digest),
+                    'iterations': PBKDF2_ITERATIONS,
+                    'created_at': now,
+                    'password_changed_at': now,
+                },
+                'auth_sessions': [],
+            })
         return username
 
     def verify(self, username: str, password: str) -> bool:

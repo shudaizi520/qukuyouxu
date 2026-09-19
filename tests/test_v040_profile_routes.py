@@ -256,6 +256,43 @@ class ActiveProfileStoreV040Tests(unittest.TestCase):
             self.assertEqual(stable_library_scope(active), snapshots["referenced"]["scope"])
             self.assertEqual("other-account-scope", snapshots["unrelated"]["scope"])
 
+    def test_scope_migration_does_not_adopt_unverifiable_legacy_removed_category(self):
+        from helper.connection_scope import migrate_managed_scopes
+        from helper.profiles import ProfileRegistry
+        from helper.scoped_store import ActiveProfileStore
+        from helper.store import Store
+
+        with tempfile.TemporaryDirectory() as root:
+            base = Store(Path(root))
+            registry = ProfileRegistry(base)
+            active = ActiveProfileStore(base, registry)
+            registry.update(
+                "default", account={"id": "10", "username": "owner"},
+                server={"machine": "machine-a", "url": "http://plex:32400"},
+                library={"id": "15", "name": "Music"}, token="secret",
+            )
+            settings = active.get("settings")
+            settings.update(plex_url="http://plex:32400", plex_token="secret", section="15")
+            active.set_many({
+                "settings": settings,
+                "plex_saved": {
+                    "account": {"id": "10", "username": "owner"},
+                    "server": {"machine": "machine-a", "url": "http://plex:32400"},
+                    "library": {"id": "15"},
+                },
+                "retired_managed": {"hot": {"snapshot_id": "removed-hot", "title": "网络热歌"}},
+                "snapshots": [{
+                    "id": "removed-hot", "kind": "managed_remove", "category_id": "hot",
+                    "machine": "machine-a", "scope": "", "status": "applied",
+                }],
+            })
+
+            migrate_managed_scopes(active)
+
+            self.assertNotIn("scope", active.get("retired_managed")["hot"])
+            snapshot = next(row for row in active.get("snapshots") if row["id"] == "removed-hot")
+            self.assertEqual("", snapshot["scope"])
+
 
 if __name__ == "__main__":
     unittest.main()

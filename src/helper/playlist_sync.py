@@ -13,6 +13,15 @@ READ_AFTER_WRITE_ATTEMPTS = 10
 READ_AFTER_WRITE_DELAY = 1.0
 
 
+def has_exact_members(state, desired):
+    """Return true when Plex has exactly the requested unique members, regardless of order."""
+    from .engine import state_ids
+    actual = state_ids(state)
+    expected = list(map(str, desired))
+    return (len(actual) == len(expected) and len(set(actual)) == len(actual)
+            and set(actual) == set(expected))
+
+
 def sync_owned_items(plex,before,desired):
     from .engine import SafetyError, fingerprint, state_ids
     desired=list(map(str,desired))
@@ -55,7 +64,7 @@ def sync_owned_items(plex,before,desired):
         plex.append(before['id'],missing)
         current=verify(expected)
 
-    if len(current['items'])!=len(desired) or set(state_ids(current))!=desired_set:
+    if not has_exact_members(current, desired):
         raise SafetyError('每日歌单成员替换后数量或集合不一致，停止更新')
 
     # Membership is the product contract. Some Plex servers acknowledge MOVE but

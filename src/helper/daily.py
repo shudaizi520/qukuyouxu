@@ -5,7 +5,7 @@ import uuid
 from .metadata import prepare_catalog
 from .recommend import recommend, DEFAULT_DAILY, DAILY_POLICY, song_key
 from .behavior import behavior_profile
-from .playlist_sync import sync_owned_items
+from .playlist_sync import has_exact_members, sync_owned_items
 from .audience import filter_childrens_context
 DAILY_CID = 'daily'
 CST = timezone(timedelta(hours=8))
@@ -321,10 +321,9 @@ class DailyMixin:
             if snap['before']:
                 after = sync_owned_items(p, current, [x['id'] for x in snap['before']['items']])
                 expected_ids = [str(x['id']) for x in snap['before']['items']]
-                actual_ids = state_ids(after)
                 if (after.get('title') != snap['before'].get('title')
                         or after.get('summary', '') != snap['before'].get('summary', '')
-                        or len(actual_ids) != len(expected_ids) or set(actual_ids) != set(expected_ids)):
+                        or not has_exact_members(after, expected_ids)):
                     raise SafetyError('恢复回读不一致')
                 restored = {**snap['before_daily_record'], 'fingerprint': fingerprint(after)}
             else:

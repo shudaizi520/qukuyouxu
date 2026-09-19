@@ -221,7 +221,7 @@ $('dailyForm').onsubmit=e=>{e.preventDefault();action(saveDailyPolicy);};
 $('dailyForm').addEventListener('input',()=>markDirty($('dailySave')));
 $('dailyHour').onchange=()=>action(saveDailyPolicy);
 $('dailyAuto').onchange=()=>{const enabled=$('dailyAuto').checked;action(async()=>{try{const r=await post('/api/daily/schedule',{enabled});note(r.message);}catch(error){$('dailyAuto').checked=!enabled;throw error;}finally{await refresh();}});};
-$('libraryAuto').onchange=()=>{const enabled=$('libraryAuto').checked;action(async()=>{try{if(enabled&&!await PCHUI.confirm('开启每天 00:00 检查新增歌曲？',{confirmText:'开启'})){$('libraryAuto').checked=false;return;}const r=await post('/api/workflow/schedule',{enabled,confirm:enabled});note(r.message);}catch(error){$('libraryAuto').checked=!enabled;throw error;}finally{await refresh();}});};
+$('libraryAuto').onchange=()=>{const enabled=$('libraryAuto').checked;action(async()=>{try{if(enabled&&!await PCHUI.confirm('开启每天 00:00 检查新增歌曲？',{confirmText:'开启'})){$('libraryAuto').checked=false;return;}const r=await post('/api/workflow/schedule',{enabled,confirm:true});note(r.message);}catch(error){$('libraryAuto').checked=!enabled;throw error;}finally{await refresh();}});};
 $('behaviorForm').onsubmit=e=>{e.preventDefault();action(async()=>{await post('/api/product/settings/verified',{behavior_enabled:$('behaviorEnabled').checked,behavior_account_id:$('behaviorUser').value});markSaved($('behaviorSave'));await refresh();});};
 $('behaviorForm').addEventListener('input',()=>markDirty($('behaviorSave')));
 $('behaviorEnabled').onchange=()=>{learningEnabled=$('behaviorEnabled').checked;updateLearningState();};

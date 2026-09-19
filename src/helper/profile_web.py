@@ -1,6 +1,7 @@
 """Profile APIs and connection-switch safety shared by every Plex flow."""
 from __future__ import annotations
 
+from contextlib import nullcontext
 from fastapi import Request
 
 from .profiles import ProfileRegistry
@@ -48,7 +49,8 @@ def connection_identity(store):
 def connection_is_protected(store):
     return bool(
         store.get("managed", {}) or store.get("daily_managed")
-        or store.get("smart_mix_managed", {}) or store.get("smart_mix_removed", {})
+        or store.get("retired_managed", {}) or store.get("smart_mix_managed", {})
+        or store.get("smart_mix_removed", {})
     )
 
 
@@ -149,9 +151,12 @@ def disconnect_profile_connection(store):
     return {"message": "Plex 已断开"}
 
 
-def attach_profile_routes(app, base_store, registry: ProfileRegistry, body, ensure_idle):
+def attach_profile_routes(app, base_store, registry: ProfileRegistry, body, ensure_idle, engine=None):
     from .plex_recipients import PlexRecipientService
     recipients = PlexRecipientService(base_store, registry)
+
+    def operation():
+        return engine.exclusive() if engine is not None else nullcontext()
 
     @app.get("/api/plex/profiles")
     def list_profiles():
@@ -161,16 +166,18 @@ def attach_profile_routes(app, base_store, registry: ProfileRegistry, body, ensu
     async def select_profile(request: Request):
         data = await body(request)
         ensure_idle()
-        return {"profile": registry.select(data.get("profile_id"))}
+        with operation():
+            return {"profile": registry.select(data.get("profile_id"))}
 
     @app.post("/api/plex/profiles/create")
     async def create_profile(request: Request):
         data = await body(request)
         ensure_idle()
-        profile = registry.create(
-            name=data.get("name"), kind="owner", profile_id=data.get("profile_id") or None
-        )
-        registry.select(profile["id"])
+        with operation():
+            profile = registry.create(
+                name=data.get("name"), kind="owner", profile_id=data.get("profile_id") or None
+            )
+            registry.select(profile["id"])
         return {"profile": profile, "message": "Plex 档案已建立，请完成官方授权。"}
 
     @app.post("/api/plex/profiles/remove")
@@ -179,14 +186,16 @@ def attach_profile_routes(app, base_store, registry: ProfileRegistry, body, ensu
         ensure_idle()
         if data.get("confirm") is not True:
             raise ValueError("请确认删除 Plex 档案；不会删除 Plex 歌单")
-        profile = registry.archive(data.get("profile_id"))
+        with operation():
+            profile = registry.archive(data.get("profile_id"))
         return {"profile": profile, "message": "已停止为这位用户生成推荐；Plex 歌单保留。"}
 
     @app.post("/api/plex/profiles/restore")
     async def restore_profile(request: Request):
         data = await body(request)
         ensure_idle()
-        profile = registry.restore(data.get("profile_id"))
+        with operation():
+            profile = registry.restore(data.get("profile_id"))
         return {"profile": profile, "message": "用户已重新加入每日推荐。"}
 
     @app.get("/api/plex/recipients/home")
@@ -201,9 +210,10 @@ def attach_profile_routes(app, base_store, registry: ProfileRegistry, body, ensu
     async def import_home_recipient(request: Request):
         data = await body(request)
         ensure_idle()
-        profile = recipients.import_home_user(
-            data.get("owner_profile_id", "default"), data.get("user_id"), data.get("library_id")
-        )
+        with operation():
+            profile = recipients.import_home_user(
+                data.get("owner_profile_id", "default"), data.get("user_id"), data.get("library_id")
+            )
         return {"profile": profile, "message": "Plex Home 用户已建立独立推荐档案。"}
 
     @app.get("/api/plex/recipients/shared")
@@ -214,7 +224,8 @@ def attach_profile_routes(app, base_store, registry: ProfileRegistry, body, ensu
     async def import_shared_recipient(request: Request):
         data = await body(request)
         ensure_idle()
-        profile = recipients.import_shared_user(
-            data.get("owner_profile_id", "default"), data.get("user_id"), data.get("library_id")
-        )
+        with operation():
+            profile = recipients.import_shared_user(
+                data.get("owner_profile_id", "default"), data.get("user_id"), data.get("library_id")
+            )
         return {"profile": profile, "message": "共享用户已建立独立推荐档案。"}

@@ -7,7 +7,7 @@ from datetime import datetime, time as datetime_time, timedelta, timezone
 from fastapi import Request
 
 from .engine import SafetyError, fingerprint, safe_error, state_ids, track_fingerprint
-from .playlist_sync import sync_owned_items
+from .playlist_sync import has_exact_members, sync_owned_items
 from .smart_mixes import KINDS, select_smart_mix
 
 
@@ -276,7 +276,8 @@ def publish_smart_mix(engine, plan_id, now=None):
                     plan["title"], ids, marker,
                     description="由曲库有序管理；只使用当前 Plex 音乐资料库，发布前必须预览确认。",
                 )
-            if after["title"] != plan["title"] or marker not in after.get("summary", "") or state_ids(after) != ids:
+            if (after["title"] != plan["title"] or marker not in after.get("summary", "")
+                    or not has_exact_members(after, ids)):
                 raise SafetyError("写入后回读与预览不一致，停止自动维护")
             snapshot.update(status="applied", after=after)
             engine._save_snapshot(snapshot)
@@ -584,7 +585,9 @@ def restore_smart_mix(engine, snapshot):
             managed_all.pop(kind, None)
         else:
             restored = sync_owned_items(plex, current, state_ids(before))
-            if fingerprint(restored) != fingerprint(before):
+            if (restored.get("title") != before.get("title")
+                    or restored.get("summary", "") != before.get("summary", "")
+                    or not has_exact_members(restored, state_ids(before))):
                 raise SafetyError("恢复后回读不一致")
             previous = snapshot.get("before_smart_record") or {}
             managed_all[kind] = {**previous, "id": restored["id"], "fingerprint": fingerprint(restored)}

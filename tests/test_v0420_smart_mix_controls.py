@@ -195,6 +195,46 @@ class SmartMixControlsV0420Tests(unittest.TestCase):
         self.assertEqual(managed["id"], self.store.get("smart_mix_managed")["weekly"]["id"])
         self.assertFalse(weekly_auto_due(self.engine, monday + 60))
 
+    def test_publish_accepts_plex_membership_when_server_keeps_its_own_order(self):
+        from helper.smart_mix_web import preview_smart_mix, publish_smart_mix
+
+        managed = self.publish()
+        current_ids = [row["id"] for row in self.plex.states[managed["id"]]["items"]]
+        plan = preview_smart_mix(
+            self.engine, "weekly", {"size": 10, "recent_days": 30}, now=NOW + 2
+        )
+        plans = self.store.get("smart_mix_plans")
+        plans["weekly"]["items"] = list(reversed(plans["weekly"]["items"]))
+        self.store.set("smart_mix_plans", plans)
+
+        result = publish_smart_mix(self.engine, plan["id"], now=NOW + 3)
+
+        self.assertEqual(managed["id"], result["playlist_id"])
+        self.assertEqual(current_ids, [row["id"] for row in self.plex.states[managed["id"]]["items"]])
+
+    def test_restore_accepts_plex_membership_when_server_keeps_its_own_order(self):
+        from helper.engine import fingerprint
+
+        managed = self.publish()
+        current = self.plex.playlist_state(managed["id"])
+        before = {**current, "items": list(reversed(current["items"]))}
+        snapshot = {
+            "id": "smart-order-restore", "kind": "smart_mix", "category_id": "smart:weekly",
+            "title": current["title"], "status": "applied", "action": "publish",
+            "before": before, "after": current, "machine": "machine-a",
+            "scope": self.engine.daily_scope(), "marker": self.engine.marker("smart:weekly"),
+            "before_smart_record": managed, "created_at": NOW + 1,
+        }
+        self.engine._save_snapshot(snapshot)
+        records = self.store.get("smart_mix_managed")
+        records["weekly"] = {**managed, "snapshot_id": snapshot["id"], "fingerprint": fingerprint(current)}
+        self.store.set("smart_mix_managed", records)
+
+        result = self.engine.restore(snapshot["id"])
+
+        self.assertIn("已恢复", result["message"])
+        self.assertEqual("restored", next(row for row in self.store.get("snapshots") if row["id"] == snapshot["id"])["status"])
+
     def test_ui_explains_collapsed_preview_and_exposes_safe_controls(self):
         script = (ROOT / "src" / "helper" / "static" / "mixes.js").read_text(encoding="utf-8")
         page = (ROOT / "src" / "helper" / "static" / "mixes.html").read_text(encoding="utf-8")

@@ -239,6 +239,7 @@ def remove_managed_playlist(engine, category_id, confirm_title):
             "marker": engine.marker(category_id),
             "plan_id": "",
             "machine": identity.get("machine", ""),
+            "scope": engine.daily_scope(),
             "before_managed": record,
         }
         engine._save_snapshot(snapshot)
@@ -253,7 +254,10 @@ def remove_managed_playlist(engine, category_id, confirm_title):
                     source["enabled"] = False
                     source["approved"] = False
             retired = dict(store.get("retired_managed", {}) or {})
-            retired[category_id] = {"snapshot_id": snapshot["id"], "title": title}
+            retired[category_id] = {
+                "snapshot_id": snapshot["id"], "title": title,
+                "machine": snapshot["machine"], "scope": snapshot["scope"],
+            }
             store.set_many({
                 "managed": managed, "sources": sources, "retired_managed": retired,
                 "plan": None,
@@ -270,7 +274,8 @@ def remove_managed_playlist(engine, category_id, confirm_title):
 
 
 def restore_removed_playlist(engine, snapshot_id):
-    from .engine import SafetyError, fingerprint, state_ids, safe_error
+    from .engine import SafetyError, fingerprint, safe_error
+    from .playlist_sync import has_exact_members
     with engine.exclusive():
         store = engine.store
         snapshots = store.get("snapshots", [])
@@ -281,6 +286,15 @@ def restore_removed_playlist(engine, snapshot_id):
         managed = dict(store.get("managed", {}) or {})
         if category_id in managed:
             raise SafetyError("该分类已有正在托管的歌单，拒绝重复创建")
+        retired = dict(store.get("retired_managed", {}) or {})
+        retired_record = retired.get(category_id) or {}
+        if retired_record.get("snapshot_id") != snapshot.get("id"):
+            raise SafetyError("只能恢复该分类最近移除的歌单")
+        scope = engine.daily_scope()
+        if not snapshot.get("scope") or not retired_record.get("scope"):
+            raise SafetyError("旧版本的恢复记录缺少资料库身份，无法安全自动恢复")
+        if snapshot.get("scope") != scope or retired_record.get("scope") != scope:
+            raise SafetyError("账户或资料库已经变化，不能恢复旧快照")
         before = snapshot.get("before") or {}
         if before.get("title") in PROTECTED_TITLES:
             raise SafetyError("受保护歌单不能通过分类恢复流程处理")
@@ -288,23 +302,29 @@ def restore_removed_playlist(engine, snapshot_id):
         identity = plex.identity()
         if snapshot.get("machine") and snapshot["machine"] != identity.get("machine"):
             raise SafetyError("Plex 服务器已经变化，不能恢复")
+        if any(str(row.get("title") or "") == str(before.get("title") or "") for row in plex.playlists()):
+            raise SafetyError("Plex 中已经存在同名歌单，不能重复恢复")
         ids = [str(row.get("id")) for row in before.get("items", [])]
         catalog = store.get("catalog", []) or []
         if catalog:
             usable = {str(row.get("id")) for row in catalog if row.get("available", True)}
             if any(value not in usable for value in ids):
                 raise SafetyError("原歌单包含当前曲库已不可用的歌曲，未执行恢复")
+        snapshot["status"] = "restoring"
+        engine._save_snapshot(snapshot)
         try:
             after = plex.create(before["title"], ids, snapshot["marker"], description="从助手安全快照恢复；默认停止维护。")
-            if after.get("title") != before.get("title") or snapshot["marker"] not in after.get("summary", "") or state_ids(after) != ids:
+            if (after.get("title") != before.get("title")
+                    or snapshot["marker"] not in after.get("summary", "")
+                    or not has_exact_members(after, ids)):
                 raise SafetyError("恢复后的歌单回读不一致")
             snapshot["status"] = "restored"
             engine._save_snapshot(snapshot)
             managed[category_id] = {
                 "id": after["id"], "title": after["title"], "fingerprint": fingerprint(after),
-                "snapshot_id": snapshot["id"],
+                "snapshot_id": snapshot["id"], "machine": snapshot.get("machine", ""),
+                "scope": snapshot["scope"],
             }
-            retired = dict(store.get("retired_managed", {}) or {})
             retired.pop(category_id, None)
             sources = store.get("sources", [])
             for source in sources:

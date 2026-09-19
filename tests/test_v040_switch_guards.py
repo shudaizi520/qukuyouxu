@@ -1,3 +1,5 @@
+import asyncio
+import contextlib
 import tempfile
 import unittest
 from pathlib import Path
@@ -48,6 +50,13 @@ class ProfileSwitchGuardV040Tests(unittest.TestCase):
 
         guard_connection_change(self.store, "11", "machine-b", "16")
 
+    def test_recently_removed_managed_playlist_still_protects_connection_identity(self):
+        from helper.profile_web import guard_connection_change
+
+        self.store.set("retired_managed", {"theme": {"snapshot_id": "removed-1"}})
+        with self.assertRaises(ValueError):
+            guard_connection_change(self.store, "10", "machine-a", "16")
+
     def test_library_save_uses_the_same_managed_switch_guard(self):
         self.store.set("managed", {"theme": {"id": "77"}})
         with patch.dict("sys.modules", {"fastapi": SimpleNamespace(Request=object)}):
@@ -56,6 +65,37 @@ class ProfileSwitchGuardV040Tests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 save_library(self.store, "16", "Another Library")
         self.assertEqual("15", self.store.get("plex_saved")["library"]["id"])
+
+    def test_library_select_route_waits_for_idle_and_uses_the_operation_lock(self):
+        from helper.plex_state_v0316 import attach_routes
+
+        settings = self.store.get("settings")
+        settings.update(plex_url="http://plex:32400", plex_token="secret", section="15")
+        self.store.set("settings", settings)
+
+        handlers = {}
+        class App:
+            def get(self, path):
+                return lambda fn: handlers.setdefault(("GET", path), fn) or fn
+            def post(self, path):
+                return lambda fn: handlers.setdefault(("POST", path), fn) or fn
+        calls = []
+        class Engine:
+            def exclusive(self):
+                @contextlib.contextmanager
+                def locked():
+                    calls.append("lock")
+                    yield
+                return locked()
+        async def body(_request):
+            return {"section": "15", "name": "Music"}
+        def ensure_idle():
+            calls.append("idle")
+
+        attach_routes(App(), self.store, Engine(), body, ensure_idle)
+        asyncio.run(handlers[("POST", "/api/plex/library/select")](object()))
+
+        self.assertEqual(["idle", "lock"], calls)
 
 
 if __name__ == "__main__":

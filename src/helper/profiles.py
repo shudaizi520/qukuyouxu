@@ -1,6 +1,8 @@
 """Plex profile registry and copy-only migration from the v0.3 state."""
 from __future__ import annotations
 
+from contextlib import contextmanager
+from contextvars import ContextVar
 import json
 import time
 import uuid
@@ -115,6 +117,7 @@ def _initial_state(profile):
 class ProfileRegistry:
     def __init__(self, store):
         self.store = store
+        self._request_profile = ContextVar(f"plex_profile_{id(self)}", default="")
         migrate_default_profile(store)
 
     def _load(self):
@@ -126,10 +129,27 @@ class ProfileRegistry:
     def _save(self, value):
         self.store.set(REGISTRY_KEY, value)
 
-    def active_id(self):
+    def _saved_active_id(self):
         value = self._load()
         active = str(value.get("active_profile_id") or "default")
         return active if active in value["profiles"] else "default"
+
+    def active_id(self):
+        pinned = self._request_profile.get()
+        if pinned:
+            return pinned
+        return self._saved_active_id()
+
+    @contextmanager
+    def fixed_active(self, profile_id=None):
+        """Keep dynamic stores and proxies on one profile for an entire request."""
+        selected = validate_profile_id(profile_id or self._saved_active_id())
+        self.get(selected)
+        token = self._request_profile.set(selected)
+        try:
+            yield selected
+        finally:
+            self._request_profile.reset(token)
 
     def get(self, profile_id):
         profile_id = validate_profile_id(profile_id)

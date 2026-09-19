@@ -1,3 +1,5 @@
+import asyncio
+import contextlib
 import inspect
 import sys
 import unittest
@@ -55,6 +57,30 @@ class ProfileHttpContractTests(unittest.TestCase):
                     "FastAPI would treat untyped 'request' as a required query parameter and return 422",
                 )
                 self.assertEqual("Request", parameter.annotation)
+
+    def test_profile_selection_uses_the_shared_operation_lock(self):
+        routes = _Routes()
+        calls = []
+        class Registry:
+            def select(self, profile_id):
+                calls.append(("select", profile_id))
+                return {"id": profile_id}
+        class Engine:
+            def exclusive(self):
+                @contextlib.contextmanager
+                def locked():
+                    calls.append("lock")
+                    yield
+                return locked()
+        async def body(_request):
+            return {"profile_id": "friend"}
+        def ensure_idle():
+            calls.append("idle")
+
+        attach_profile_routes(routes, object(), Registry(), body, ensure_idle, engine=Engine())
+        asyncio.run(routes.handlers[("POST", "/api/plex/profiles/select")](object()))
+
+        self.assertEqual(["idle", "lock", ("select", "friend")], calls)
 
 
 if __name__ == "__main__":

@@ -112,12 +112,17 @@ function renderUpstreamError(err,w,hold,cooling){
  text+=' 重试不保证成功；“仅用已有资料生成预览”不受这个时间限制。';
  $('retryExplanation').textContent=text;
 }
+function blockedReviewReasons(review){
+ return [...new Set((review?.groups||[]).flatMap(group=>group.blocked||[]).filter(Boolean))];
+}
 function renderReview(review,running){
  $('reviewPanel').hidden=!review;if(!review){reviewId='';return;}
  const usableGroups=review.groups.filter(group=>!group.blocked.length);
+ const blockedReasons=blockedReviewReasons(review);
  $('selectAll').disabled=!usableGroups.length;
  $('reviewMessage').textContent=review.expired?review.problem:'勾选需要的歌单，确认后才同步。首次确认的管理范围会记住，新分类或设置变化仍会先问你。';
  if(review.cache_only&&!review.expired)$('reviewMessage').textContent='本次仅使用已有有效缓存，没有联网扩充主题。过期、缺失或不完整来源不参与写入；请选择需要同步的结果。';
+ if(!usableGroups.length&&blockedReasons.length)$('reviewMessage').textContent=blockedReasons.join('；');
  if(reviewId!==review.id){
   reviewId=review.id;$('reviewRows').replaceChildren();
   for(const g of usableGroups){
@@ -208,7 +213,9 @@ function renderLibraryPresentation(w,phase,running){
  if(phase==='idle'){$('taskTitle').textContent='开始本轮整理';$('taskMessage').textContent=(w.summary?.managed?'已有 '+number(w.summary.managed)+' 个托管歌单，保留不变。':'')+'选择主题后，点击“检查新歌并预览”。';}
  const help={publishing:'正在同步，请勿重启应用。',attention:'保护已生效，未覆盖异常歌单。请查看运行详情。',paused:'进度已保留，可以继续整理。'};
  $('nextStep').hidden=true;if(help[phase])$('nextStep').textContent=help[phase];
- $('reviewMessage').hidden=!(w.review?.expired||w.review?.cache_only);
+ const allGroupsBlocked=!!w.review?.groups?.length&&!(w.review.groups.some(group=>!group.blocked.length));
+ const reviewNeedsMessage=!!(w.review?.expired||w.review?.cache_only||allGroupsBlocked&&blockedReviewReasons(w.review).length);
+ $('reviewMessage').hidden=!reviewNeedsMessage;
  const cfg=w.settings||{};
  $('autoDescription').textContent=cfg.enabled?'已开启 · 每天北京时间 00:00 检查一次':'未开启';
  if(!cfg.initialized&&!cfg.enabled)$('autoDescription').textContent='首次确认同步后可开启';

@@ -83,29 +83,32 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
 
     @app.middleware('http')
     async def security(req, call_next):
-        path = str(req.scope.get('path') or '')
-        if path.startswith('/api/') and path not in ('/api/auth/status', '/api/auth/login', '/api/auth/setup', '/api/auth/logout', '/api/plex/webhook'):
-            session_user = auth.session_user(req.cookies.get(COOKIE_NAME))
-            legacy_ok = False
-            if not session_user and auth.setup_required() and admin_token:
-                value = req.headers.get('authorization', '')
-                legacy_ok = hmac.compare_digest(value.encode(), ('Bearer ' + admin_token).encode())
-            if not session_user and (not legacy_ok):
-                return JSONResponse({'error': '请先登录'}, status_code=401)
-            origin = req.headers.get('origin')
-            try:
-                expected_origin = public_origin or _origin(f"{req.scope.get('scheme', 'http')}://{req.headers.get('host', '')}")
-                request_origin = _origin(origin) if origin else ''
-            except ValueError:
-                return JSONResponse({'error': '请求地址无效'}, status_code=400)
-            if request_origin and request_origin != expected_origin:
-                return JSONResponse({'error': '不允许跨站管理请求；请直接使用本应用地址'}, status_code=403)
-            try:
-                if int(req.headers.get('content-length', '0')) > 2 * 1024 * 1024:
-                    return JSONResponse({'error': '请求超过2MB'}, status_code=413)
-            except ValueError:
-                return JSONResponse({'error': '无效请求长度'}, status_code=400)
-        r = await call_next(req)
+        with profiles.fixed_active():
+            path = str(req.scope.get('path') or '')
+            public_api = ('/api/auth/status', '/api/auth/login', '/api/auth/setup', '/api/auth/logout')
+            if path.startswith('/api/') and path != '/api/plex/webhook':
+                if path not in public_api:
+                    session_user = auth.session_user(req.cookies.get(COOKIE_NAME))
+                    legacy_ok = False
+                    if not session_user and auth.setup_required() and admin_token:
+                        value = req.headers.get('authorization', '')
+                        legacy_ok = hmac.compare_digest(value.encode(), ('Bearer ' + admin_token).encode())
+                    if not session_user and (not legacy_ok):
+                        return JSONResponse({'error': '请先登录'}, status_code=401)
+                origin = req.headers.get('origin')
+                try:
+                    expected_origin = public_origin or _origin(f"{req.scope.get('scheme', 'http')}://{req.headers.get('host', '')}")
+                    request_origin = _origin(origin) if origin else ''
+                except ValueError:
+                    return JSONResponse({'error': '请求地址无效'}, status_code=400)
+                if request_origin and request_origin != expected_origin:
+                    return JSONResponse({'error': '不允许跨站管理请求；请直接使用本应用地址'}, status_code=403)
+                try:
+                    if int(req.headers.get('content-length', '0')) > 2 * 1024 * 1024:
+                        return JSONResponse({'error': '请求超过2MB'}, status_code=413)
+                except ValueError:
+                    return JSONResponse({'error': '无效请求长度'}, status_code=400)
+            r = await call_next(req)
         r.headers['Cache-Control'] = 'no-store'
         r.headers['X-Content-Type-Options'] = 'nosniff'
         r.headers['X-Frame-Options'] = 'DENY'
@@ -495,7 +498,7 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
         plan = store.get('plan') or {}
         export = {k: v for k, v in plan.items() if k not in ('signature', 'track_fingerprints')}
         return Response(json.dumps(export, ensure_ascii=False, indent=2), media_type='application/json', headers={'Content-Disposition': 'attachment; filename="classification-report.json"'})
-    attach_profile_routes(app, base_store, profiles, body, ensure_idle)
+    attach_profile_routes(app, base_store, profiles, body, ensure_idle, engine=engine)
     attach_webhook_route(app, base_store, profiles)
     attach_smart_mix_routes(app, store, engine, runtime, profiles, body, ensure_idle)
     attach_routes(app, store, engine, body, ensure_idle)

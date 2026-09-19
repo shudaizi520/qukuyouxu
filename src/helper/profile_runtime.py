@@ -38,18 +38,28 @@ class ProfileRuntime:
         self.engine_factory = engine_factory
         self._engines = {}
         self._lock = threading.RLock()
+        self.operation_gate = threading.Lock()
+        self.job_gate = threading.Lock()
         self.stop = threading.Event()
 
     def engine(self, profile_id):
         self.registry.get(profile_id)
         with self._lock:
             if profile_id not in self._engines:
-                self._engines[profile_id] = self.engine_factory(ScopedStore(self.base_store, profile_id))
+                instance = self.engine_factory(ScopedStore(self.base_store, profile_id))
+                # Every profile shares one mutation gate. This keeps the active profile
+                # stable for the full duration of an operation that uses ActiveEngineProxy.
+                instance.gate = self.operation_gate
+                instance.job_gate = self.job_gate
+                self._engines[profile_id] = instance
             return self._engines[profile_id]
 
     def _run_job(self, engine, kind, operation, now):
         from .engine import safe_error
 
+        if not self.job_gate.acquire(blocking=False):
+            from .engine import SafetyError
+            raise SafetyError("已有任务在执行，请等完成")
         lock = getattr(engine, "status_lock", self._lock)
         with lock:
             engine.job = {
@@ -68,10 +78,13 @@ class ProfileRuntime:
             raise
         finally:
             finished_at = time.time()
-            with lock:
-                engine.job["running"] = False
-                engine.job["finished_at"] = finished_at
-            engine.store.set("last_run", finished_at)
+            try:
+                engine.store.set("last_run", finished_at)
+            finally:
+                with lock:
+                    engine.job["running"] = False
+                    engine.job["finished_at"] = finished_at
+                self.job_gate.release()
 
     def run_due(self, now=None):
         now = time.time() if now is None else float(now)

@@ -93,6 +93,16 @@ class ReleaseBlockerTests(unittest.TestCase):
             status, _, _ = asgi_request(app, "/api/auth/setup", method="POST", body=payload)
             self.assertEqual(200, status)
 
+    def test_fresh_setup_rejects_cross_site_registration(self):
+        with tempfile.TemporaryDirectory() as root:
+            app = self._app(root)
+            payload = {"username": "admin", "password": "safe-password", "confirm_password": "safe-password"}
+            status, _, _ = asgi_request(
+                app, "/api/auth/setup", method="POST",
+                headers={"origin": "https://attacker.example"}, body=payload,
+            )
+            self.assertEqual(403, status)
+
     def test_fresh_setup_never_creates_a_setup_code(self):
         from helper.store import Store
         from helper.web import create_app

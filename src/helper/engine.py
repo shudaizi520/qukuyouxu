@@ -60,7 +60,7 @@ def retain_snapshots(rows,referenced_ids,now,days=365,per_stream=50):
 
 class Engine(RenamingMixin, DailyMixin):
     def __init__(self,store,plex_factory=None,qq=None):
-        self.store=store;self.gate=threading.Lock();self.stop=threading.Event();self.workflow_pause=threading.Event()
+        self.store=store;self.gate=threading.Lock();self.job_gate=threading.Lock();self.stop=threading.Event();self.workflow_pause=threading.Event()
         self.plex_factory=plex_factory or (lambda cfg:PlexClient(cfg['plex_url'],cfg['plex_token'],store=self.store))
         self.qq=qq or QQClient();self.status_lock=threading.Lock();self.job={'running':False,'message':'尚未运行','error':''}
 
@@ -326,11 +326,17 @@ class Engine(RenamingMixin, DailyMixin):
 
     def start_job(self,kind,**kwargs):
         with self.status_lock:
-            if self.job['running'] or self.gate.locked():raise SafetyError('已有任务在执行，请等完成')
-            self.workflow_pause.clear()
-            self.store.set('workflow_pause_state',None)
-            if kind=='preview':self.store.set('plan',None)
-            self.job={'running':True,'kind':kind,'message':'任务开始','error':'','started_at':time.time(),'progress_current':0,'progress_total':0}
+            if (self.job['running'] or self.gate.locked()
+                    or not self.job_gate.acquire(blocking=False)):
+                raise SafetyError('已有任务在执行，请等完成')
+            try:
+                self.workflow_pause.clear()
+                self.store.set('workflow_pause_state',None)
+                if kind=='preview':self.store.set('plan',None)
+                self.job={'running':True,'kind':kind,'message':'任务开始','error':'','started_at':time.time(),'progress_current':0,'progress_total':0}
+            except Exception:
+                self.job_gate.release()
+                raise
         def work():
             try:
                 if kind=='preview':self.preview(kwargs.get('force_sources',False))
@@ -360,7 +366,13 @@ class Engine(RenamingMixin, DailyMixin):
                 try:self.store.set('last_run',finished_at)
                 finally:
                     with self.status_lock:self.job['running']=False;self.job['finished_at']=finished_at
-        threading.Thread(target=work,daemon=True,name='playlist-job').start()
+                    self.job_gate.release()
+        try:
+            threading.Thread(target=work,daemon=True,name='playlist-job').start()
+        except Exception:
+            with self.status_lock:self.job['running']=False
+            self.job_gate.release()
+            raise
         return {'message':'已开始，在页面查看进度'}
 
     def scheduler(self):

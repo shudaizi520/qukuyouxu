@@ -226,7 +226,9 @@ def attach_routes(app, store, engine, body, ensure_idle):
     @app.post("/api/plex/library/select")
     async def plex_library_select(request: Request):
         data = await body(request)
-        return save_library(store, data.get("section"), data.get("name", ""))
+        ensure_idle()
+        with engine.exclusive():
+            return save_library(store, data.get("section"), data.get("name", ""))
 
     @app.post("/api/plex/check")
     def plex_check():

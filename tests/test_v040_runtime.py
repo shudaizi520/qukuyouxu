@@ -1,4 +1,6 @@
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -61,6 +63,7 @@ class ProfileRuntimeV040Tests(unittest.TestCase):
         self.assertEqual("friend-secret", friend.store.get("settings")["plex_token"])
         self.assertEqual(["owner-history"], owner.store.get("daily_history"))
         self.assertEqual(["friend-history"], friend.store.get("daily_history"))
+        self.assertIs(owner.gate, friend.gate)
 
     def test_idle_run_does_not_call_any_profile_operation(self):
         from helper.profile_runtime import ProfileRuntime
@@ -139,6 +142,40 @@ class ProfileRuntimeV040Tests(unittest.TestCase):
         self.assertEqual("default", active.store.profile_id)
         self.registry.select("friend-42")
         self.assertEqual("friend-42", active.store.profile_id)
+
+    def test_pinned_request_keeps_the_original_profile_after_global_selection_changes(self):
+        from helper.profile_runtime import ActiveEngineProxy, ProfileRuntime
+
+        calls = []
+        runtime = ProfileRuntime(self.base, self.registry, engine_factory=lambda store: _Engine(store, calls))
+        active = ActiveEngineProxy(runtime, self.registry)
+
+        with self.registry.fixed_active():
+            self.assertEqual("default", active.store.profile_id)
+            self.registry.select("friend-42")
+            self.assertEqual("default", active.store.profile_id)
+        self.assertEqual("friend-42", active.store.profile_id)
+
+    def test_only_one_profile_can_admit_a_background_job_at_a_time(self):
+        from helper.engine import Engine, SafetyError
+        from helper.profile_runtime import ProfileRuntime
+
+        release = threading.Event()
+        runtime = ProfileRuntime(self.base, self.registry, engine_factory=Engine)
+        owner = runtime.engine("default")
+        friend = runtime.engine("friend-42")
+        owner.preview = lambda *_args, **_kwargs: release.wait(2)
+        friend.preview = lambda *_args, **_kwargs: None
+
+        owner.start_job("preview")
+        try:
+            with self.assertRaisesRegex(SafetyError, "已有任务"):
+                friend.start_job("preview")
+        finally:
+            release.set()
+            deadline = time.time() + 2
+            while owner.job["running"] and time.time() < deadline:
+                time.sleep(0.01)
 
 
 if __name__ == "__main__":

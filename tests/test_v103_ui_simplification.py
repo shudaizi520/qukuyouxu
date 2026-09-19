@@ -95,6 +95,19 @@ class UISimplificationV103Tests(unittest.TestCase):
         self.assertNotIn("还差 1 步", html)
         self.assertNotIn("请选择要学习的 Plex 用户", html)
 
+    def test_disabling_library_auto_update_is_an_explicit_confirmed_action(self):
+        script = (STATIC / "settings.js").read_text(encoding="utf-8")
+
+        self.assertIn("{enabled,confirm:true}", script)
+        self.assertNotIn("{enabled,confirm:enabled}", script)
+
+    def test_library_review_shows_the_reason_when_every_playlist_is_blocked(self):
+        script = (STATIC / "home.js").read_text(encoding="utf-8")
+
+        self.assertIn("function blockedReviewReasons", script)
+        self.assertIn("blockedReasons.length", script)
+        self.assertIn("reviewNeedsMessage", script)
+
 
 if __name__ == "__main__":
     unittest.main()
