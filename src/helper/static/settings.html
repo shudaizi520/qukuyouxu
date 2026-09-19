@@ -4,9 +4,9 @@
  <meta charset="utf-8">
  <meta name="viewport" content="width=device-width,initial-scale=1">
  <title>曲库有序 · 设置</title>
- <link rel="stylesheet" href="/static/product.css?v=1.1.1">
- <script defer src="/static/auth.js?v=1.1.1"></script>
- <script defer src="/static/settings.js?v=1.1.1"></script>
+ <link rel="stylesheet" href="/static/product.css?v=1.1.2">
+ <script defer src="/static/auth.js?v=1.1.2"></script>
+ <script defer src="/static/settings.js?v=1.1.2"></script>
 </head>
 <body data-view="settings" data-auth-state="checking">
 <div id="bootScreen" class="auth-boot"><div class="boot-mark">♫</div><strong>曲库有序</strong><span>正在进入你的音乐库…</span></div>
@@ -21,7 +21,7 @@
 
 <div id="workspace" hidden>
  <header class="topbar">
-  <a class="brand" href="/"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v1.1.1</small></span></a>
+  <a class="brand" href="/"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v1.1.2</small></span></a>
   <nav><a href="/">每日推荐</a><a href="/mixes">智能歌单</a><a href="/library">曲库整理</a><a href="/status">运行状态</a><a class="active" href="/settings">设置</a></nav>
   <button class="logout" data-auth-logout hidden>退出</button>
  </header>
@@ -32,7 +32,6 @@
    <h1>设置</h1>
    <button class="settings-nav-item active" type="button" data-settings-target="accounts">账户与成员</button>
    <button class="settings-nav-item" type="button" data-settings-target="recommend">推荐规则</button>
-   <button class="settings-nav-item" type="button" data-settings-target="learning">播放学习</button>
    <button class="settings-nav-item" type="button" data-settings-target="automation">自动任务</button>
    <button class="settings-nav-item" type="button" data-settings-target="system">系统</button>
   </aside>
@@ -57,6 +56,7 @@
     <section id="people" class="settings-section">
      <div class="settings-section-title"><h3>每日推荐用户</h3><button class="primary compact-button" type="button" id="openAddUser">添加用户</button></div>
      <div id="managedUserList" class="settings-user-list" aria-live="polite"></div>
+     <div id="webhookTools" class="profile-webhook-tools"><div class="settings-section-title"><h3>Plex 播放事件</h3><span id="webhookMessage" aria-live="polite">正在检查</span></div><div class="webhook-setup-action"><code id="webhookUrl" aria-label="Plex Webhook 地址"></code><span class="webhook-action-buttons"><button id="copyWebhook" class="secondary" type="button">复制地址</button><a class="primary link" href="https://app.plex.tv/desktop/#!/settings/webhooks" target="_blank" rel="noopener noreferrer">打开 Webhooks</a><button id="webhookHelpToggle" class="secondary" type="button">设置帮助</button></span></div><p id="webhookHelp" class="settings-status-line" hidden>在 Plex Webhooks 中添加上方地址，然后播放一首歌。</p><p id="webhookLast" class="settings-status-line"></p></div>
      <div id="batchDailyTools" class="settings-row batch-daily-tools" hidden><strong>批量每日推荐</strong><div class="batch-daily-controls"><label class="batch-auto-toggle"><span>全部每日更新</span><span id="batchDailyAutoPartial" class="batch-auto-partial" hidden>部分开启</span><input id="batchDailyAuto" class="toggle" type="checkbox"></label><div class="settings-actions"><button id="batchPreview" class="secondary" type="button">生成预览</button><button id="batchPublish" class="primary" type="button" disabled>发布</button></div></div></div>
      <div id="batchResults" class="batch-results compact-results" hidden></div>
     </section>
@@ -75,18 +75,6 @@
     </form>
    </section>
 
-   <section id="settings-learning" class="settings-panel" hidden>
-    <div class="settings-page-head"><h2>播放学习</h2><span id="webhookState" class="connection-state">未接通</span></div>
-    <section id="learningCard" class="settings-section learning-card">
-    <form id="behaviorForm" class="settings-form-rows">
-     <label class="settings-row"><span>根据播放行为学习</span><input id="behaviorEnabled" class="toggle" type="checkbox"></label>
-     <label class="settings-row"><span>学习账户</span><select id="behaviorUser"><option value="">请选择 Plex 用户</option></select></label>
-     <div class="settings-form-footer"><button id="behaviorSave" class="primary settings-save" type="submit">保存更改</button></div>
-    </form>
-    <div id="webhookTools" class="learning-webhook"><div class="settings-section-title"><h3>Plex 播放事件</h3><span id="webhookMessage" aria-live="polite">正在检查</span></div><div class="webhook-setup-action"><code id="webhookUrl" aria-label="Plex Webhook 地址"></code><span class="webhook-action-buttons"><button id="copyWebhook" class="secondary" type="button">复制地址</button><a class="primary link" href="https://app.plex.tv/desktop/#!/settings/webhooks" target="_blank" rel="noopener noreferrer">打开 Webhooks</a><button id="webhookHelpToggle" class="secondary" type="button">设置帮助</button></span></div><p id="webhookHelp" class="settings-status-line" hidden>在 Plex 账户的 Webhooks 中添加上方地址，保存后播放一首歌。</p><p id="webhookLast" class="settings-status-line"></p></div>
-    </section>
-   </section>
-
    <section id="settings-automation" class="settings-panel" hidden>
     <div class="settings-page-head"><h2>自动任务</h2></div>
     <section class="settings-section settings-form-rows">
@@ -98,7 +86,7 @@
 
    <section id="settings-system" class="settings-panel" hidden>
     <div class="settings-page-head"><h2>系统</h2></div>
-    <section class="settings-section settings-form-rows"><div class="settings-row"><span>QQ 曲库资料</span><a class="secondary button" href="/library">管理授权</a></div><div class="settings-row"><span>运行状态</span><a class="secondary button" href="/status">查看</a></div><div class="settings-row"><span>软件版本</span><strong id="systemVersion" class="settings-static-value">1.1.1</strong></div></section>
+    <section class="settings-section settings-form-rows"><div class="settings-row"><span>QQ 曲库资料</span><a class="secondary button" href="/library">管理授权</a></div><div class="settings-row"><span>运行状态</span><a class="secondary button" href="/status">查看</a></div><div class="settings-row"><span>软件版本</span><strong id="systemVersion" class="settings-static-value">1.1.2</strong></div></section>
     <details id="passwordTools" class="settings-section settings-expander"><summary><span>登录密码</span><span id="accountName">admin</span></summary><div class="settings-expander-body"><form id="passwordForm" class="form-grid"><div class="field"><label for="currentPassword">当前密码</label><input id="currentPassword" type="password" autocomplete="current-password"></div><div class="field"><label for="newPassword">新密码</label><input id="newPassword" type="password" autocomplete="new-password" minlength="8"></div><div class="field"><label for="confirmPassword">确认新密码</label><input id="confirmPassword" type="password" autocomplete="new-password" minlength="8"></div><div class="field full"><button class="primary" type="submit">修改密码</button></div></form></div></details>
    </section>
   </div>

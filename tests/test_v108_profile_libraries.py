@@ -218,6 +218,40 @@ class ProfileLibraryRoutesV108Tests(unittest.TestCase):
         self.assertEqual("42", discovered["account"]["id"])
         self.assertEqual("15", selected["profile"]["library"]["id"])
 
+    def test_profile_learning_switch_updates_only_the_selected_profile_and_keeps_history(self):
+        from helper.scoped_store import ScopedStore
+
+        self.registry.update(
+            "default",
+            account={"id": "10", "username": "owner"},
+            server={"machine": "m1"},
+            library={"id": "11", "name": "音乐"},
+        )
+        second = self.registry.create(
+            name="经典音乐", kind="owner", profile_id="owner-classics",
+            account={"id": "10", "username": "owner"},
+            server={"machine": "m1"}, library={"id": "15", "name": "经典音乐"},
+        )
+        target = ScopedStore(self.base, second["id"])
+        target.set_many({
+            "behavior_events": [{"track_id": "7", "at": 10}],
+            "daily_plan": {"id": "old-daily-preview"},
+            "smart_mix_plans": {"old-smart-preview": {"id": "old-smart-preview"}},
+        })
+
+        result = asyncio.run(self.handlers[("POST", "/api/plex/profiles/learning")](
+            {"profile_id": second["id"], "enabled": False}
+        ))
+        listed = asyncio.run(self.handlers[("GET", "/api/plex/profiles")]())
+        rows = {row["id"]: row for row in listed["items"]}
+
+        self.assertFalse(result["behavior_enabled"])
+        self.assertFalse(rows[second["id"]]["behavior_enabled"])
+        self.assertTrue(rows["default"]["behavior_enabled"])
+        self.assertEqual([{"track_id": "7", "at": 10}], target.get("behavior_events"))
+        self.assertIsNone(target.get("daily_plan"))
+        self.assertEqual({}, target.get("smart_mix_plans"))
+
 
 if __name__ == "__main__":
     unittest.main()

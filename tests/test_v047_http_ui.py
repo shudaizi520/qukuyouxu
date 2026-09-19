@@ -74,8 +74,8 @@ class HttpAndUiV047Tests(unittest.TestCase):
         self.assertIn("if(!copied)throw Error", script)
         self.assertNotIn('window.open(PLEX_WEBHOOK_SETTINGS', script)
         self.assertIn('startWebhookPolling', script)
-        self.assertIn("if(learningEnabled&&!learningAccount)label='选择账户'", script)
-        self.assertIn("state==='learning')label='学习中'", script)
+        self.assertIn("connected?'接收正常':'需要设置'", script)
+        self.assertIn("profile-learning-toggle", script)
         self.assertNotIn("not_connected:'学习中'", script)
         self.assertIn("a.primary.link{color:#fff", styles)
 

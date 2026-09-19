@@ -7,6 +7,7 @@ from contextlib import nullcontext
 from datetime import datetime, time as datetime_time, timedelta, timezone
 from fastapi import Request
 
+from .behavior import profile_behavior_subject
 from .engine import SafetyError, fingerprint, safe_error, state_ids, track_fingerprint
 from .playlist_sync import has_exact_members, sync_owned_items
 from .smart_mixes import KINDS, select_smart_mix
@@ -43,11 +44,27 @@ def _configured(engine):
 
 def _history_events(engine):
     """Use only already-isolated account history; never borrow another profile."""
+    if (engine.store.get("product_settings", {}) or {}).get("behavior_enabled", True) is False:
+        return []
     cached = engine.store.get("plex_history_cache", {}) or {}
-    profile = engine.store.get("product_settings", {}) or {}
-    expected = str(profile.get("behavior_account_id") or "")
+    subject = profile_behavior_subject(engine.store)
+    expected = str(subject.get("account_id") or "")
+    username = str(subject.get("username") or "").casefold()
+    local_account_id = str(cached.get("account_id") or "")
     scope = str(cached.get("scope") or "")
-    if expected and scope == f"{engine.daily_scope()}:{engine.store.get('settings', {}).get('section')}:{expected}":
+    same_profile = (
+        expected
+        and str(cached.get("profile_account_id") or "") == expected
+        and (
+            not username
+            or str(cached.get("profile_username") or "").casefold() == username
+        )
+    )
+    if (
+        same_profile
+        and local_account_id
+        and scope == f"{engine.daily_scope()}:{engine.store.get('settings', {}).get('section')}:{local_account_id}"
+    ):
         return list(cached.get("events") or [])
     return []
 

@@ -5,6 +5,7 @@ from contextlib import nullcontext
 from fastapi import Request
 
 from .profiles import ProfileRegistry
+from .scoped_store import ScopedStore
 
 
 def _identity_document(store):
@@ -163,9 +164,42 @@ def attach_profile_routes(app, base_store, registry: ProfileRegistry, body, ensu
     def operation():
         return engine.exclusive() if engine is not None else nullcontext()
 
+    def public_profiles():
+        rows = registry.list_public(enabled_only=True)
+        for row in rows:
+            settings = ScopedStore(base_store, row["id"]).get("product_settings", {}) or {}
+            row["behavior_enabled"] = settings.get("behavior_enabled", True) is not False
+        return rows
+
     @app.get("/api/plex/profiles")
     async def list_profiles():
-        return {"active_profile_id": registry.active_id(), "items": registry.list_public(enabled_only=True)}
+        return {"active_profile_id": registry.active_id(), "items": public_profiles()}
+
+    @app.post("/api/plex/profiles/learning")
+    async def set_profile_learning(request: Request):
+        data = await body(request)
+        profile_id = str(data.get("profile_id") or "").strip()
+        if not profile_id:
+            raise ValueError("请选择用户")
+        if not isinstance(data.get("enabled"), bool):
+            raise ValueError("播放学习开关状态无效")
+        ensure_idle()
+        with operation():
+            profile = registry.get(profile_id)
+            if profile.get("enabled") is False:
+                raise ValueError("该用户已停用")
+            scoped = ScopedStore(base_store, profile_id)
+            settings = dict(scoped.get("product_settings", {}) or {})
+            changed = (settings.get("behavior_enabled", True) is not False) != data["enabled"]
+            settings["behavior_enabled"] = data["enabled"]
+            values = {"product_settings": settings}
+            if changed:
+                values.update(daily_plan=None, smart_mix_plans={})
+            scoped.set_many(values)
+        return {
+            "profile_id": profile_id,
+            "behavior_enabled": data["enabled"],
+        }
 
     @app.get("/api/plex/profiles/libraries")
     def list_profile_libraries(profile_id: str = "default"):

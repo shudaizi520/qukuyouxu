@@ -127,7 +127,7 @@ def _initial_state(profile):
         "daily_settings": dict(DEFAULT_DAILY), "base_settings": dict(DEFAULT_BASE),
         "feedback": {"tracks": {}, "artists": {}}, "daily_history": [],
         "behavior_events": [], "behavior_sessions": {}, "behavior_status": {},
-        "product_settings": {"behavior_enabled": True, "behavior_user": ""},
+        "product_settings": {"behavior_enabled": True},
     }
 
 

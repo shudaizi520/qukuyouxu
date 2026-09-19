@@ -110,6 +110,7 @@ def parse_webhook_payload(payload: dict):
         "track_id": track_id,
         "account_id": account_id,
         "machine": machine,
+        "library_id": str(metadata.get("librarySectionID") or "").strip(),
         "user": str(account.get("title") or account.get("username") or "")[:120],
         "player_id": str(player.get("uuid") or player.get("machineIdentifier") or "")[:160],
         "title": str(metadata.get("title") or "")[:300],
@@ -142,19 +143,25 @@ def parse_webhook_payload(payload: dict):
     return signal
 
 
-def _matching_profiles(registry, machine, account_id):
+def _matching_profiles(registry, machine, account_id, library_id=""):
     profiles = [
         row for row in registry.list_public()
         if row.get("enabled") is not False
         and str((row.get("server") or {}).get("machine") or "") == machine
     ]
     exact = [
-        row["id"] for row in profiles
+        row for row in profiles
         if str((row.get("account") or {}).get("id") or "") == account_id
     ]
-    if exact or account_id != "1":
-        return exact
-    return [row["id"] for row in profiles if row.get("kind") == "owner"]
+    candidates = exact if exact or account_id != "1" else [
+        row for row in profiles if row.get("kind") == "owner"
+    ]
+    if library_id:
+        candidates = [
+            row for row in candidates
+            if str((row.get("library") or {}).get("id") or "") == library_id
+        ]
+    return [row["id"] for row in candidates]
 
 
 def _event_key(signal, playback_id):
@@ -178,7 +185,11 @@ def _record_ingress(base_store, signal, result, now):
         "reason": str(result.get("reason") or "")[:80],
         "profile_id": str(result.get("profile_id") or "")[:48],
     }
-    if receipt["profile_id"] and receipt["status"] in ("accepted", "recorded", "duplicate"):
+    valid_transport = (
+        receipt["status"] in ("accepted", "recorded", "duplicate")
+        or (receipt["status"] == "ignored" and receipt["reason"] == "disabled")
+    )
+    if receipt["profile_id"] and valid_transport:
         profiles[receipt["profile_id"]] = dict(receipt)
     base_store.set(WEBHOOK_INGRESS_KEY, {**receipt, "profiles": profiles})
     return result
@@ -211,10 +222,28 @@ def webhook_health(base_store, profile_store, now=None):
     if secret_created_at is None:
         secret_created_at = now
     latest = base_store.get(WEBHOOK_INGRESS_KEY, {}) or {}
+    profile_receipts = latest.get("profiles") or {}
+    if not isinstance(profile_receipts, dict):
+        profile_receipts = {}
+    global_receipts = [latest, *profile_receipts.values()]
+    global_receipts = [
+        row for row in global_receipts
+        if isinstance(row, dict)
+        and (_number(row.get("received_at"), 0) or 0) >= secret_created_at
+        and (
+            row.get("status") in ("accepted", "recorded", "duplicate")
+            or (row.get("status") == "ignored" and row.get("reason") == "disabled")
+        )
+    ]
+    global_ingress = max(
+        global_receipts,
+        key=lambda row: _number(row.get("received_at"), 0) or 0,
+        default={},
+    )
     events = recent_behavior_events(profile_store.get("behavior_events", []) or [], now)
     product = profile_store.get("product_settings", {}) or {}
     profile_id = str(getattr(profile_store, "profile_id", "") or "")
-    ingress = (latest.get("profiles") or {}).get(profile_id) or latest
+    ingress = profile_receipts.get(profile_id) or latest
     matched = bool(
         ingress.get("received_at")
         and (_number(ingress.get("received_at"), 0) or 0) >= secret_created_at
@@ -233,6 +262,7 @@ def webhook_health(base_store, profile_store, now=None):
     return {
         "enabled": enabled,
         "connected": matched,
+        "global_connected": bool(global_ingress),
         "state": state,
         "event_count": len(events),
         "last_received_at": ingress.get("received_at") if matched else None,
@@ -240,6 +270,8 @@ def webhook_health(base_store, profile_store, now=None):
         "last_status": ingress.get("status", ""),
         "last_reason": ingress.get("reason", ""),
         "last_behavior_at": max((_number(row.get("at"), 0) or 0 for row in events), default=None),
+        "global_last_received_at": global_ingress.get("received_at"),
+        "global_last_event": global_ingress.get("event", ""),
         "endpoint_path": endpoint_path,
     }
 
@@ -249,7 +281,9 @@ def apply_webhook_event(base_store, registry, payload, now=None):
     signal = parse_webhook_payload(payload)
     if not signal:
         return _record_ingress(base_store, signal, {"status": "ignored", "reason": "unsupported_or_incomplete"}, now)
-    matches = _matching_profiles(registry, signal["machine"], signal["account_id"])
+    matches = _matching_profiles(
+        registry, signal["machine"], signal["account_id"], signal.get("library_id") or ""
+    )
     if len(matches) != 1:
         return _record_ingress(base_store, signal, {"status": "ignored", "reason": "identity_not_unique"}, now)
     profile_id = matches[0]

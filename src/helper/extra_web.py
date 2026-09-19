@@ -115,7 +115,7 @@ def extensions_status(store):
     active_sessions = active_session_count(store.get('behavior_sessions', {}) or {})
     behavior = {'enabled': product.get('behavior_enabled', True), 'event_count': len(events), 'positive_tracks': sum((1 for row in profile.values() if (row.get('score') or 0) > 0)), 'negative_tracks': sum((1 for row in profile.values() if (row.get('score') or 0) < 0)), 'active_sessions': active_sessions, 'updated_at': behavior_status.get('updated_at'), 'status': behavior_status.get('status', 'waiting')}
     base_store = getattr(store, 'base', store)
-    return {'source_settings': store.get('source_settings', {'reference_limit': 12}), 'metadata_summary': {'review': sum((counts.get(k, 0) for k in ('conflict', 'incomplete', 'stale_correction'))), 'confirmed': counts.get('confirmed', 0), 'breakdown': dict(counts)}, 'base_settings': {**DEFAULT_BASE, **(store.get('base_settings') or {})}, 'base_plan': public_base(store), 'base_notice': store.get('base_notice', ''), 'daily_settings': {**DEFAULT_DAILY, **store.get('daily_settings', {})}, 'daily_plan': public_daily(store), 'daily_published': public_daily_published(store), 'daily_managed': {k: managed.get(k) for k in ('id', 'title', 'date')} if managed else None, 'daily_repair': public_daily_repair(store), 'daily_notice': store.get('daily_notice', ''), 'behavior': behavior, 'status_refresh_ms': 5000 if behavior['active_sessions'] else 45000, 'webhook': webhook_health(base_store, store), 'active_profile': public_active_profile(store), 'product_settings': {'behavior_enabled': product.get('behavior_enabled', True), 'behavior_user': str(product.get('behavior_user') or '')[:120]}, 'feedback': store.get('feedback', {'tracks': {}, 'artists': {}})}
+    return {'source_settings': store.get('source_settings', {'reference_limit': 12}), 'metadata_summary': {'review': sum((counts.get(k, 0) for k in ('conflict', 'incomplete', 'stale_correction'))), 'confirmed': counts.get('confirmed', 0), 'breakdown': dict(counts)}, 'base_settings': {**DEFAULT_BASE, **(store.get('base_settings') or {})}, 'base_plan': public_base(store), 'base_notice': store.get('base_notice', ''), 'daily_settings': {**DEFAULT_DAILY, **store.get('daily_settings', {})}, 'daily_plan': public_daily(store), 'daily_published': public_daily_published(store), 'daily_managed': {k: managed.get(k) for k in ('id', 'title', 'date')} if managed else None, 'daily_repair': public_daily_repair(store), 'daily_notice': store.get('daily_notice', ''), 'behavior': behavior, 'status_refresh_ms': 5000 if behavior['active_sessions'] else 45000, 'webhook': webhook_health(base_store, store), 'active_profile': public_active_profile(store), 'product_settings': {'behavior_enabled': product.get('behavior_enabled', True)}, 'feedback': store.get('feedback', {'tracks': {}, 'artists': {}})}
 
 def attach_routes(app, store, engine, body, ensure_idle):
 
@@ -272,24 +272,6 @@ def attach_routes(app, store, engine, body, ensure_idle):
             if cfg != old:
                 store.set('daily_plan', None)
         return {'message': '每日推荐设置已保存；不立即改歌单。不使用 Sonic Analysis。'}
-
-    @app.post('/api/product/settings')
-    async def product_settings(req: Request):
-        d = await body(req)
-        ensure_idle()
-        enabled = d.get('behavior_enabled')
-        if not isinstance(enabled, bool):
-            raise ValueError('播放行为学习开关必须为开或关')
-        user = str(d.get('behavior_user') or '').strip()
-        if len(user) > 120 or any((ord(c) < 32 for c in user)):
-            raise ValueError('Plex 用户名过滤不正确')
-        with engine.exclusive():
-            old = store.get('product_settings') or {'behavior_enabled': True, 'behavior_user': ''}
-            changes = {'product_settings': {'behavior_enabled': enabled, 'behavior_user': user}}
-            if str(old.get('behavior_user') or '') != user:
-                changes.update(behavior_events=[], behavior_sessions={}, behavior_status={})
-            store.set_many(changes)
-        return {'message': '播放行为学习设置已保存；只读取 Plex 播放会话，不修改评分或收藏。'}
 
     @app.post('/api/daily/schedule')
     async def daily_schedule(req: Request):

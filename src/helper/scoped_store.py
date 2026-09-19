@@ -22,9 +22,10 @@ def validate_profile_id(value: str) -> str:
 
 
 class ScopedStore:
-    def __init__(self, base_store, profile_id: str):
+    def __init__(self, base_store, profile_id: str, registry=None):
         self.base = base_store
         self.profile_id = validate_profile_id(profile_id)
+        self.registry = registry
         self.root = base_store.root
         self.path = base_store.path
         self.lock = base_store.lock
@@ -73,7 +74,7 @@ class ActiveProfileStore:
         return self.registry.active_id()
 
     def fixed(self):
-        return ScopedStore(self.base, self.profile_id)
+        return ScopedStore(self.base, self.profile_id, registry=self.registry)
 
     def get(self, key, default=None):
         return self.fixed().get(key, default)

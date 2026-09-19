@@ -69,6 +69,25 @@ class WebhookHealthV047Tests(unittest.TestCase):
         self.assertEqual("media.play", health["last_event"])
         self.assertEqual(0, health["event_count"])
 
+    def test_disabled_profile_delivery_still_proves_global_webhook_connection(self):
+        from helper.plex_webhook import apply_webhook_event, webhook_health
+
+        self.profile.set("product_settings", {"behavior_enabled": False})
+        result = apply_webhook_event(self.base, self.registry, payload("media.play"), now=100)
+        health = webhook_health(self.base, self.profile, now=101)
+
+        self.assertEqual("ignored", result["status"])
+        self.assertEqual("disabled", result["reason"])
+        self.assertEqual("disabled", health["state"])
+        self.assertFalse(health["connected"])
+        self.assertTrue(health["global_connected"])
+
+        apply_webhook_event(
+            self.base, self.registry, payload("media.play", machine="unknown"), now=102
+        )
+        later = webhook_health(self.base, self.profile, now=103)
+        self.assertTrue(later["global_connected"])
+
     def test_scored_event_changes_state_to_learning(self):
         from helper.plex_webhook import apply_webhook_event, webhook_health
 
@@ -131,6 +150,27 @@ class WebhookHealthV047Tests(unittest.TestCase):
         self.base.set(WEBHOOK_INGRESS_KEY, {**receipt, "received_at": 101, "status": "ignored", "profile_id": ""})
         health = webhook_health(self.base, self.profile, now=102)
         self.assertTrue(health["connected"])
+
+    def test_global_webhook_status_stays_connected_when_viewing_another_profile(self):
+        from helper.plex_webhook import apply_webhook_event, webhook_health
+        from helper.scoped_store import ScopedStore
+
+        self.registry.create(
+            name="Friend", kind="shared", profile_id="friend-42", token="friend-token",
+            account={"id": "42", "username": "friend"},
+            server={"machine": "machine-a", "name": "Main", "url": "http://plex:32400"},
+            library={"id": "15", "name": "Music"},
+        )
+        apply_webhook_event(self.base, self.registry, payload("media.play"), now=100)
+
+        health = webhook_health(
+            self.base, ScopedStore(self.base, "friend-42"), now=101
+        )
+
+        self.assertFalse(health["connected"])
+        self.assertTrue(health["global_connected"])
+        self.assertEqual(100, health["global_last_received_at"])
+        self.assertEqual("media.play", health["global_last_event"])
 
     def test_old_receipt_does_not_validate_an_existing_secret_after_upgrade(self):
         from helper.plex_webhook import WEBHOOK_INGRESS_KEY, WEBHOOK_SECRET_KEY, webhook_health

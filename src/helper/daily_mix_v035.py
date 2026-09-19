@@ -15,6 +15,7 @@ import unicodedata
 
 from fastapi import Request
 
+from .behavior import profile_behavior_subject
 from .recommend import diagnostic_display
 
 
@@ -518,6 +519,25 @@ def resolve_plex_account_id(client, username):
     return matches[0]
 
 
+def resolve_profile_playback_account(client, store):
+    """Map a profile's Plex.tv identity to the server-local history account."""
+    subject = profile_behavior_subject(store)
+    account_id = subject["account_id"]
+    username = subject["username"]
+    try:
+        local_account_id = resolve_plex_account_id(client, username)
+    except Exception:
+        # Owner IDs from plex.tv are not valid PMS history IDs, so using the
+        # cloud ID would silently learn from an empty account. Shared/home
+        # tokens may not be allowed to enumerate /accounts; their existing
+        # numeric identity remains a guarded fallback and history rows are
+        # still checked against it below.
+        if subject["kind"] == "owner" or not account_id.isdigit():
+            raise
+        local_account_id = account_id
+    return local_account_id, subject
+
+
 def read_plex_history(client, section, now, days=400, page_size=300, maximum=10000, account_id=None, after=None):
     """Read complete Plex history while enforcing a single account boundary."""
     if not str(section).isdigit():
@@ -577,12 +597,23 @@ def read_plex_history(client, section, now, days=400, page_size=300, maximum=100
     return rows
 
 
-def read_plex_history_cached(engine, client, section, now, account_id, days=400, maximum=10000):
+def read_plex_history_cached(
+    engine, client, section, now, account_id, days=400, maximum=10000,
+    profile_identity=None,
+):
     """Reuse recent history and fetch only rows newer than the saved watermark."""
     history_cache_ttl = 6 * 3600
     scope = f"{engine.daily_scope()}:{section}:{account_id}"
     saved = engine.store.get("plex_history_cache", {}) or {}
-    saved_events = saved.get("events", []) if saved.get("scope") == scope else []
+    identity = dict(profile_identity or {})
+    same_profile = True
+    if identity:
+        same_profile = (
+            str(saved.get("profile_account_id") or "") == str(identity.get("account_id") or "")
+            and str(saved.get("profile_username") or "").casefold()
+            == str(identity.get("username") or "").casefold()
+        )
+    saved_events = saved.get("events", []) if saved.get("scope") == scope and same_profile else []
     saved_events = [
         row for row in saved_events
         if str(row.get("account_id") or account_id) == str(account_id)
@@ -610,6 +641,9 @@ def read_plex_history_cached(engine, client, section, now, account_id, days=400,
         "scope": scope,
         "section": str(section),
         "account_id": str(account_id),
+        "profile_account_id": str(identity.get("account_id") or ""),
+        "profile_username": str(identity.get("username") or ""),
+        "profile_kind": str(identity.get("kind") or ""),
         "updated_at": now,
         "history_watermark": max((_number(row.get("viewed_at")) for row in events), default=0),
         "events": events,
@@ -677,10 +711,11 @@ def recommend_rotating_v035(engine, base_recommend, *args, **kwargs):
       try:
         plex_settings = engine.store.get("settings")
         plex = engine.plex_factory(plex_settings)
-        history_user = str(product_settings.get("behavior_user") or "").strip()
-        account_id = str(product_settings.get("behavior_account_id") or "").strip() or resolve_plex_account_id(plex, history_user)
+        account_id, profile_identity = resolve_profile_playback_account(plex, engine.store)
+        history_user = profile_identity["username"]
         events, history_cache_state, history_cache_mode = read_plex_history_cached(
-            engine, plex, plex_settings["section"], now, account_id
+            engine, plex, plex_settings["section"], now, account_id,
+            profile_identity=profile_identity,
         )
         plex_history_account_scoped = True
         plex_mode = "真实播放历史（已限定设置用户）" if history_user else "真实播放历史（服务器唯一账户）"
@@ -790,7 +825,6 @@ def attach_policy_routes(app, store, engine, body, ensure_idle):
         saved = store.get("product_settings", {}) or {}
         return {
             "behavior_enabled": saved.get("behavior_enabled", True) is not False,
-            "behavior_user": str(saved.get("behavior_user") or "").strip()[:120],
         }
 
     @app.get("/api/product/settings")

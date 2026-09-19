@@ -3,6 +3,7 @@ import sys
 import types
 import fastapi
 import unittest
+from xml.etree import ElementTree
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -64,11 +65,78 @@ class FakeEngine:
         return "scope-1"
 
 
+class FakeRegistry:
+    def __init__(self, profile):
+        self.profile = profile
+
+    def get(self, profile_id):
+        if profile_id != self.profile["id"]:
+            raise KeyError(profile_id)
+        return self.profile
+
+
 def legacy_recommend(tracks, features, feedback, settings, history, seed_ids, now, seed, behavior=None):
     return {"items": []}
 
 
 class DailyMixV0326Tests(unittest.TestCase):
+    def test_owner_cloud_account_is_resolved_to_server_playback_account(self):
+        class Plex:
+            def __init__(self):
+                self.history_params = None
+
+            def _xml(self, path, params=None):
+                if path == "/accounts":
+                    return ElementTree.fromstring(
+                        '<MediaContainer><Account id="1" name="owner" /></MediaContainer>'
+                    )
+                if path == "/status/sessions/history/all":
+                    self.history_params = dict(params or {})
+                    return ElementTree.fromstring(
+                        f'<MediaContainer totalSize="1"><Track ratingKey="1" '
+                        f'viewedAt="{NOW - 60}" accountID="1" type="track" /></MediaContainer>'
+                    )
+                return ElementTree.fromstring('<MediaContainer totalSize="0" />')
+
+        engine = FakeEngine({
+            "settings": {"section": "15"},
+            "daily_generation_counter": 0,
+            "daily_rotation_history": [],
+            "daily_similarity_cache": {},
+            "daily_policy_diagnostic_history": [],
+            "product_settings": {"behavior_enabled": True},
+        })
+        engine.store.profile_id = "owner-profile"
+        engine.store.registry = FakeRegistry({
+            "id": "owner-profile",
+            "kind": "owner",
+            "account": {"id": "10", "username": "owner"},
+            "server": {"machine": "machine-a"},
+            "library": {"id": "15"},
+        })
+        plex = Plex()
+        engine.plex_factory = lambda _settings: plex
+
+        result = daily_mix.recommend_rotating_v035(
+            engine,
+            legacy_recommend,
+            [track(i) for i in range(1, 16)],
+            {},
+            {"tracks": {}, "artists": {}},
+            SETTINGS,
+            [],
+            [],
+            NOW,
+            "owner-local-account",
+            behavior={},
+        )
+
+        self.assertEqual("1", plex.history_params["accountID"])
+        cache = result["_v035_state"]["history_cache"]
+        self.assertEqual("1", cache["account_id"])
+        self.assertEqual("10", cache["profile_account_id"])
+        self.assertEqual("owner", cache["profile_username"])
+
     def test_avoided_artist_is_never_selected(self):
         result = daily_mix.select_daily_mix(
             [track(i) for i in range(1, 11)],

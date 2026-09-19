@@ -8,6 +8,44 @@ MAX_EVENT_AGE=180*86400
 MAX_EVENTS=5000
 
 
+def profile_behavior_subject(store):
+    """Return the Plex identity bound to this profile.
+
+    Modern profiles bind one Plex user and one library, so playback learning
+    must follow that identity instead of a second user picker.  The legacy
+    settings fallback keeps old single-profile stores readable during upgrade.
+    """
+    registry = getattr(store, "registry", None)
+    profile_id = str(getattr(store, "profile_id", "") or "")
+    if registry is not None and profile_id:
+        try:
+            profile = registry.get(profile_id)
+        except (KeyError, ValueError):
+            profile = {}
+        account = profile.get("account") or {}
+        account_id = str(account.get("id") or "").strip()
+        username = str(account.get("username") or account.get("title") or "").strip()[:120]
+        if account_id:
+            return {
+                "account_id": account_id,
+                "username": username,
+                "kind": str(profile.get("kind") or "").strip(),
+                "machine": str((profile.get("server") or {}).get("machine") or "").strip(),
+            }
+    saved = store.get("product_settings", {}) or {}
+    return {
+        "account_id": str(saved.get("behavior_account_id") or "").strip(),
+        "username": str(saved.get("behavior_user") or "").strip()[:120],
+        "kind": "",
+        "machine": "",
+    }
+
+
+def profile_behavior_identity(store):
+    subject = profile_behavior_subject(store)
+    return subject["account_id"], subject["username"]
+
+
 def _number(v,default=0.0):
     try:
         n=float(v)
@@ -106,11 +144,11 @@ class BehaviorTracker:
         events.append(event);return 1
 
     def sample(self,plex,now):
-        cfg=self.store.get('product_settings') or {'behavior_enabled':True,'behavior_user':''}
+        cfg=self.store.get('product_settings') or {'behavior_enabled':True}
         if not cfg.get('behavior_enabled',True):
             return {'sampled':0,'active':0,'new_events':0,'status':'disabled'}
         rows=plex.sessions()
-        wanted=str(cfg.get('behavior_user') or '').strip()
+        _account_id,wanted=profile_behavior_identity(self.store)
         if wanted:rows=[r for r in rows if str(r.get('user',''))==wanted]
         previous=self.store.get('behavior_sessions') or {};current={};events=self.store.get('behavior_events') or []
         new_events=0

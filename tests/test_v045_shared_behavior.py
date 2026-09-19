@@ -109,25 +109,38 @@ class SharedBehaviorIdentityTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def test_shared_profile_uses_its_verified_identity_without_accounts_permission(self):
-        result = self.routes.handlers[("GET", "/api/product/settings/verified")]()
+    def test_shared_profile_learning_uses_profile_identity_not_a_legacy_picker(self):
+        from helper.behavior import profile_behavior_identity
 
-        self.assertEqual([{"id": "248098626", "name": "shudai6"}], result["accounts"])
-        self.assertEqual("248098626", result["behavior_account_id"])
-        self.assertEqual("shudai6", result["behavior_user"])
-        self.assertEqual("", result["warning"])
+        self.store.set("product_settings", {
+            "behavior_enabled": True,
+            "behavior_account_id": "wrong-old-selection",
+            "behavior_user": "wrong-old-user",
+        })
+
+        account_id, username = profile_behavior_identity(self.store)
+
+        self.assertEqual("248098626", account_id)
+        self.assertEqual("shudai6", username)
+        self.assertNotIn(("GET", "/api/product/settings/verified"), self.routes.handlers)
+        self.assertNotIn(("POST", "/api/product/settings/verified"), self.routes.handlers)
         self.assertEqual(0, self.engine.plex_calls)
 
-    def test_shared_profile_saves_its_verified_identity_without_accounts_permission(self):
-        self.payload.update(behavior_enabled=True, behavior_account_id="248098626")
-        handler = self.routes.handlers[("POST", "/api/product/settings/verified")]
+    def test_runtime_engine_store_keeps_profile_identity(self):
+        from helper.behavior import profile_behavior_identity
+        from helper.profile_runtime import ProfileRuntime
 
-        result = asyncio.run(handler(object()))
+        class Engine:
+            def __init__(self, store):
+                self.store = store
 
-        self.assertEqual("248098626", result["behavior_account_id"])
-        self.assertEqual("shudai6", result["behavior_user"])
-        self.assertEqual(0, self.engine.plex_calls)
-        self.assertEqual("248098626", self.store.get("product_settings")["behavior_account_id"])
+        runtime = ProfileRuntime(self.base, self.registry, engine_factory=Engine)
+
+        account_id, username = profile_behavior_identity(
+            runtime.engine("shared-248098626").store
+        )
+
+        self.assertEqual(("248098626", "shudai6"), (account_id, username))
 
 
 class ManagedReconnectTests(unittest.TestCase):

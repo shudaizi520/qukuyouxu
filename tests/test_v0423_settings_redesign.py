@@ -104,7 +104,7 @@ class SettingsRedesignV0423Tests(unittest.TestCase):
         parser = _SettingsStructure()
         parser.feed((ROOT / "src/helper/static/settings.html").read_text(encoding="utf-8"))
 
-        expected = ["accounts", "recommend", "learning", "automation", "system"]
+        expected = ["accounts", "recommend", "automation", "system"]
         self.assertEqual(expected, parser.nav_targets)
         self.assertEqual(expected, [panel["id"].removeprefix("settings-") for panel in parser.panels])
         self.assertEqual(1, sum(not panel["hidden"] for panel in parser.panels))
@@ -117,11 +117,8 @@ class SettingsRedesignV0423Tests(unittest.TestCase):
         presentation = (ROOT / "src/helper/static/auth.js").read_text(encoding="utf-8")
 
         self.assertIn('id="dailySave"', html)
-        self.assertIn('id="behaviorSave"', html)
         self.assertIn("function markSaved", script)
-        self.assertIn("markSaved($('behaviorSave'))", script)
-        behavior_handler = script.split("$('behaviorForm').onsubmit", 1)[1].split("$('behaviorForm').addEventListener", 1)[0]
-        self.assertNotIn("note(", behavior_handler)
+        self.assertNotIn('id="behaviorSave"', html)
         self.assertNotIn("anchor.after(inline)", presentation)
 
 

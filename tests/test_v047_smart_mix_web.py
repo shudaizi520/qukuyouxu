@@ -132,10 +132,15 @@ class SmartMixLifecycleV047Tests(unittest.TestCase):
 
         self.store.set("product_settings", {"behavior_enabled": True, "behavior_account_id": "10"})
         self.store.set("plex_history_cache", {
-            "scope": self.engine.daily_scope() + ":15:10",
-            "events": [{"id": "1", "viewed_at": NOW - 10, "account_id": "10"}],
+            "scope": self.engine.daily_scope() + ":15:1",
+            "account_id": "1",
+            "profile_account_id": "10",
+            "profile_username": "owner",
+            "events": [{"id": "1", "viewed_at": NOW - 10, "account_id": "1"}],
         })
         self.assertEqual("1", _history_events(self.engine)[0]["id"])
+        self.store.set("product_settings", {"behavior_enabled": False, "behavior_account_id": "10"})
+        self.assertEqual([], _history_events(self.engine))
         self.store.set("product_settings", {"behavior_enabled": True, "behavior_account_id": "11"})
         self.assertEqual([], _history_events(self.engine))
 

@@ -29,7 +29,7 @@ class Store:
         if self.get('daily_history') is None:self.set('daily_history',[])
         if self.get('behavior_events') is None:self.set('behavior_events',[])
         if self.get('behavior_sessions') is None:self.set('behavior_sessions',{})
-        if self.get('product_settings') is None:self.set('product_settings',{'behavior_enabled':True,'behavior_user':''})
+        if self.get('product_settings') is None:self.set('product_settings',{'behavior_enabled':True})
         if self.get('auth_sessions') is None:self.set('auth_sessions',[])
         self._upgrade_daily_policy()
         self._upgrade_base_policy()

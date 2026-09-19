@@ -46,7 +46,9 @@ class ProfileRuntime:
         self.registry.get(profile_id)
         with self._lock:
             if profile_id not in self._engines:
-                instance = self.engine_factory(ScopedStore(self.base_store, profile_id))
+                instance = self.engine_factory(
+                    ScopedStore(self.base_store, profile_id, registry=self.registry)
+                )
                 # Every profile shares one mutation gate. This keeps the active profile
                 # stable for the full duration of an operation that uses ActiveEngineProxy.
                 instance.gate = self.operation_gate

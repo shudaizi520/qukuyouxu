@@ -60,8 +60,6 @@ class UIHierarchyV0414Tests(unittest.TestCase):
             "dailyAvoidDays",
             "artistCap",
             "favoritePercent",
-            "behaviorEnabled",
-            "behaviorUser",
         ):
             self.assertIn(control_id, page.elements)
         _tag, webhook_message = page.elements["webhookMessage"]
@@ -70,12 +68,14 @@ class UIHierarchyV0414Tests(unittest.TestCase):
     def test_settings_explains_library_organizer_is_optional(self):
         _mixes, settings = self.pages()
         recommend_start = settings.index('id="settings-recommend"')
-        recommend_end = settings.index('id="settings-learning"', recommend_start)
+        recommend_end = settings.index('id="settings-automation"', recommend_start)
         automation_start = settings.index('id="settings-automation"')
         automation_end = settings.index('id="settings-system"', automation_start)
         self.assertNotIn("检查新增歌曲", settings[recommend_start:recommend_end])
         self.assertIn("检查新增歌曲", settings[automation_start:automation_end])
-        self.assertIn("播放学习", settings)
+        script = (STATIC / "settings.js").read_text(encoding="utf-8")
+        self.assertIn("播放学习", script)
+        self.assertNotIn('data-settings-target="learning"', settings)
 
     def test_smart_mix_cards_override_adjacent_card_margin_and_space_actions(self):
         css = (STATIC / "product.css").read_text(encoding="utf-8")

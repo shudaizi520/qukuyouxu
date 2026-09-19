@@ -6,18 +6,21 @@ from . import daily as _daily
 
 # The v0.3.4 preview signature did not identify its algorithm.  Keep the old
 # method for rollback/debugging, then wrap it so a pending v0.3.4 preview can
-# never be published after this upgrade.  The selected history user also
-# invalidates a preview when changed.
+# never be published after this upgrade. Profile identity, the learning switch,
+# and behavior evidence also invalidate a stale preview.
 if not hasattr(_daily.DailyMixin, '_v034_daily_signature'):
     _daily.DailyMixin._v034_daily_signature = _daily.DailyMixin.daily_signature
 
     def _daily_signature_v035(self):
+        from .behavior import profile_behavior_identity
         from .engine import digest
         product = self.store.get('product_settings', {}) or {}
+        account_id, _username = profile_behavior_identity(self.store)
         return digest({
             'base': self._v034_daily_signature(),
             'policy': POLICY_VERSION,
-            'history_user': str(product.get('behavior_user') or '').strip().casefold(),
+            'history_account': account_id,
+            'behavior_enabled': product.get('behavior_enabled', True) is not False,
             'behavior': digest(self.store.get('behavior_events',[]) or []),
         })
 

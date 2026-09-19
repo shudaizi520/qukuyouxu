@@ -19,57 +19,6 @@ PLEX_TV = "https://plex.tv"
 PROTECTED_TITLES = {"我的最爱", "My Favorites", "Favorites"}
 
 
-def parse_plex_accounts(root):
-    """Return stable choices from PMS /accounts. Arbitrary labels never enter the result."""
-    found = {}
-    nodes = list(root.findall(".//Account")) + list(root.findall(".//User"))
-    for item in nodes:
-        account_id = str(item.get("id") or item.get("accountID") or "").strip()
-        name = str(item.get("name") or item.get("title") or item.get("username") or "").strip()
-        if account_id.isdigit() and name and len(name) <= 120:
-            found.setdefault(account_id, name)
-    return [{"id": key, "name": found[key]} for key in sorted(found, key=lambda value: int(value))]
-
-
-def validated_behavior_settings(accounts, selected_id, enabled):
-    if not isinstance(enabled, bool):
-        raise ValueError("播放行为学习开关无效")
-    selected_id = str(selected_id or "").strip()
-    by_id = {str(row["id"]): str(row["name"]) for row in accounts}
-    if not selected_id and len(by_id) == 1:
-        selected_id = next(iter(by_id))
-    if enabled and selected_id not in by_id:
-        raise ValueError("请选择 Plex 服务器实际返回的用户")
-    if selected_id and selected_id not in by_id:
-        raise ValueError("所选 Plex 用户已经不存在，请刷新后重新选择")
-    return {
-        "behavior_enabled": enabled,
-        "behavior_account_id": selected_id,
-        "behavior_user": by_id.get(selected_id, ""),
-    }
-
-
-def profile_behavior_accounts(store):
-    """Return the one verified identity owned by a Home/shared profile.
-
-    Those tokens can read their own history but commonly receive HTTP 403 for
-    the server-administrator-only ``/accounts`` endpoint.
-    """
-    registry = getattr(store, "registry", None)
-    profile_id = str(getattr(store, "profile_id", "") or "")
-    if registry is None or not profile_id:
-        return None
-    profile = registry.get(profile_id)
-    if profile.get("kind") not in ("home", "shared"):
-        return None
-    account = profile.get("account") or {}
-    account_id = str(account.get("id") or "").strip()
-    name = str(account.get("username") or profile.get("name") or "").strip()[:120]
-    if not account_id.isdigit() or not name:
-        return []
-    return [{"id": account_id, "name": name}]
-
-
 def valid_plex_pin(code):
     return bool(re.fullmatch(r"[A-Za-z0-9-]{4,128}", str(code or "")))
 
@@ -377,60 +326,6 @@ def attach_v036_routes(app, store, engine, body, ensure_idle):
     attach_plex_state_routes(app, store, engine, body, ensure_idle)
     from .workflow_v0317 import attach_routes as attach_workflow_routes
     attach_workflow_routes(app, store, engine, body, ensure_idle)
-
-    def behavior_accounts():
-        fixed = profile_behavior_accounts(store)
-        if fixed is not None:
-            return fixed
-        plex = engine.plex_factory(store.get("settings"))
-        return parse_plex_accounts(plex._xml("/accounts"))
-
-    def account_payload():
-        saved = store.get("product_settings", {}) or {}
-        try:
-            accounts = behavior_accounts()
-            warning = ""
-        except Exception as exc:
-            accounts = []
-            warning = safe_error(exc)
-        selected = str(saved.get("behavior_account_id") or "")
-        if not selected:
-            wanted = str(saved.get("behavior_user") or "").casefold()
-            selected = next((row["id"] for row in accounts if row["name"].casefold() == wanted), "")
-        if not selected and len(accounts) == 1:
-            selected = str(accounts[0]["id"])
-        return {
-            "behavior_enabled": saved.get("behavior_enabled", True) is not False,
-            "behavior_account_id": selected,
-            "behavior_user": next((row["name"] for row in accounts if row["id"] == selected), ""),
-            "accounts": accounts,
-            "warning": warning,
-            "plex_login_user": store.get("plex_login_user", {}) or {},
-        }
-
-    @app.get("/api/product/settings/verified")
-    def verified_product_settings():
-        return account_payload()
-
-    @app.post("/api/product/settings/verified")
-    async def save_verified_product_settings(req: Request):
-        data = await body(req)
-        ensure_idle()
-        with engine.exclusive():
-            accounts = behavior_accounts()
-            revised = validated_behavior_settings(
-                accounts, data.get("behavior_account_id"), data.get("behavior_enabled")
-            )
-            old = store.get("product_settings", {}) or {}
-            values = {"product_settings": revised}
-            if old != revised:
-                values["daily_plan"] = None
-            store.set_many(values)
-        return {**revised, "message": "已绑定 Plex 实际用户；下次生成推荐时生效。"}
-
-    @app.get("/api/plex/accounts")
-    def plex_accounts():
-        return account_payload()
 
     @app.post("/api/plex/login/start")
     def plex_login_start():

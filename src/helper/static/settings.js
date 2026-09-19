@@ -1,6 +1,6 @@
 'use strict';
 const $=id=>document.getElementById(id);
-let busy=false,current=null,plexPin='',plexTimer=null,plexDeadline=0,plexProfiles=[],activeProfile='default',batchPlans={},webhookTimer=null,learningEnabled=true,learningAccount='',webhookStatus={};
+let busy=false,current=null,plexPin='',plexTimer=null,plexDeadline=0,plexProfiles=[],activeProfile='default',batchPlans={},webhookTimer=null;
 function note(t,e=false){PCHUI.notify(t,{error:e});}
 function markSaved(button){button.textContent='已保存';button.classList.add('is-saved');}
 function markDirty(button){button.textContent='保存更改';button.classList.remove('is-saved');}
@@ -27,22 +27,6 @@ function renderOfficialSections(rows,saved){
  const value=String(saved||'');if(value&&!seen.has(value)){const o=document.createElement('option');o.value=value;o.textContent='音乐资料库 · '+value;select.append(o);seen.add(value);}
  if(!value&&seen.size){const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent='请选择音乐资料库';placeholder.disabled=true;select.prepend(placeholder);}select.value=value;$('plexLibraryPanel').hidden=!seen.size;
 }
-function renderAccounts(data){
- const select=$('behaviorUser'),accounts=data.accounts||[],wanted=String(data.behavior_account_id||''),effective=wanted||(accounts.length===1?String(accounts[0].id):'');select.replaceChildren();
- const first=document.createElement('option');first.value='';first.textContent=accounts.length?'请选择 Plex 用户':'暂无可用用户';select.append(first);
- for(const row of accounts){const o=document.createElement('option');o.value=String(row.id);o.textContent=row.name+' · '+row.id;select.append(o);}
- select.value=effective;
- learningEnabled=data.behavior_enabled!==false;learningAccount=effective;$('behaviorEnabled').checked=learningEnabled;updateLearningState();
-}
-function updateLearningState(){
- const state=webhookStatus?.state||'not_connected';let label='已关闭';
- if(learningEnabled&&!learningAccount)label='选择账户';
- else if(learningEnabled&&state==='learning')label='学习中';
- else if(learningEnabled&&state==='connected_waiting')label='已接通';
- else if(learningEnabled)label='设置 Webhook';
- $('webhookState').textContent=label;
- $('behaviorSave').disabled=learningEnabled&&!learningAccount;
-}
 function renderSavedConnection(saved){
  const value=saved||{},configured=!!value.configured,state=value.state||'not_configured';const libraryReady=!!value.library?.id;const visibleState=configured&&!libraryReady?'library_required':state;
  const labels={not_configured:'未连接',library_required:'请选择音乐库',saved:'已保存',online:'在线',unreachable:'暂时离线',auth_invalid:'需重新连接'};
@@ -59,10 +43,10 @@ function renderSavedConnection(saved){
 function profileDisplayName(row){return row?.account?.username||row?.account?.title||row?.name||'Plex 账户';}
 function profileLabel(row){return profileDisplayName(row)+' · '+(row?.library?.name||row?.library?.id||'选择音乐库');}
 function renderWebhook(webhook){
- const value=webhook||{},state=value.state||'not_connected';webhookStatus=value;$('webhookUrl').textContent=location.origin+(value.endpoint_path||'/api/plex/webhook');updateLearningState();
- const messages={disabled:'已关闭',not_connected:'需要设置',connected_waiting:'已接通',learning:'接收正常'};
- $('webhookMessage').textContent=messages[state]||messages.not_connected;
- $('webhookLast').textContent=value.last_received_at?'最近收到：'+new Date(value.last_received_at*1000).toLocaleString('zh-CN',{hour12:false})+' · '+(value.last_event||'Plex 事件'):'在 Plex 保存地址后播放一首歌，收到事件后这里会自动显示“已接通”。';
+ const value=webhook||{};$('webhookUrl').textContent=location.origin+(value.endpoint_path||'/api/plex/webhook');
+ const connected=value.global_connected??value.connected,lastReceived=value.global_last_received_at??value.last_received_at;
+ $('webhookMessage').textContent=connected?'接收正常':'需要设置';
+ $('webhookLast').textContent=lastReceived?'最近收到 · '+new Date(lastReceived*1000).toLocaleString('zh-CN',{hour12:false}):'尚未收到播放事件';
 }
 async function copyWebhookAddress(){
  const value=$('webhookUrl').textContent.trim();
@@ -72,7 +56,7 @@ async function copyWebhookAddress(){
  if(!copied)throw Error('浏览器未允许自动复制，请长按上方地址手动复制。');
 }
 async function refreshWebhookStatus(){const status=await responseJson('/api/status');renderWebhook(status.webhook);}
-function startWebhookPolling(){if(webhookTimer)return;webhookTimer=setInterval(()=>{if(document.visibilityState==='visible'&&!$('settings-learning').hidden)refreshWebhookStatus().catch(()=>{});},5000);}
+function startWebhookPolling(){if(webhookTimer)return;webhookTimer=setInterval(()=>{if(document.visibilityState==='visible'&&!$('settings-accounts').hidden)refreshWebhookStatus().catch(()=>{});},5000);}
 function renderProfiles(data){
  plexProfiles=Array.isArray(data?.items)?data.items:[];const requested=PCHAuth.profile();const fallback=String(data?.active_profile_id||plexProfiles[0]?.id||'default');activeProfile=plexProfiles.some(row=>row.id===requested)?requested:fallback;if(activeProfile!==requested)PCHAuth.setProfile(activeProfile);
  const select=$('plexProfile');select.replaceChildren();
@@ -81,12 +65,12 @@ function renderProfiles(data){
  $('batchDailyTools').hidden=plexProfiles.length<2;
  renderManagedUsers();
 }
-function render(s,verified,saved){
- current=s;const c=s.settings||{},d=s.daily_policy||{},u=verified||{};
+function render(s,saved){
+ current=s;const c=s.settings||{},d=s.daily_policy||{};
  $('version').textContent='v'+s.version;$('plexUrl').value=c.plex_url||'';$('accountLabel').value=c.account_label||'';$('plexToken').value='';
  $('tokenHint').textContent=c.token_present?'Plex Token 已保存；不修改时留空。':'尚未保存 Plex Token。';
  renderSavedConnection(saved);renderWebhook(s.webhook);
- renderSections(s.plex_connection?.sections,c.section);renderOfficialSections(s.plex_connection?.sections,c.section);renderAccounts(u);
+ renderSections(s.plex_connection?.sections,c.section);renderOfficialSections(s.plex_connection?.sections,c.section);
  $('dailySize').value=d.size??30;$('rediscoveryDays').value=d.rediscovery_days??90;$('dailyAvoidDays').value=d.daily_avoid_days??21;$('favoritePercent').value=d.favorite_percent??20;$('artistCap').value=d.artist_cap??2;$('dailyHour').value=d.hour??6;$('accountName').textContent=PCHAuth.status().username||'admin';
  $('dailyAuto').checked=!!s.daily_settings?.enabled;$('dailyAutoStatus').textContent=$('dailyAuto').checked?'每天 '+String(d.hour??6).padStart(2,'0')+':00':'未开启';
  $('systemVersion').textContent=s.version;
@@ -99,15 +83,15 @@ async function responseJson(path){
 }
 async function refresh(){
  const profiles=await responseJson('/api/plex/profiles');renderProfiles(profiles);
- const [libraryResult,savedResult,statusResult,policyResult,accountResult,workflowResult,batchResult]=await Promise.allSettled([
-  responseJson('/api/plex/profiles/libraries?profile_id='+encodeURIComponent(activeProfile)),responseJson('/api/plex/saved'),responseJson('/api/status'),responseJson('/api/daily/policy'),responseJson('/api/product/settings/verified'),responseJson('/api/workflow/status'),responseJson('/api/profiles/daily/batch-status')
+ const [libraryResult,savedResult,statusResult,policyResult,workflowResult,batchResult]=await Promise.allSettled([
+  responseJson('/api/plex/profiles/libraries?profile_id='+encodeURIComponent(activeProfile)),responseJson('/api/plex/saved'),responseJson('/api/status'),responseJson('/api/daily/policy'),responseJson('/api/workflow/status'),responseJson('/api/profiles/daily/batch-status')
  ]);
  const saved=savedResult.status==='fulfilled'?savedResult.value:{configured:false,state:'not_configured'};
  renderSavedConnection(saved);
  if(statusResult.status!=='fulfilled')throw statusResult.reason;
- const s=statusResult.value,v=accountResult.status==='fulfilled'?accountResult.value:{};
+ const s=statusResult.value;
  s.daily_policy=policyResult.status==='fulfilled'?policyResult.value:{};
- render(s,v,saved);renderOfficialSections(libraryResult.status==='fulfilled'?libraryResult.value.items:[],saved.library?.id||'');
+ render(s,saved);renderOfficialSections(libraryResult.status==='fulfilled'?libraryResult.value.items:[],saved.library?.id||'');
  const workflow=workflowResult.status==='fulfilled'?workflowResult.value.workflow?.settings:{};
  $('libraryAuto').checked=!!workflow?.enabled;$('libraryAuto').disabled=!workflow?.initialized;$('libraryAutoStatus').textContent=workflow?.enabled?'每天 00:00':workflow?.initialized?'未开启':'完成首次整理后可开启';
  if(batchResult.status==='fulfilled')renderBatch(batchResult.value);
@@ -121,6 +105,11 @@ function renderManagedUsers(){
   const person=document.createElement('div');person.className='settings-person';
   const avatar=document.createElement('span');avatar.className='settings-avatar';avatar.textContent=profileDisplayName(row).trim().slice(0,1).toUpperCase();
   const text=document.createElement('div');const name=document.createElement('strong');name.textContent=profileLabel(row);const kind=document.createElement('span');kind.textContent=profileKind(row.kind);text.append(name,kind);person.append(avatar,text);
+  const learning=document.createElement('label');learning.className='profile-learning-toggle';
+  const learningLabel=document.createElement('span');learningLabel.textContent='播放学习';
+  const learningToggle=document.createElement('input');learningToggle.type='checkbox';learningToggle.className='toggle';learningToggle.checked=row.behavior_enabled!==false;learningToggle.setAttribute('aria-label',profileLabel(row)+'播放学习');
+  learningToggle.onchange=()=>{const enabled=learningToggle.checked;if(busy){learningToggle.checked=!enabled;return;}action(async()=>{learningToggle.disabled=true;try{await post('/api/plex/profiles/learning',{profile_id:row.id,enabled});row.behavior_enabled=enabled;note(profileLabel(row)+'播放学习已'+(enabled?'开启':'关闭'));}catch(error){learningToggle.checked=!enabled;throw error;}finally{learningToggle.disabled=false;}});};
+  learning.append(learningLabel,learningToggle);
   const actions=document.createElement('div');actions.className='settings-actions profile-actions';
   const open=document.createElement('button');open.type='button';open.className='secondary';open.textContent=row.id===activeProfile?'当前':'打开';open.disabled=row.id===activeProfile;
   open.onclick=()=>action(async()=>{PCHAuth.setProfile(row.id);await refresh();note('已切换到 '+profileLabel(row));});actions.append(open);
@@ -128,7 +117,7 @@ function renderManagedUsers(){
    const remove=document.createElement('button');remove.type='button';remove.className='danger';remove.textContent='移除';
    remove.onclick=()=>action(async()=>{if(!await PCHUI.confirm('停止为“'+(row.name||'这位用户')+'”生成每日推荐？\nPlex 中已有歌单会保留。',{confirmText:'移除用户'}))return;const result=await post('/api/plex/profiles/remove',{profile_id:row.id,confirm:true});if(row.id===activeProfile)PCHAuth.setProfile('default');await refresh();note(result.message);});actions.append(remove);
   }
-  line.append(person,actions);list.append(line);
+  line.append(person,learning,actions);list.append(line);
  }
 }
 function renderRecipients(rows,owner,warnings=[]){
@@ -229,14 +218,10 @@ $('dailyForm').addEventListener('input',()=>markDirty($('dailySave')));
 $('dailyHour').onchange=()=>action(saveDailyPolicy);
 $('dailyAuto').onchange=()=>{const enabled=$('dailyAuto').checked;action(async()=>{try{const r=await post('/api/daily/schedule',{enabled});note(r.message);}catch(error){$('dailyAuto').checked=!enabled;throw error;}finally{await refresh();}});};
 $('libraryAuto').onchange=()=>{const enabled=$('libraryAuto').checked;action(async()=>{try{if(enabled&&!await PCHUI.confirm('开启每天 00:00 检查新增歌曲？',{confirmText:'开启'})){$('libraryAuto').checked=false;return;}const r=await post('/api/workflow/schedule',{enabled,confirm:true});note(r.message);}catch(error){$('libraryAuto').checked=!enabled;throw error;}finally{await refresh();}});};
-$('behaviorForm').onsubmit=e=>{e.preventDefault();action(async()=>{await post('/api/product/settings/verified',{behavior_enabled:$('behaviorEnabled').checked,behavior_account_id:$('behaviorUser').value});markSaved($('behaviorSave'));await refresh();});};
-$('behaviorForm').addEventListener('input',()=>markDirty($('behaviorSave')));
-$('behaviorEnabled').onchange=()=>{learningEnabled=$('behaviorEnabled').checked;updateLearningState();};
-$('behaviorUser').onchange=()=>{learningAccount=$('behaviorUser').value;updateLearningState();};
 $('copyWebhook').onclick=()=>action(async()=>{await copyWebhookAddress();note('地址已复制。');});
 $('webhookHelpToggle').onclick=()=>{$('webhookHelp').hidden=!$('webhookHelp').hidden;};
 $('passwordForm').onsubmit=e=>{e.preventDefault();action(async()=>{const a=$('newPassword').value,b=$('confirmPassword').value;if(a!==b)throw Error('两次输入的新密码不一致');const r=await post('/api/auth/password',{current_password:$('currentPassword').value,new_password:a,confirm_password:b});$('currentPassword').value='';$('newPassword').value='';$('confirmPassword').value='';note(r.message+'，其它旧登录会话已退出。');});};
-async function boot(){const panel=location.hash.slice(1);if(['accounts','recommend','learning','automation','system'].includes(panel))showSettingsPanel(panel);try{await refresh();await resumePlexLogin();}catch(e){note(e.message,true);}startWebhookPolling();}
+async function boot(){const panel=location.hash.slice(1);if(panel==='learning')showSettingsPanel('accounts');else if(['accounts','recommend','automation','system'].includes(panel))showSettingsPanel(panel);try{await refresh();await resumePlexLogin();}catch(e){note(e.message,true);}startWebhookPolling();}
 window.addEventListener('pch-auth-ready',boot);window.addEventListener('pch-auth-login',boot);window.addEventListener('pch-auth-logout',()=>{plexPin='';stopPlexPolling();});
 window.addEventListener('pagehide',()=>{stopPlexPolling();clearInterval(webhookTimer);webhookTimer=null;});
 window.addEventListener('visibilitychange',()=>{if(document.hidden)stopPlexPolling();else if(plexPin)schedulePlexPolling(0);});

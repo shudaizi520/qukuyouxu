@@ -283,8 +283,17 @@ body[data-view=settings] .settings-actions button{min-height:38px;padding:8px 13
 body[data-view=settings] .account-selector-row{display:grid;grid-template-columns:minmax(180px,280px) minmax(0,1fr);align-items:center}
 body[data-view=settings] .account-selector-row>span:first-child,body[data-view=settings] .account-selector-row>label:first-child{font-weight:600}
 body[data-view=settings] .account-selector-row>select{width:100%;min-height:42px}
-body[data-view=settings] .profile-actions{width:144px;display:grid;grid-template-columns:repeat(2,68px);gap:8px;flex:none}
+body[data-view=settings] .profile-actions{width:144px;display:flex;justify-content:flex-end;gap:8px;flex:none}
 body[data-view=settings] .profile-actions button{width:68px;padding-left:8px;padding-right:8px}
+body[data-view=settings] #managedUserList .settings-user-row{display:grid;grid-template-columns:minmax(220px,1fr) 128px 144px;align-items:center}
+body[data-view=settings] .profile-learning-toggle{display:flex;align-items:center;justify-content:flex-end;gap:10px;color:#29464f;font-size:13px;font-weight:600;white-space:nowrap;cursor:pointer}
+body[data-view=settings] .profile-learning-toggle .toggle{margin:0}
+body[data-view=settings] .profile-webhook-tools{border-top:1px solid #e7edef;background:#fbfcfc}
+body[data-view=settings] .profile-webhook-tools .settings-section-title{min-height:54px;border-bottom:0}
+body[data-view=settings] .profile-webhook-tools .settings-section-title>span{color:#247069;font-size:13px}
+body[data-view=settings] .profile-webhook-tools .webhook-setup-action{margin:0 20px;padding:0;border:0;background:transparent;align-items:center}
+body[data-view=settings] .profile-webhook-tools .webhook-setup-action code{border:1px solid #dbe7e8}
+body[data-view=settings] .profile-webhook-tools .settings-status-line{margin:10px 20px 14px;font-size:12px}
 body[data-view=settings] .batch-daily-controls{display:flex;align-items:center;justify-content:flex-end;gap:18px;flex-wrap:wrap}
 body[data-view=settings] .batch-auto-toggle{display:flex;align-items:center;gap:9px;cursor:pointer;white-space:nowrap}
 body[data-view=settings] .batch-auto-partial{padding:3px 7px;border-radius:99px;background:#fff3df;color:#996316;font-size:11px}
@@ -331,6 +340,7 @@ body[data-view=settings] .profile-manager-body{padding:16px 20px}
 body[data-view=settings] .profile-create{grid-template-columns:auto minmax(0,1fr) auto}
 body[data-view=settings] .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 @media(max-width:900px){body[data-view=settings] .settings-shell{grid-template-columns:1fr;padding:24px 18px;gap:18px}body[data-view=settings] .settings-nav{position:static;display:flex;overflow:auto;border-bottom:1px solid #dce6e8}body[data-view=settings] .settings-nav h1{display:none}body[data-view=settings] .settings-nav-item{width:auto;white-space:nowrap;border-radius:9px 9px 0 0}body[data-view=settings] .settings-workspace{max-width:none}}
+@media(max-width:700px){body[data-view=settings] #managedUserList .settings-user-row{grid-template-columns:minmax(0,1fr) auto;gap:12px}body[data-view=settings] #managedUserList .settings-person{grid-column:1/-1}body[data-view=settings] .profile-learning-toggle{justify-content:flex-start}body[data-view=settings] .profile-webhook-tools .webhook-setup-action{margin:0 14px}body[data-view=settings] .profile-webhook-tools .settings-status-line{margin-left:14px;margin-right:14px}}
 @media(max-width:600px){body[data-view=settings] .settings-shell{padding:18px 12px}body[data-view=settings] .settings-page-head h2{font-size:21px}body[data-view=settings] .settings-row,body[data-view=settings] .settings-user-row{padding:12px 14px;gap:12px}body[data-view=settings] .profile-current-row{align-items:stretch;flex-direction:column}body[data-view=settings] .compact-select{width:100%}body[data-view=settings] .connection-summary{grid-template-columns:1fr}body[data-view=settings] .connection-summary>span{border-top:1px solid #edf1f2}body[data-view=settings] .settings-row>input:not([type=checkbox]):not([type=hidden]),body[data-view=settings] .settings-row>select{width:150px}body[data-view=settings] .settings-user-row{align-items:flex-start}body[data-view=settings] .settings-actions{max-width:150px}body[data-view=settings] .profile-actions{width:144px;max-width:none}body[data-view=settings] .account-selector-row{grid-template-columns:1fr;align-items:stretch}body[data-view=settings] .account-selector-row>select{width:100%}body[data-view=settings] .batch-daily-tools{align-items:stretch;flex-direction:column}body[data-view=settings] .batch-daily-controls{align-items:stretch;justify-content:flex-start;flex-direction:column}body[data-view=settings] .profile-create{grid-template-columns:1fr}}
 
 /* v0.4.24: compact, task-first smart playlists. */
@@ -437,13 +447,7 @@ body[data-view=settings] .account-library-row{margin:0;border:0;border-top:1px s
 body[data-view=settings] .connection-tools-inline{border-top:1px solid #edf1f2;background:#fbfcfc}
 body[data-view=settings] .connection-tools-inline>summary{padding:12px 20px;cursor:pointer;color:#537078;font-size:13px}
 body[data-view=settings] .batch-daily-tools{border-top:1px solid #edf1f2}
-body[data-view=settings] .learning-card{overflow:visible}
-body[data-view=settings] .learning-card #behaviorForm{overflow:hidden;border-radius:14px 14px 0 0}
-body[data-view=settings] .learning-webhook{padding:18px 20px;border-top:1px solid #e7edef;background:#fbfcfc;border-radius:0 0 14px 14px}
-body[data-view=settings] .learning-webhook .settings-section-title{min-height:40px;padding:0;border:0}
-body[data-view=settings] .learning-webhook .webhook-setup-action{margin-top:12px;padding:0;border:0;background:transparent;align-items:center}
-body[data-view=settings] .learning-webhook .webhook-setup-action code{border:1px solid #dbe7e8}
-@media(max-width:760px){body[data-view=daily] .song{grid-template-columns:22px minmax(0,1fr) 36px}body[data-view=daily] .song .bucket{grid-column:2}body[data-view=daily] .song-menu{grid-column:3;grid-row:1/3}.library-task-head{align-items:stretch;flex-direction:column}.library-task-head .actions{justify-content:flex-start}.library-task-head .actions button{flex:1 1 140px}body[data-view=settings] .account-library-row{grid-template-columns:1fr}body[data-view=settings] .learning-webhook{padding:16px 14px}}
+@media(max-width:760px){body[data-view=daily] .song{grid-template-columns:22px minmax(0,1fr) 36px}body[data-view=daily] .song .bucket{grid-column:2}body[data-view=daily] .song-menu{grid-column:3;grid-row:1/3}.library-task-head{align-items:stretch;flex-direction:column}.library-task-head .actions{justify-content:flex-start}.library-task-head .actions button{flex:1 1 140px}body[data-view=settings] .account-library-row{grid-template-columns:1fr}}
 
 /* v1.0.4: put the two automatic switches where users see them and keep the task UI compact. */
 .library-overview{display:grid;grid-template-columns:minmax(0,1fr) auto auto}

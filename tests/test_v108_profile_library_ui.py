@@ -84,6 +84,19 @@ class ProfileLibraryUIV108Tests(unittest.TestCase):
         self.assertIn("/api/profiles/daily/batch-schedule", script)
         self.assertFalse(page.by_id("batchDailyAuto")["hidden"])
 
+    def test_playback_learning_is_a_profile_row_switch_not_a_separate_settings_page(self):
+        html = (ROOT / "src/helper/static/settings.html").read_text(encoding="utf-8")
+        script = (ROOT / "src/helper/static/settings.js").read_text(encoding="utf-8")
+        page = self.parse("settings.html")
+
+        self.assertNotIn('data-settings-target="learning"', html)
+        self.assertNotIn('id="settings-learning"', html)
+        self.assertNotIn('id="behaviorUser"', html)
+        self.assertNotIn('id="behaviorSave"', html)
+        self.assertIn(page.by_id("people"), page.by_id("webhookTools")["ancestors"])
+        self.assertIn("profile-learning-toggle", script)
+        self.assertIn("/api/plex/profiles/learning", script)
+
 
 if __name__ == "__main__":
     unittest.main()

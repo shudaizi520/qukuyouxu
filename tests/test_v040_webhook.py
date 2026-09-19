@@ -5,8 +5,10 @@ import unittest
 from pathlib import Path
 
 
-def payload(event, account="10", machine="machine-a", track="123", player="player-a", **metadata):
+def payload(event, account="10", machine="machine-a", track="123", player="player-a", library=None, **metadata):
     values = {"ratingKey": track, "type": "track", "title": "Song", "duration": 200000}
+    if library is not None:
+        values["librarySectionID"] = str(library)
     values.update(metadata)
     return {
         "event": event,
@@ -241,6 +243,83 @@ class PlexWebhookV040Tests(unittest.TestCase):
         )
         self.assertEqual([], self.events("default"))
         self.assertEqual("999", self.events("friend-42")[0]["track_id"])
+
+    def test_same_account_with_two_libraries_routes_to_the_matching_library_only(self):
+        from helper.plex_webhook import apply_webhook_event
+
+        self.registry.create(
+            name="Owner classics", kind="owner", profile_id="owner-classics", token="owner-secret",
+            account={"id": "10", "username": "owner"},
+            server={"machine": "machine-a", "name": "Main", "url": "http://plex:32400"},
+            library={"id": "22", "name": "Classics"},
+        )
+
+        result = apply_webhook_event(
+            self.store, self.registry,
+            payload("media.scrobble", track="777", library="22"), now=100,
+        )
+
+        self.assertEqual("recorded", result["status"])
+        self.assertEqual([], self.events("default"))
+        self.assertEqual("777", self.events("owner-classics")[0]["track_id"])
+
+    def test_same_account_with_two_libraries_fails_closed_without_library_identity(self):
+        from helper.plex_webhook import apply_webhook_event
+
+        self.registry.create(
+            name="Owner classics", kind="owner", profile_id="owner-classics", token="owner-secret",
+            account={"id": "10", "username": "owner"},
+            server={"machine": "machine-a", "name": "Main", "url": "http://plex:32400"},
+            library={"id": "22", "name": "Classics"},
+        )
+
+        result = apply_webhook_event(
+            self.store, self.registry, payload("media.scrobble", track="778"), now=100,
+        )
+
+        self.assertEqual("ignored", result["status"])
+        self.assertEqual("identity_not_unique", result["reason"])
+        self.assertEqual([], self.events("default"))
+        self.assertEqual([], self.events("owner-classics"))
+
+    def test_disabled_profile_keeps_existing_history_and_ignores_new_events(self):
+        from helper.plex_webhook import apply_webhook_event
+        from helper.scoped_store import ScopedStore
+
+        scoped = ScopedStore(self.store, "default")
+        existing = [{"track_id": "100", "value": 1.0, "kind": "completed", "at": 90}]
+        scoped.set_many({
+            "behavior_events": existing,
+            "product_settings": {"behavior_enabled": False},
+        })
+
+        result = apply_webhook_event(
+            self.store, self.registry,
+            payload("media.scrobble", track="101", library="15"), now=100,
+        )
+
+        self.assertEqual("ignored", result["status"])
+        self.assertEqual("disabled", result["reason"])
+        self.assertEqual(existing, self.events())
+
+    def test_owner_account_fallback_uses_library_identity(self):
+        from helper.plex_webhook import apply_webhook_event
+
+        self.registry.create(
+            name="Owner classics", kind="owner", profile_id="owner-classics", token="owner-secret",
+            account={"id": "10", "username": "owner"},
+            server={"machine": "machine-a", "name": "Main", "url": "http://plex:32400"},
+            library={"id": "22", "name": "Classics"},
+        )
+
+        result = apply_webhook_event(
+            self.store, self.registry,
+            payload("media.scrobble", account="1", track="779", library="15"), now=100,
+        )
+
+        self.assertEqual("recorded", result["status"])
+        self.assertEqual("779", self.events("default")[0]["track_id"])
+        self.assertEqual([], self.events("owner-classics"))
 
     def test_multipart_parser_extracts_only_payload_json(self):
         from helper.plex_webhook import parse_multipart_payload

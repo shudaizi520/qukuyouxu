@@ -82,13 +82,14 @@ class UISimplificationV103Tests(unittest.TestCase):
         self.assertTrue(page.by_id("plexConnectionTools")["hidden"])
         self.assertIn(page.by_id("people"), page.by_id("batchDailyTools")["ancestors"])
 
-    def test_learning_page_contains_actions_without_repeated_explanation_rows(self):
+    def test_learning_controls_live_with_profile_rows_without_repeated_explanation_rows(self):
         page = self.parse("settings.html")
         html = (STATIC / "settings.html").read_text(encoding="utf-8")
 
-        learning = page.by_id("learningCard")
-        for control in ("behaviorEnabled", "behaviorUser", "behaviorSave", "webhookTools"):
-            self.assertIn(learning, page.by_id(control)["ancestors"])
+        people = page.by_id("people")
+        self.assertIn(people, page.by_id("webhookTools")["ancestors"])
+        self.assertNotIn('id="behaviorUser"', html)
+        self.assertNotIn('id="behaviorSave"', html)
         self.assertNotIn("儿歌播放", html)
         self.assertNotIn("webhook-guide", html)
         self.assertNotIn("设置状态", html)
