@@ -61,11 +61,11 @@ class UISimplificationV103Tests(unittest.TestCase):
         html = (STATIC / "home.html").read_text(encoding="utf-8")
 
         task = page.by_id("task")
-        for control in ("incrementalAction", "mainAction", "pause", "progressArea"):
+        for control in ("analyzeLibrary", "pause", "progressArea"):
             self.assertIn(task, page.by_id(control)["ancestors"])
-        overview = page.by_id("libraryOverview")
-        self.assertIn(overview, page.by_id("autoToggle")["ancestors"])
-        self.assertNotIn(task, page.by_id("autoToggle")["ancestors"])
+        managed = next(node for node in page.nodes if "managed-playlists-card" in node["classes"])
+        self.assertIn(managed, page.by_id("incrementalAction")["ancestors"])
+        self.assertNotIn('id="autoToggle"', html)
         self.assertNotIn("workflow-path", html)
         self.assertNotIn("<th>说明</th>", html)
         self.assertTrue(page.by_id("taskMessage")["hidden"])

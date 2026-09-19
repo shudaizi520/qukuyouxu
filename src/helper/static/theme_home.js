@@ -1,48 +1,10 @@
-/* Theme choices and provenance are part of the existing main workflow. */
+/* Candidate evidence stays available without exposing source configuration. */
 (()=>{
  'use strict';
  const get=id=>document.getElementById(id);
- let profileKey='',dirty=false,evidenceCategory='',nextOffset=null,onlyNew=true;
+ let evidenceCategory='',nextOffset=null,onlyNew=true;
  const say=(parent,tag,text,cls)=>{const e=document.createElement(tag);e.textContent=text;if(cls)e.className=cls;parent.append(e);return e;};
  function safeQQ(value){try{const u=new URL(value);if(u.protocol==='https:'&&['y.qq.com','i.y.qq.com'].includes(u.hostname)&&!u.username&&!u.password)return u.href;}catch{}return null;}
- window.renderThemeExtras=data=>{
-  const t=data.workflow?.theme;if(!t)return;const s=t.settings||{};
-  const signature=JSON.stringify([s.selected,s.enabled,t.topics]);
-  const running=!!data.workflow?.job?.running;
-  const updateCount=()=>{get('themeProfileNote').textContent='已选 '+get('themeChoices').querySelectorAll('input:checked').length+' 项'+(dirty?' · 未保存':'');get('saveThemes').disabled=running||!dirty;};
-  if(profileKey!==signature&&!dirty){
-   profileKey=signature;get('themeChoices').replaceChildren();
-   const category=name=>['网络热歌','KTV金曲','综艺现场','影视金曲','合唱精选'].includes(name)?'主题':['开车精选','运动精选','工作陪伴','睡前舒缓'].includes(name)?'场景':['伤感情歌','治愈陪伴','甜蜜情歌'].includes(name)?'心情':'更多';
-   const groups=new Map();
-   for(const topic of t.topics||[]){const kind=category(topic.name);if(!groups.has(kind))groups.set(kind,[]);groups.get(kind).push(topic);}
-   for(const [name,topics] of groups){
-    const row=say(get('themeChoices'),'div','','theme-group');say(row,'span',name,'theme-group-name');
-    const choices=say(row,'div','','theme-group-options');
-    for(const topic of topics){
-     const label=document.createElement('label'),box=document.createElement('input');box.type='checkbox';box.value=topic.key;box.checked=(s.selected||[]).includes(topic.key);box.dataset.topicName=topic.name;
-     box.onchange=()=>{dirty=true;updateCount();};label.append(box);say(label,'span',topic.name);choices.append(label);
-    }
-   }
-   get('themeEnabled').checked=!!s.enabled;
-  }
-  for(const input of get('themeChoices').querySelectorAll('input')){
-   input.disabled=running;
-   const label=input.parentElement;label.querySelector('.theme-missing')?.remove();
-   if((t.unavailable||[]).some(x=>x.key===input.value||x.name===input.dataset.topicName))say(label,'small','缺来源','theme-missing');
-  }
-  get('themeEnabled').disabled=running;updateCount();
-  const unavailable=t.unavailable||[];get('themeUnavailable').hidden=!unavailable.length;
-  get('themeUnavailable').textContent=unavailable.length?unavailable.map(x=>x.name).join('、')+'暂未找到来源，其他主题可继续整理。':'';
-  const p=t.progress,show=running&&data.workflow.state?.phase==='planning'&&p;
-  get('themeRunSummary').hidden=!show;
-  get('themeRunSummary').textContent=show?'正在读取 '+p.title+' · 第 '+p.page+'/'+p.max_pages+' 批 · 已匹配 '+p.matched+' 首':'';
- };
-
- get('themeEnabled').onchange=()=>{dirty=true;get('themeProfileNote').textContent='主题设置尚未保存';get('saveThemes').disabled=false;};
- get('saveThemes').onclick=()=>action(async()=>{
-  const selected=[...get('themeChoices').querySelectorAll('input:checked')].map(x=>x.value);
-  const r=await post('/api/themes/settings',{confirm:true,enabled:get('themeEnabled').checked,selected});dirty=false;profileKey='';note(r.message);get('themeProfileNote').textContent='已保存';await refresh();
- });
  async function loadEvidence(offset=0){
   const d=await (await request('/api/themes/evidence?category_id='+encodeURIComponent(evidenceCategory)+'&offset='+offset+'&limit=40&added_only='+String(onlyNew))).json();
   get('themeEvidenceTitle').textContent=d.title+' · '+(onlyNew?'本次新增':'匹配歌曲')+'与来源';
@@ -69,7 +31,6 @@
  window.openThemeEvidence=async(categoryId,added=true)=>{evidenceCategory=categoryId;onlyNew=added;get('themeEvidence').hidden=false;await loadEvidence();get('themeEvidence').scrollIntoView({block:'start'});};
  get('moreThemeEvidence').onclick=()=>action(()=>loadEvidence(nextOffset||0));
  get('closeThemeEvidence').onclick=()=>{get('themeEvidence').hidden=true;};
- if(typeof current!=='undefined'&&current)window.renderThemeExtras(current);
 })();
 
 
@@ -112,6 +73,5 @@
  }
  const prior=window.renderThemeExtras;
  window.renderThemeExtras=data=>{if(prior)prior(data);if(!data.workflow?.job?.running)loadManaged(false);};
- get('refreshManaged')?.addEventListener('click',()=>loadManaged(true));
  window.addEventListener('pch-auth-ready',()=>loadManaged(true));window.addEventListener('pch-auth-login',()=>loadManaged(true));
 })();

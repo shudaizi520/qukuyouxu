@@ -21,12 +21,13 @@ class LibraryControlsV0330Tests(unittest.TestCase):
         self.assertNotIn("||n===0", script)
         self.assertIn("if(!ids.length){note('请先勾选至少一个可同步歌单。',true);return;}", script)
 
-    def test_auto_toggle_reverts_and_explains_unmet_prerequisites(self):
+    def test_library_page_keeps_manual_check_and_moves_automation_elsewhere(self):
+        html = (STATIC / "home.html").read_text(encoding="utf-8")
         script = (STATIC / "home.js").read_text(encoding="utf-8")
-        self.assertIn("$('autoToggle').disabled=running||w.needs_setup;", script)
-        self.assertIn("before=!!current.workflow.settings.enabled", script)
-        self.assertIn("toggle.checked=before", script)
-        self.assertIn("先完成一次歌单同步，再开启自动整理新歌。", script)
+
+        self.assertIn('id="incrementalAction"', html)
+        self.assertNotIn('id="autoToggle"', html)
+        self.assertNotIn("/api/workflow/schedule", script)
 
 
 if __name__ == "__main__":

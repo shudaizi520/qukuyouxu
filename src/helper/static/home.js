@@ -28,7 +28,7 @@ async function refresh(skipPlexLink=false){
  try{current=await(await request('/api/workflow/status?release=1.1.3')).json();render(current);if(!libraryNavigationReady){libraryNavigationReady=true;revealLibraryTarget();}if(!skipPlexLink||!lastPlexLinkRefresh||Date.now()-lastPlexLinkRefresh>=PLEX_LINK_TTL_MS)await refreshPlexLink();return true;}finally{polling=false;}
 }
 function render(data){
- const w=data.workflow,s=w.state||{},sum=w.summary||{},job=w.job||{},running=!!job.running;
+ const w=data.workflow,s=w.state||{},sum=w.summary||{},job=w.job||{},running=!!job.running,discovery=w.discovery||{};
  const ss=w.single?.state||{};const phase=w.needs_setup?'setup':s.phase||'idle';
  if(lastPhase!==phase&&['review','ready','paused','cooldown','attention','error','theme_error'].includes(phase)&&!$('notice').classList.contains('error'))note('');lastPhase=phase;
  const rawUpstream=w.theme?.error;const upstream=rawUpstream&&Object.keys(rawUpstream).length?rawUpstream:null;const themeFailed=!!upstream||phase==='theme_error';
@@ -60,26 +60,22 @@ function render(data){
   else{$('progress').removeAttribute('value');$('progress').max=1;$('progressPercent').textContent='';}
  }
  $('incrementalAction').disabled=running||w.needs_setup||cooling;
- $('mainAction').disabled=running||w.needs_setup||(cooling&&phase!=='review')||(!qqLogged&&phase!=='review');
+ $('analyzeLibrary').disabled=running||w.needs_setup||(cooling&&phase!=='review')||(!qqLogged&&phase!=='review');
  $('cachedAction').hidden=!(themeFailed||phase==='cooldown'||s.cache_only);$('cachedAction').disabled=running||w.needs_setup;
  renderUpstreamError(upstream,w,hold,cooling);
  renderReferenceSkips(w.theme?.skipped_references||[]);
- $('mainAction').textContent=phase==='review'?'查看并确认分类':phase==='paused'||phase==='cooldown'?'继续整理':phase==='error'||phase==='attention'?'重新检查并整理':'整理新增歌曲 →';
- if(themeFailed&&phase!=='review')$('mainAction').textContent='重新联网整理一次';
- if(!qqLogged&&phase!=='review')$('mainAction').textContent='先完成 QQ 授权';
+ $('analyzeLibrary').textContent=phase==='review'?'查看候选歌单':phase==='paused'||phase==='cooldown'?'继续分析':phase==='error'||phase==='attention'?'重新分析':'分析曲库';
+ if(themeFailed&&phase!=='review')$('analyzeLibrary').textContent='重新分析';
+ if(!qqLogged&&phase!=='review')$('analyzeLibrary').textContent='先完成 QQ 授权';
  $('pause').hidden=!(running&&job.can_pause);$('pause').disabled=false;
- $('incrementalAction').hidden=running;$('mainAction').hidden=running;$('cachedAction').hidden=running||!(themeFailed||phase==='cooldown'||s.cache_only);
+ $('incrementalAction').hidden=running;$('analyzeLibrary').hidden=running||discovery.phase==='managed';$('cachedAction').hidden=running||!(themeFailed||phase==='cooldown'||s.cache_only);
  $('refreshReview').disabled=running||(cooling&&!w.review?.cache_only);
  $('attentionLink').hidden=!(['attention','error','theme_error'].includes(phase)||sum.review_count>0);
  const tips={checking:'正在执行，无需操作。关闭网页不会取消 NAS 任务。',enriching:'首次可能较久；新增歌曲会复用缓存，不是每次都重查全库。',planning:'资料处理完成，正在生成歌单结果，请稍候。',publishing:'正在提交已确认的变更，请不要重启应用。',review:'下一步：在下面勾选歌单，点击“确认选中歌单并同步”。',ready:'以后加歌：先让 Plex 扫描入库，再点一次整理；也可以开启下面的自动开关。',paused:'继续整理会复用检查点。自动开关与当前任务的暂停是两回事。',cooldown:'已完成的资料保留；不要反复点击或重新开始全库。',error:'先看下方“本次结果与排查”。已完成资料保留，不需要重装。',attention:'安全保护已跳过异常歌单，不会覆盖你的手工修改。详情见“本次结果与排查”。',external:'请等待高级任务完成，再使用首页的一键流程。'};
  $('nextStep').textContent=tips[phase]||'首次同步会在这里等你确认，不会直接修改 Plex 歌单。';
  if(themeFailed&&['theme_error','cooldown'].includes(phase))$('nextStep').textContent='可直接点“仅用已有资料生成预览”，无需等联网恢复；新主题未读取成功的部分会跳过。联网重试只尝试一次，不保证会恢复。';
  if(!w.needs_setup&&!qqLogged&&phase!=='review')$('nextStep').textContent='下一步：点上方“扫码授权 QQ”，手机确认后再点整理。已查好的三千首资料不会重跑。';
- $('autoToggle').checked=!!w.settings.enabled;$('autoToggle').disabled=running||w.needs_setup;
- $('autoDescription').textContent=w.settings.enabled?'已开启：每天北京时间 00:00 检查一次 Plex 新歌。':'未开启定时任务。'+(w.settings.initialized?'打开后每天北京时间 00:00 自动检查；需要马上整理时仍可点上方按钮。':'先完成一次整理并确认歌单，然后再开启。');
- if(w.settings.enabled&&['review','paused','error','attention'].includes(phase))$('autoDescription').textContent+=' 当前等待你处理上面的提示，不会盲目继续。';
- if((themeFailed||s.cache_only)&&!w.settings.enabled)$('autoDescription').textContent='联网异常未解决或本次仅用缓存，自动整理保持关闭；仍可手动预览和同步已有资料。';
- renderReview(w.review,running);$('reviewEmpty').hidden=!!w.review;$('syncStepState').textContent=w.review?'等待确认':phase==='ready'?'已同步':'等待预览';
+ renderReview(w.review,running);$('reviewEmpty').hidden=discovery.phase!=='empty';$('syncStepState').textContent=w.review?'等待确认':phase==='ready'?'已同步':'等待预览';
  $('migrationNotice').textContent=w.notice||'';
  const result=s.result;$('resultText').textContent=result?('最近一次：更新 '+(result.written||0)+' 个，无变化 '+(result.unchanged||0)+' 个，保护跳过 '+(result.blocked||0)+' 个。'):'还没有通过首页同步。已有歌单不会被删除或重新建立。';
  $('resultIssues').replaceChildren();for(const e of result?.errors||[])addText($('resultIssues'),'p',e);
@@ -127,7 +123,7 @@ function renderReview(review,running){
   reviewId=review.id;$('reviewRows').replaceChildren();
   for(const g of usableGroups){
    const tr=document.createElement('tr');const td=addText(tr,'td','');const box=document.createElement('input');box.type='checkbox';box.value=g.id;box.checked=!!g.default_selected;box.disabled=!!g.blocked.length;box.setAttribute('aria-label','同步 '+g.title);box.onchange=updateSelection;td.append(box);
-   addText(tr,'td',g.title);addText(tr,'td',number(g.count));addText(tr,'td',number(g.add_count));
+   addText(tr,'td',g.title);addText(tr,'td',number(g.count));const actionCell=addText(tr,'td','');const view=document.createElement('button');view.type='button';view.className='secondary evidence-button';view.textContent='查看歌曲';view.onclick=()=>action(()=>window.openThemeEvidence(g.id,false));actionCell.append(view);
    $('reviewRows').append(tr);
   }
  }
@@ -166,14 +162,13 @@ async function runIncremental(){
 }
 $('qqAuthStart').onclick=()=>action(async()=>{const r=await post('/api/qq-auth/start',{confirm:true});note(r.message||'二维码已生成，请用手机 QQ 扫码确认。');await loadQQQR();});
 $('qqAuthLogout').onclick=()=>action(async()=>{if(!await PCHUI.confirm('退出助手中的 QQ 授权？不会影响电脑浏览器里的 QQ 登录，也不会删除已查好的歌曲资料。'))return;const r=await post('/api/qq-auth/logout',{confirm:true});note(r.message||'已退出助手中的 QQ 授权。');});
-$('mainAction').onclick=()=>action(run);
+$('analyzeLibrary').onclick=()=>action(run);
 $('incrementalAction').onclick=()=>action(runIncremental);
 $('cachedAction').onclick=()=>action(async()=>{await post('/api/workflow/cached',{confirm:true});note('正在用已有资料生成预览，不访问 QQ，确认前不写歌单。');});
 $('pause').onclick=()=>action(async()=>{const r=await post('/api/workflow/pause',{});note(r.message);});
 $('refreshReview').onclick=()=>action(async()=>{await post(current.workflow.review?.cache_only?'/api/workflow/cached':'/api/workflow/run',{confirm:true});note('正在重新整理预览，有效缓存仍会复用。');});
 $('selectAll').onchange=()=>{for(const n of $('reviewRows').querySelectorAll('input:not(:disabled)'))n.checked=$('selectAll').checked;updateSelection();};
 $('confirmReview').onclick=()=>action(async()=>{const ids=selected();if(!ids.length){note('请先勾选至少一个可同步歌单。',true);return;}if(!await PCHUI.confirm('确认同步选中的 '+ids.length+' 个歌单？只新建或追加本助手管理的歌单，不删除旧歌，不修改音乐文件。'))return;await post('/api/workflow/confirm',{review_id:reviewId,selected_ids:ids,confirm:true});note('正在同步选中的歌单，请等待完成。');});
-$('autoToggle').onchange=()=>action(async()=>{const toggle=$('autoToggle'),enabled=toggle.checked,before=!!current.workflow.settings.enabled;try{if(enabled&&!current.workflow.settings.initialized)throw Error('先完成一次歌单同步，再开启自动整理新歌。');if(enabled&&!await PCHUI.confirm('开启自动整理新歌？每天北京时间 00:00 检查一次 Plex 已入库曲目，并更新已经确认由助手管理的歌单。新分类仍会先等你确认。')){toggle.checked=before;return;}const r=await post('/api/workflow/schedule',{enabled,confirm:true});note(r.message);}catch(e){toggle.checked=before;throw e;}});
 $('attentionLink').onclick=()=>action(openMetadataReview);
 $('closeMetadataReview').onclick=()=>{$('metadataReviewPanel').hidden=true;$('attentionLink').setAttribute('aria-expanded','false');};
 $('metadataReviewBack').onclick=()=>action(()=>loadMetadataReview(Math.max(0,metadataReviewOffset-50)));
@@ -197,31 +192,31 @@ window.addEventListener('pch-auth-logout',stopPolling);
 let presentationAuthState=null;
 function renderLibraryPresentation(w,phase,running){
  const auth=w.qq_auth,logged=!!auth?.logged_in,disclosure=$('qqDisclosure');
+ const discovery=w.discovery||{};
  if(auth){
   if(!logged)disclosure.open=true;
   else if(presentationAuthState!==true)disclosure.open=false;
   presentationAuthState=logged;
   $('sourceStepState').textContent=logged?'QQ 已授权':'QQ 需要授权';
  }else{$('sourceStepState').textContent='QQ 状态待确认';}
- $('reviewEmpty').hidden=true;
+ $('reviewEmpty').hidden=discovery.phase!=='empty';
  $('attentionLink').textContent='查看待核对'+(w.summary?.review_count?' · '+number(w.summary.review_count):'');
- if(phase==='ready'){
+ if(discovery.phase==='choose')$('taskTitle').textContent='发现可创建的歌单';
+ else if(discovery.phase==='empty')$('taskTitle').textContent='分析完成';
+ else if(discovery.phase==='before_analysis'&&!w.needs_setup)$('taskTitle').textContent='分析曲库';
+ else if(phase==='ready'){
   $('taskTitle').textContent='最近整理';
   const r=w.state?.result;
   if(r)$('taskMessage').textContent=number(r.written||0)+' 个歌单已更新 · '+number(r.unchanged||0)+' 个无需变化'+(r.blocked?' · '+number(r.blocked)+' 个保护跳过':'');
  }
- if(phase==='idle'){$('taskTitle').textContent='开始本轮整理';$('taskMessage').textContent=(w.summary?.managed?'已有 '+number(w.summary.managed)+' 个托管歌单，保留不变。':'')+'选择主题后，点击“检查新歌并预览”。';}
+ if(phase==='idle')$('taskMessage').textContent='点击“分析曲库”，完成后选择要创建的歌单。';
  const help={publishing:'正在同步，请勿重启应用。',attention:'保护已生效，未覆盖异常歌单。请查看运行详情。',paused:'进度已保留，可以继续整理。'};
  $('nextStep').hidden=true;if(help[phase])$('nextStep').textContent=help[phase];
  const allGroupsBlocked=!!w.review?.groups?.length&&!(w.review.groups.some(group=>!group.blocked.length));
  const reviewNeedsMessage=!!(w.review?.expired||w.review?.cache_only||allGroupsBlocked&&blockedReviewReasons(w.review).length);
  $('reviewMessage').hidden=!reviewNeedsMessage;
- const cfg=w.settings||{};
- $('autoDescription').textContent=cfg.enabled?'已开启 · 每天北京时间 00:00 检查一次':'未开启';
- if(!cfg.initialized&&!cfg.enabled)$('autoDescription').textContent='首次确认同步后可开启';
- if(((w.theme?.error&&Object.keys(w.theme.error).length)||w.state?.cache_only)&&!cfg.enabled)$('autoDescription').textContent='来源异常或仅用缓存，自动整理关闭';
- if(cfg.enabled&&['review','paused','error','attention'].includes(phase))$('autoDescription').textContent+=' · 等待处理';
- if(!running&&!w.needs_setup&&logged&&['ready','idle'].includes(phase))$('mainAction').textContent='预览主题分类';
+ if(!running&&!w.needs_setup&&logged&&discovery.phase==='before_analysis')$('analyzeLibrary').textContent='分析曲库';
+ $('task').hidden=discovery.phase==='managed'&&!running&&!['paused','attention','error','theme_error','cooldown'].includes(phase);
 }
 
 /* Never trust an old workflow URL or put authentication into the link. */
