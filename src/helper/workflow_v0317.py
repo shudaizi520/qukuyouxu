@@ -115,12 +115,12 @@ def build_workflow_status(store, engine, qq_status):
     library_count = len(catalog) or int((saved_plan or {}).get("library_count") or 0)
     threshold = discovery_min_tracks(library_count)
     visible_groups = eligible_discovery_groups(plan, managed)
-    if managed:
-        discovery_phase = "managed"
-    elif running:
+    if running:
         discovery_phase = "analyzing"
     elif plan and not plan.get("applied"):
         discovery_phase = "choose" if visible_groups else "empty"
+    elif managed:
+        discovery_phase = "managed"
     else:
         discovery_phase = "before_analysis"
     matched = int((saved_plan or {}).get("covered") or 0)

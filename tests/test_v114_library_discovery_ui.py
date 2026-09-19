@@ -35,3 +35,10 @@ def test_managed_view_keeps_manual_new_song_check_and_safe_playlist_actions():
     assert "停止维护" in managed
     assert "移除歌单" in managed
     assert "恢复歌单" in managed
+
+
+def test_analysis_entry_remains_available_for_managed_profiles_and_uses_resumable_scan():
+    script = (STATIC / "home.js").read_text(encoding="utf-8")
+
+    assert "discovery.phase==='managed'" not in script
+    assert "'/api/workflow/incremental'" in script

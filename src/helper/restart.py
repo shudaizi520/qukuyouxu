@@ -43,7 +43,7 @@ def prepare_restart(engine,data):
                     'previous_target':engine.store.get('daily_playlist_target')})
     cfg=dict(engine.store.get('daily_settings',{}) or {});cfg['enabled']=False
     engine.store.set_many({'daily_detached_playlists':archive,'daily_managed':None,'daily_plan':None,
-        'daily_settings':cfg,'daily_playlist_target':{'title':report['new_title'],
+        'daily_settings':cfg,'daily_auto_suspension':{'reason':'每日歌单目标已重新绑定，等待手动确认','at':time.time()},'daily_playlist_target':{'title':report['new_title'],
         'scope':managed['scope'],'machine':managed['machine']}})
     return {'message':'旧歌单已保留、不再由助手维护。现在请生成预览并发布到“'+report['new_title']+'”；之后更新同一张新歌单。本次尚未写入 Plex。',
             'new_title':report['new_title']}

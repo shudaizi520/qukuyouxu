@@ -19,6 +19,7 @@ class _Engine:
         self.stop = threading.Event()
         self.status_lock = threading.Lock()
         self.job = {"running": False, "error": ""}
+        self.daily_result = {"ok": True}
 
     def daily_scope(self):
         return f"scope:{self.store.profile_id}"
@@ -27,9 +28,9 @@ class _Engine:
         self.calls.append((self.store.profile_id, "library"))
         return {"ok": True}
 
-    def daily_auto(self, schedule=None):
+    def daily_auto(self, schedule=None, scheduled=False, now=None):
         self.calls.append((self.store.profile_id, "daily"))
-        return {"ok": True, "schedule": schedule}
+        return {**self.daily_result, "schedule": schedule, "scheduled": scheduled, "now": now}
 
 
 def _configured_runtime():
@@ -248,8 +249,108 @@ def test_smart_mix_partial_failure_keeps_original_slot_and_uses_retry_time():
         temp.cleanup()
 
     assert task["next_at"] == retry_at
-    assert task["slot"] == now
+    assert task["retry_slot"] == now
+    assert task["slot"] > now
     assert task["retry_kinds"] == ["weekly"]
+
+
+def test_smart_retry_does_not_starve_healthy_kinds_at_next_normal_cycle():
+    from helper.automation import PROFILE_STATE_KEY, save_automation_settings
+
+    temp, base, _registry, runtime, scoped, _calls = _configured_runtime()
+    now = datetime(2027, 1, 10, 6, tzinfo=BEIJING).timestamp()
+    invocations = []
+    try:
+        scoped.set("smart_mix_managed", {
+            "weekly": {"id": "smart-1"},
+            "time_capsule": {"id": "smart-2"},
+        })
+        saved = save_automation_settings(base, {
+            "daily": {"enabled": False, "hour": 6},
+            "smart": {"enabled": True, "interval_days": 7, "hour": 6},
+            "library": {"enabled": False, "hour": 0},
+        })
+        _set_due(scoped, saved, "smart", now)
+
+        def partial_failure(engine, run_at, due_kinds=None, slot=None):
+            invocations.append((run_at, list(due_kinds or []), slot))
+            retry_at = now + (900 if len(invocations) == 1 else 14 * 86400)
+            engine.store.set("smart_mix_settings", {
+                "auto_retry_state": {"weekly": {"failures": len(invocations), "next_retry_at": retry_at}}
+            })
+            return {"slot": slot, "items": {
+                kind: ({"status": "error", "error": "temporary"} if kind == "weekly" else {"status": "published"})
+                for kind in (due_kinds or [])
+            }}
+
+        with patch("helper.smart_mix_web.run_smart_mix_auto", side_effect=partial_failure):
+            runtime.run_due(now)
+            runtime.run_due(now + 900)
+            runtime.run_due(now + 7 * 86400)
+        task = scoped.get(PROFILE_STATE_KEY)["tasks"]["smart"]
+    finally:
+        temp.cleanup()
+
+    assert "time_capsule" in invocations[-1][1]
+    assert task["slot"] > now + 7 * 86400
+
+
+def test_disable_then_reenable_never_reuses_an_overdue_slot():
+    from helper.automation import PROFILE_STATE_KEY, save_automation_settings
+
+    temp, base, _registry, runtime, scoped, calls = _configured_runtime()
+    now = datetime(2027, 1, 10, 12, tzinfo=BEIJING).timestamp()
+    try:
+        first = save_automation_settings(base, {
+            "daily": {"enabled": False, "hour": 6},
+            "smart": {"enabled": False, "interval_days": 7, "hour": 3},
+            "library": {"enabled": True, "hour": 0},
+        })
+        scoped.set(PROFILE_STATE_KEY, {"revision": first["revision"], "tasks": {
+            "library": {"config": first["library"], "next_at": now - 86400, "slot": now - 86400},
+        }})
+        save_automation_settings(base, {
+            "daily": {"enabled": False, "hour": 6},
+            "smart": {"enabled": False, "interval_days": 7, "hour": 3},
+            "library": {"enabled": False, "hour": 0},
+        })
+        enabled = save_automation_settings(base, {
+            "daily": {"enabled": False, "hour": 6},
+            "smart": {"enabled": False, "interval_days": 7, "hour": 3},
+            "library": {"enabled": True, "hour": 0},
+        })
+
+        runtime.run_due(now)
+        task = scoped.get(PROFILE_STATE_KEY)["tasks"]["library"]
+    finally:
+        temp.cleanup()
+
+    assert calls == []
+    assert task["config"] == enabled["library"]
+    assert task["next_at"] > now
+
+
+def test_deferred_daily_occurrence_is_retained_for_retry():
+    from helper.automation import PROFILE_STATE_KEY, save_automation_settings
+
+    temp, base, _registry, runtime, scoped, _calls = _configured_runtime()
+    now = datetime(2027, 1, 10, 6, tzinfo=BEIJING).timestamp()
+    try:
+        saved = save_automation_settings(base, {
+            "daily": {"enabled": True, "hour": 6},
+            "smart": {"enabled": False, "interval_days": 7, "hour": 3},
+            "library": {"enabled": False, "hour": 0},
+        })
+        _set_due(scoped, saved, "daily", now)
+        runtime.engine("default").daily_result = {"status": "deferred", "retry_at": now + 300}
+
+        runtime.run_due(now)
+        task = scoped.get(PROFILE_STATE_KEY)["tasks"]["daily"]
+    finally:
+        temp.cleanup()
+
+    assert task["next_at"] == now + 300
+    assert task["slot"] == now
 
 
 def test_automation_post_route_uses_framework_request_injection():

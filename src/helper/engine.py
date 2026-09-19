@@ -12,7 +12,7 @@ from .rename import RenamingMixin
 from .daily import DailyMixin
 from .metadata import prepare_catalog
 from .match import Catalog, match, normalize, title_key, artist_key, flags
-from .library_discovery import discovery_min_tracks
+from .library_discovery import DISCOVERY_POLICY, discovery_min_tracks, prepare_discovery_sources
 
 class SafetyError(ValueError): pass
 class WorkflowPaused(Exception): pass
@@ -76,7 +76,8 @@ class Engine(RenamingMixin, DailyMixin):
         return digest({'connection':[cfg.get(k) for k in ('plex_url','plex_token','section','account_label')],
                        'sources':[{k:v for k,v in s.items() if k!='approved'} for s in self.store.get('sources')],
                        'min_tracks':cfg.get('min_tracks',5),'overrides':self.store.get('overrides'),'title_policy':TITLE_POLICY,
-                       'metadata_overrides':self.store.get('metadata_overrides',{}),'match_policy':'v0.1.3'})
+                       'metadata_overrides':self.store.get('metadata_overrides',{}),'match_policy':'v0.1.3',
+                       'discovery_policy':DISCOVERY_POLICY})
     def marker(self,cid):return f"[PCH:{self.store.get('installation_id')}:{cid}]"
     def progress(self,message):
         with self.status_lock:self.job['message']=message
@@ -117,30 +118,13 @@ class Engine(RenamingMixin, DailyMixin):
         self.store.set('metadata_audit',audit)
         catalog=Catalog(effective)
         if hasattr(self.qq,'prepare_run'):self.qq.prepare_run(self.store,cfg.get('source_hours',24)*3600,force_sources,self.progress)
-        from .theme import DEFAULT_THEME, BY_KEY, provision_sources, theme_key
-        theme_cfg={**DEFAULT_THEME,**(self.store.get('theme_settings') or {})}
-        if theme_cfg.get('enabled'):
-            tags=self.store.get('qq_tags',[]) or []
-            if not tags:
-                self.progress('读取 QQ 主题目录')
-                tags=self.qq.tags()
-                self._check_workflow_pause()
-            sources,missing=provision_sources(self.store.get('sources'),tags,theme_cfg.get('selected',[]))
-            usable=[]
-            for source in sources:
-                if source.get('kind')=='local_theme' and source.get('theme_generated'):
-                    key=theme_key(source,tags)
-                    if key:missing.append(key)
-                    continue
-                usable.append(source)
-            self.store.set_many({
-                'qq_tags':tags,
-                'sources':usable,
-                'theme_unavailable':[
-                    {'key':key,'name':BY_KEY[key]['name'],'reason':'当前版本没有可靠来源，暂不生成该歌单'}
-                    for key in dict.fromkeys(missing) if key in BY_KEY
-                ],
-            })
+        tags=self.store.get('qq_tags',[]) or []
+        if not tags:
+            self.progress('读取 QQ 主题目录')
+            tags=self.qq.tags()
+            self._check_workflow_pause()
+        sources,unavailable=prepare_discovery_sources(self.store.get('sources'),tags,self.store.get('managed'))
+        self.store.set_many({'qq_tags':tags,'sources':sources,'theme_unavailable':unavailable})
         playlists=p.playlists();cache=self.store.get('cache');managed=self.store.get('managed');overrides=self.store.get('overrides')
         minimum_tracks=discovery_min_tracks(len(tracks))
         snapshots=self.store.get('snapshots');groups=[];covered=set();now=time.time()
@@ -205,6 +189,7 @@ class Engine(RenamingMixin, DailyMixin):
             self.workflow_progress(source_index,len(active_sources))
         self._check_workflow_pause()
         plan={'id':uuid.uuid4().hex,'created_at':time.time(),'signature':self.signature(),'machine':identity['machine'],
+              'discovery_policy':DISCOVERY_POLICY,
               'library_count':len(tracks),'discovery_threshold':minimum_tracks,
               'covered':len(covered),'coverage':round(100*len(covered)/len(tracks),2),
               'unclassified':[t for t in tracks if t['id'] not in covered],'groups':groups,
@@ -221,6 +206,7 @@ class Engine(RenamingMixin, DailyMixin):
     def _apply(self,plan_id,automatic=False):
         plan=self.store.get('plan');cfg=self.store.get('settings')
         if not plan or plan.get('id')!=plan_id or plan.get('signature')!=self.signature():raise SafetyError('配置或预览已变化，请重新生成预览')
+        if plan.get('discovery_policy')!=DISCOVERY_POLICY:raise SafetyError('歌单发现规则已更新，请重新分析曲库')
         if plan.get('applied'):raise SafetyError('该预览已经确认过，请生成新预览')
         if time.time()-plan['created_at']>1800:raise SafetyError('预览超过30分钟，请重新预览')
         p=self.plex_factory(cfg)
@@ -229,9 +215,12 @@ class Engine(RenamingMixin, DailyMixin):
         fresh={t['id']:track_fingerprint(t) for t in p.tracks(cfg['section'])}
         sources=self.store.get('sources');source_map={s['id']:s for s in sources}
         managed=self.store.get('managed');result={'written':0,'unchanged':0,'skipped':0,'errors':[]}
+        minimum_tracks=discovery_min_tracks(plan.get('library_count',0))
         for g in plan['groups']:
             src=source_map.get(g['id']);cid=g['id']
             if not src or not src.get('enabled',True) or g['blocked'] or automatic and not src.get('approved'):
+                result['skipped']+=1;continue
+            if cid not in managed and not g.get('before') and len(g.get('desired') or [])<minimum_tracks:
                 result['skipped']+=1;continue
             if any(fresh.get(k)!=plan['track_fingerprints'].get(k) for k in g['desired']):
                 result['errors'].append(g['title']+'：Plex曲目在预览后变化，请重新预览');continue
@@ -342,7 +331,9 @@ class Engine(RenamingMixin, DailyMixin):
                 raise
         def work():
             try:
-                if kind=='preview':self.preview(kwargs.get('force_sources',False))
+                if kind=='preview':
+                    if hasattr(self,'analyze_library'):self.analyze_library(kwargs.get('force_sources',False))
+                    else:self.preview(kwargs.get('force_sources',False))
                 elif kind=='apply':self.apply(kwargs['plan_id'])
                 elif kind=='restore':self.restore(kwargs['snapshot_id'])
                 elif kind=='auto':self.auto()

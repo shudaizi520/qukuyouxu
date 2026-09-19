@@ -103,15 +103,18 @@ class ProfileRuntime:
         settings = automation_settings(self.base_store, self.registry, self, now=now)
         results = []
         profiles = [row for row in self.registry.list_public() if row.get("enabled") is not False]
+        scheduled_profiles = []
+        for profile in profiles:
+            engine = self.engine(profile["id"])
+            state = ensure_profile_schedule(engine.store, settings, now)
+            scheduled_profiles.append((profile, engine, state))
         for task in TASK_ORDER:
             if not settings[task]["enabled"]:
                 continue
-            for profile in profiles:
-                engine = self.engine(profile["id"])
+            for profile, engine, state in scheduled_profiles:
                 profile_settings = engine.store.get("settings", {}) or {}
                 if engine.job.get("running") or not profile_settings.get("plex_token"):
                     continue
-                state = ensure_profile_schedule(engine.store, settings, now)
                 scheduled = state["tasks"][task]
                 if float(scheduled.get("next_at") or 0) > now:
                     continue
@@ -122,6 +125,7 @@ class ProfileRuntime:
                     continue
                 kind = "smart_mixes" if task == "smart" else task
                 result = None
+                smart_normal_due = task == "smart" and float(scheduled.get("slot") or 0) <= now
                 try:
                     operation = self._scheduled_operation(engine, task, scheduled, settings, now)
                     result = self._run_job(engine, kind, operation, now)
@@ -130,12 +134,24 @@ class ProfileRuntime:
                     engine.store.log(str(exc)[:300], "error")
                     results.append({"profile_id": profile["id"], "kind": kind, "error": type(exc).__name__})
                 finally:
-                    retry = self._smart_retry(engine, result) if task == "smart" else None
-                    if retry:
-                        scheduled["next_at"] = retry["next_at"]
-                        scheduled["retry_kinds"] = retry["kinds"]
+                    if task == "smart":
+                        retry = self._smart_retry(engine, result)
+                        dispatch_slot = float((result or {}).get("slot") or scheduled.get("slot") or now) if isinstance(result, dict) else float(scheduled.get("slot") or now)
+                        if smart_normal_due:
+                            scheduled["slot"] = advance_slot(scheduled.get("slot"), now, task, settings)
+                        if retry:
+                            scheduled["retry_at"] = retry["next_at"]
+                            scheduled["retry_kinds"] = retry["kinds"]
+                            scheduled["retry_slot"] = dispatch_slot
+                        else:
+                            scheduled.pop("retry_at", None)
+                            scheduled.pop("retry_kinds", None)
+                            scheduled.pop("retry_slot", None)
+                        candidates = [float(scheduled.get("slot") or 0), float(scheduled.get("retry_at") or 0)]
+                        scheduled["next_at"] = min(value for value in candidates if value > 0)
+                    elif isinstance(result, dict) and result.get("status") == "deferred":
+                        scheduled["next_at"] = max(now + 60, float(result.get("retry_at") or now + 300))
                     else:
-                        scheduled.pop("retry_kinds", None)
                         scheduled["next_at"] = advance_slot(scheduled.get("slot"), now, task, settings)
                         scheduled["slot"] = scheduled["next_at"]
                     engine.store.set(PROFILE_STATE_KEY, state)
@@ -155,17 +171,25 @@ class ProfileRuntime:
         if task == "library":
             return getattr(engine, "refresh_new_tracks", None) or engine.auto
         if task == "daily":
-            return lambda: engine.daily_auto(schedule=settings["daily"])
+            def run_daily():
+                import inspect
+                parameters = inspect.signature(engine.daily_auto).parameters
+                if "scheduled" in parameters and "now" in parameters:
+                    return engine.daily_auto(schedule=settings["daily"], scheduled=True, now=now)
+                return engine.daily_auto(schedule=settings["daily"])
+            return run_daily
 
         from .smart_mix_web import run_smart_mix_auto
 
         managed = engine.store.get("smart_mix_managed", {}) or {}
-        due_kinds = scheduled.get("retry_kinds") or list(managed)
+        normal_due = float(scheduled.get("slot") or 0) <= float(now)
+        due_kinds = list(managed) if normal_due else list(scheduled.get("retry_kinds") or [])
+        dispatch_slot = scheduled.get("slot") if normal_due else scheduled.get("retry_slot")
         return lambda: run_smart_mix_auto(
             engine,
             now,
             due_kinds=due_kinds,
-            slot=scheduled.get("slot"),
+            slot=dispatch_slot,
         )
 
     @staticmethod

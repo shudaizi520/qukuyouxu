@@ -190,6 +190,65 @@ class DailyFixedPlaylistTests(unittest.TestCase):
         self.assertEqual(["1", "2"], [row["id"] for row in plex.playlist_state("900")["items"]])
         self.assertEqual("900", store.get("daily_managed")["id"])
 
+    def test_successful_manual_publish_clears_recovery_suspension(self):
+        plex = _DailyPlex(existing=True)
+        store, engine = self.make_engine(plex)
+        store.set("daily_auto_suspension", {"reason": "上次恢复后暂停"})
+        with patch("helper.daily.recommend_rotating", side_effect=_recommendation):
+            plan = engine.preview_daily(now=1_800_000_000)
+
+        engine.publish_daily(plan["id"], now=1_800_000_010)
+
+        self.assertIsNone(store.get("daily_auto_suspension"))
+
+    def test_scheduled_daily_waits_for_manual_preview_without_consuming_the_day(self):
+        from helper.daily import day_at
+
+        plex = _DailyPlex(existing=True)
+        store, engine = self.make_engine(plex)
+        now = 1_800_000_000
+        store.set_many({
+            "daily_managed": {"id": "900", "scope": engine.daily_scope()},
+            "daily_plan": {"id": "manual", "origin": "manual", "applied": False,
+                           "date": day_at(now), "created_at": now - 300},
+        })
+
+        result = engine.daily_auto(
+            schedule={"enabled": True, "hour": 6}, scheduled=True, now=now,
+        )
+
+        self.assertEqual("deferred", result["status"])
+        self.assertGreater(result["retry_at"], now)
+
+    def test_scheduled_daily_catches_up_even_before_configured_hour(self):
+        plex = _DailyPlex(existing=True)
+        store, engine = self.make_engine(plex)
+        store.set("daily_managed", {"id": "900", "scope": engine.daily_scope()})
+        now = 1_800_000_000
+        with patch.object(engine, "_preview_daily", return_value={
+            "id": "auto", "blocked": [], "rolling": {"unchanged": True},
+        }) as preview:
+            result = engine.daily_auto(
+                schedule={"enabled": True, "hour": 23}, scheduled=True, now=now,
+            )
+
+        preview.assert_called_once_with(now, origin="auto")
+        self.assertTrue(result["unchanged"])
+
+    def test_recovery_suspension_overrides_global_daily_switch(self):
+        plex = _DailyPlex(existing=True)
+        store, engine = self.make_engine(plex)
+        store.set_many({
+            "daily_managed": {"id": "900", "scope": engine.daily_scope()},
+            "daily_auto_suspension": {"reason": "发布结果待核对"},
+        })
+
+        result = engine.daily_auto(
+            schedule={"enabled": True, "hour": 0}, scheduled=True, now=1_800_000_000,
+        )
+
+        self.assertEqual("suspended", result["status"])
+
     def test_first_publish_creates_daily_playlist_when_none_exists(self):
         plex = _DailyPlex(existing=False)
         _store, engine = self.make_engine(plex)

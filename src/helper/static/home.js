@@ -68,7 +68,7 @@ function render(data){
  if(themeFailed&&phase!=='review')$('analyzeLibrary').textContent='重新分析';
  if(!qqLogged&&phase!=='review')$('analyzeLibrary').textContent='先完成 QQ 授权';
  $('pause').hidden=!(running&&job.can_pause);$('pause').disabled=false;
- $('incrementalAction').hidden=running;$('analyzeLibrary').hidden=running||discovery.phase==='managed';$('cachedAction').hidden=running||!(themeFailed||phase==='cooldown'||s.cache_only);
+ $('incrementalAction').hidden=running;$('analyzeLibrary').hidden=running;$('cachedAction').hidden=running||!(themeFailed||phase==='cooldown'||s.cache_only);
  $('refreshReview').disabled=running||(cooling&&!w.review?.cache_only);
  $('attentionLink').hidden=!(['attention','error','theme_error'].includes(phase)||sum.review_count>0);
  const tips={checking:'正在执行，无需操作。关闭网页不会取消 NAS 任务。',enriching:'首次可能较久；新增歌曲会复用缓存，不是每次都重查全库。',planning:'资料处理完成，正在生成歌单结果，请稍候。',publishing:'正在提交已确认的变更，请不要重启应用。',review:'下一步：在下面勾选歌单，点击“确认选中歌单并同步”。',ready:'以后加歌：先让 Plex 扫描入库，再点一次整理；也可以开启下面的自动开关。',paused:'继续整理会复用检查点。自动开关与当前任务的暂停是两回事。',cooldown:'已完成的资料保留；不要反复点击或重新开始全库。',error:'先看下方“本次结果与排查”。已完成资料保留，不需要重装。',attention:'安全保护已跳过异常歌单，不会覆盖你的手工修改。详情见“本次结果与排查”。',external:'请等待高级任务完成，再使用首页的一键流程。'};
@@ -216,7 +216,7 @@ function renderLibraryPresentation(w,phase,running){
  const reviewNeedsMessage=!!(w.review?.expired||w.review?.cache_only||allGroupsBlocked&&blockedReviewReasons(w.review).length);
  $('reviewMessage').hidden=!reviewNeedsMessage;
  if(!running&&!w.needs_setup&&logged&&discovery.phase==='before_analysis')$('analyzeLibrary').textContent='分析曲库';
- $('task').hidden=discovery.phase==='managed'&&!running&&!['paused','attention','error','theme_error','cooldown'].includes(phase);
+ $('task').hidden=false;
 }
 
 /* Never trust an old workflow URL or put authentication into the link. */

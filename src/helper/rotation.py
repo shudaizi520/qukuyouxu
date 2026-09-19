@@ -63,6 +63,7 @@ def accept_reconciliation(engine,data):
     revised={**managed,'fingerprint':report['review_fingerprint']}
     cfg=dict(engine.store.get('daily_settings',{}) or {});cfg['enabled']=False
     engine.store.set_many({'daily_managed':revised,'daily_plan':None,'daily_settings':cfg,
+        'daily_auto_suspension':{'reason':'每日歌单已重新核对，等待手动确认','at':time.time()},
                           'daily_reconciliation_audit':audit[-200:]})
     return {'message':'已保留当前 Plex 歌单并重新确认托管，自动更新已暂停。请重新生成预览，检查后再发布；本次没有修改 Plex。'}
 

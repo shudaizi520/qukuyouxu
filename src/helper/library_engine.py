@@ -15,6 +15,16 @@ class LibraryEngine(SingleMixin, BaseMixin, Engine):
         migrate_managed_scopes(store)
         self._init_single(single_factory=single_factory)
 
+    def analyze_library(self, force_sources=True):
+        """Resume full song enrichment, then derive a read-only category preview."""
+        with self.exclusive():
+            single = self._enrich_singles(new_only=False, auto_connect=True)
+            if single.get("status") != "completed":
+                return single
+            if self.single_pause.is_set() or self.workflow_pause.is_set():
+                return single
+            return self._preview(bool(force_sources))
+
     def refresh_new_tracks(self):
         """Find only missing/changed tracks, then append to already-approved playlists."""
         with self.exclusive():

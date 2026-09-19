@@ -135,10 +135,11 @@ def ensure_profile_schedule(store, settings, now):
     """Create or refresh one profile's schedule without disturbing unchanged tasks."""
     state = copy.deepcopy(store.get(PROFILE_STATE_KEY, {}) or {})
     tasks = state.get("tasks") if isinstance(state.get("tasks"), dict) else {}
+    revision_changed = state.get("revision") != settings["revision"]
     for task in TASK_ORDER:
         config = copy.deepcopy(settings[task])
         previous = tasks.get(task) if isinstance(tasks.get(task), dict) else {}
-        changed = previous.get("config") != config
+        changed = revision_changed or previous.get("config") != config
         if not config["enabled"]:
             tasks[task] = {"config": config, "next_at": None, "slot": None}
         elif changed or not previous.get("next_at"):

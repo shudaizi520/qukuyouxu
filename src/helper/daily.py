@@ -248,7 +248,7 @@ class DailyMixin:
             history.append({'date': plan['date'], 'created_at': now, 'ids': ids, 'song_keys': [x['song_key'] for x in plan['items']], 'plan_id': plan_id})
             plan.update(applied=True, result={'written': len(ids), 'playlist_id': after['id'], 'date': plan['date']})
             published = published_daily_view(plan, after, now)
-            self.store.set_many({'daily_managed': record, 'daily_history': history[-90:], 'daily_plan': plan, 'daily_published_view': published})
+            self.store.set_many({'daily_managed': record, 'daily_history': history[-90:], 'daily_plan': plan, 'daily_published_view': published, 'daily_auto_suspension': None})
             self.store.log('每日推荐已发布：' + str(len(ids)) + '首；歌单ID保留用于后续更新')
             return plan['result']
         except Exception as exc:
@@ -256,7 +256,9 @@ class DailyMixin:
             self._save_snapshot(snap)
             daily = {**DEFAULT_DAILY, **self.store.get('daily_settings', {})}
             daily['enabled'] = False
-            self.store.set('daily_settings', daily)
+            self.store.set_many({'daily_settings': daily, 'daily_auto_suspension': {
+                'reason': '每日歌单发布结果待核对', 'at': time.time(),
+            }})
             raise SafetyError('每日歌单变更结果待核对，已暂停自动更新：' + safe_error(exc)) from None
 
     def repair_daily(self, snapshot_id, now=None):
@@ -318,6 +320,7 @@ class DailyMixin:
         daily = {**DEFAULT_DAILY, **self.store.get('daily_settings', {})}
         daily['enabled'] = False
         changes['daily_settings'] = daily
+        changes['daily_auto_suspension'] = {'reason': '每日歌单修复后等待手动确认', 'at': now}
         self.store.set_many(changes)
         self.store.log(f'每日推荐修复完成：{len(desired)}首；已清理上次未收尾的旧成员')
         return {'written': len(desired), 'playlist_id': after['id'], 'date': date, 'repaired': True}
@@ -344,7 +347,9 @@ class DailyMixin:
         self._save_snapshot(snap)
         daily = {**DEFAULT_DAILY, **self.store.get('daily_settings', {})}
         daily['enabled'] = False
-        self.store.set('daily_settings', daily)
+        self.store.set_many({'daily_settings': daily, 'daily_auto_suspension': {
+            'reason': '每日歌单恢复后等待手动确认', 'at': time.time(),
+        }})
         try:
             if snap['before']:
                 after = sync_owned_items(p, current, [x['id'] for x in snap['before']['items']])
@@ -375,15 +380,40 @@ class DailyMixin:
         record = self.store.get('daily_managed')
         pending = self.store.get('daily_plan') or {}
         manual_waiting = bool(pending.get('origin') == 'manual' and (not pending.get('applied')) and (pending.get('date') == day_at(now)) and (0 <= now - number_time(pending.get('created_at')) <= 1800))
-        return bool(daily['enabled'] and record and (not manual_waiting)
+        return bool(daily['enabled'] and record and (not self.store.get('daily_auto_suspension')) and (not manual_waiting)
                     and self.store.get('daily_auto_checked_date') != day_at(now)
                     and (datetime.fromtimestamp(now, CST).hour >= daily['hour'])
                     and (now - self.store.get('daily_last_attempt', 0) >= 1800))
 
-    def daily_auto(self, schedule=None):
+    def daily_auto(self, schedule=None, scheduled=False, now=None):
         with self.exclusive():
-            now = time.time()
-            if not self.daily_due(now, schedule=schedule):
+            now = time.time() if now is None else float(now)
+            daily = {**DEFAULT_DAILY, **self.store.get('daily_settings', {})}
+            if schedule:
+                daily.update({key: schedule[key] for key in ('enabled', 'hour') if key in schedule})
+            if self.store.get('daily_auto_suspension'):
+                return {'status': 'suspended', 'message': '该用户的自动更新已暂停，请手动发布一次确认恢复'}
+            pending = self.store.get('daily_plan') or {}
+            manual_waiting = bool(
+                pending.get('origin') == 'manual' and not pending.get('applied')
+                and pending.get('date') == day_at(now)
+                and 0 <= now - number_time(pending.get('created_at')) <= 1800
+            )
+            if scheduled and manual_waiting:
+                return {
+                    'status': 'deferred', 'message': '等待手动预览确认或过期',
+                    'retry_at': number_time(pending.get('created_at')) + 1801,
+                }
+            if scheduled and now - number_time(self.store.get('daily_last_attempt')) < 1800:
+                return {
+                    'status': 'deferred', 'message': '等待上次尝试的安全间隔',
+                    'retry_at': number_time(self.store.get('daily_last_attempt')) + 1800,
+                }
+            scheduled_ready = bool(
+                scheduled and daily['enabled'] and self.store.get('daily_managed')
+                and self.store.get('daily_auto_checked_date') != day_at(now)
+            )
+            if not scheduled_ready and not self.daily_due(now, schedule=schedule):
                 return {'message': '今天已发布、尚未到时间或自动更新暂停'}
             self.store.set('daily_last_attempt', now)
             plan = self._preview_daily(now, origin='auto')
@@ -391,7 +421,9 @@ class DailyMixin:
             if plan['blocked']:
                 daily = self.store.get('daily_settings')
                 daily['enabled'] = False
-                self.store.set('daily_settings', daily)
+                self.store.set_many({'daily_settings': daily, 'daily_auto_suspension': {
+                    'reason': '每日推荐存在阻止项', 'at': now,
+                }})
                 from .engine import SafetyError
                 raise SafetyError('每日推荐存在阻止项，已暂停自动更新：' + '；'.join(plan['blocked']))
             if plan.get('rolling', {}).get('unchanged'):
