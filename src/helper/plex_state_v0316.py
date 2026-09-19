@@ -170,18 +170,30 @@ def save_library(store, section_id, name="", now=None):
     saved = migrate_saved(store, now=now)
     if not saved:
         raise ValueError("请先连接 Plex")
-    from .profile_web import guard_connection_change
+    from .profile_web import connection_is_protected, guard_connection_change
     guard_connection_change(
         store,
         (saved.get("account") or {}).get("id"),
         (saved.get("server") or {}).get("machine"),
         section_id,
     )
+    registry = getattr(store, "registry", None)
+    profile_id = str(getattr(store, "profile_id", "") or "")
+    if registry is not None and profile_id and not connection_is_protected(store):
+        from .plex_recipients import PlexRecipientService
+
+        base_store = getattr(store, "base", store)
+        selected = PlexRecipientService(base_store, registry).select_profile_library(
+            profile_id, section_id
+        )
+        if selected["profile"]["id"] != profile_id:
+            registry.select(selected["profile"]["id"])
+        return get_public_saved(store, now=now)
+
     settings = dict(store.get("settings", {}) or {})
     settings["section"] = section_id
     saved["library"] = {"id": section_id, "name": _text(name, 160)}
     store.set_many({"settings": settings, "plex_saved": saved, "daily_plan": None, "plan": None})
-    registry = getattr(store, "registry", None)
     if registry is not None:
         registry.update(store.profile_id, library={"id": section_id, "name": _text(name, 160)})
     return get_public_saved(store, now=now)

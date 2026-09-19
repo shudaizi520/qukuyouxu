@@ -169,7 +169,7 @@ class PlexRecipientService:
 
     def list_people(self, owner_profile_id):
         """Combine the two Plex relationship types without making the UI teach Plex internals."""
-        profiles = {row["id"]: row for row in self.registry.list_public()}
+        profiles = self.registry.list_public()
         owner = self.registry.get(owner_profile_id)
         owner_account = owner.get("account") or {}
         owner_id = str(owner_account.get("id") or "").strip()
@@ -191,8 +191,12 @@ class PlexRecipientService:
                 row_name = str(row.get("username") or row.get("title") or "").strip().casefold()
                 if (owner_id and row_id == owner_id) or (owner_name and row_name == owner_name):
                     continue
-                profile_id = _recipient_profile_id(kind, row.get("id"))
-                profile = profiles.get(profile_id) or {}
+                profile = next((item for item in profiles
+                                if item.get("kind") == kind
+                                and str((item.get("account") or {}).get("id") or "") == row_id
+                                and str((item.get("server") or {}).get("machine") or "")
+                                == str((owner.get("server") or {}).get("machine") or "")), {})
+                profile_id = profile.get("id") or _recipient_profile_id(kind, row.get("id"))
                 enabled = bool(profile) and profile.get("enabled") is not False
                 items.append({
                     "id": row_id,
@@ -205,30 +209,97 @@ class PlexRecipientService:
                 })
         return {"items": items, "warnings": warnings}
 
+    def _libraries(self, profile, token):
+        token = str(token or "").strip()
+        if len(token) < 8:
+            raise RecipientUnsupported("Plex 用户授权无效")
+        server = profile.get("server") or {}
+        plex = self.client_factory(server.get("url"), token)
+        identity = plex.identity()
+        if str(identity.get("machine") or "") != str(server.get("machine") or ""):
+            raise RecipientUnsupported("用户令牌对应的不是所选 Plex 服务器")
+        rows = []
+        for section in plex.sections():
+            section_type = str(section.get("type") or "").strip().casefold()
+            if section_type and section_type != "artist":
+                continue
+            section_id = str(section.get("id") or "").strip()
+            if not section_id.isdigit():
+                continue
+            rows.append({
+                "id": section_id,
+                "name": str(section.get("title") or section.get("name") or "")[:160],
+            })
+        plex.playlists()
+        return rows
+
+    def list_profile_libraries(self, profile_id):
+        profile = self.registry.get(profile_id)
+        return self._libraries(profile, profile.get("token"))
+
+    def _recipient_access(self, owner, kind, user_id):
+        user_id = str(user_id or "").strip()
+        if kind == "home":
+            return self._switch_home(owner, user_id)
+        if kind == "shared":
+            row = next((item for item in self._shared_records(owner)
+                        if item["id"] == user_id), None)
+            if not row:
+                raise RecipientUnsupported("该用户没有所选服务器的共享访问令牌")
+            return row["token"], {
+                "id": row["id"],
+                "username": row["username"] or row["title"],
+            }
+        raise ValueError("Plex 用户类型无效")
+
+    def list_recipient_libraries(self, owner_profile_id, kind, user_id):
+        owner = self._owner(owner_profile_id)
+        token, account = self._recipient_access(owner, kind, user_id)
+        candidate = {
+            "kind": kind,
+            "account": account,
+            "server": dict(owner.get("server") or {}),
+        }
+        libraries = self._libraries(candidate, token)
+        return {"account": dict(account), "libraries": libraries}
+
     def _validate(self, owner, token, library_id):
         library_id = str(library_id or "")
         if not library_id.isdigit():
             raise ValueError("音乐资料库无效")
-        plex = self.client_factory(owner["server"]["url"], token)
-        identity = plex.identity()
-        if str(identity.get("machine") or "") != str(owner["server"]["machine"]):
-            raise RecipientUnsupported("接收用户令牌对应的不是所选 Plex 服务器")
-        sections = plex.sections()
-        library = next((row for row in sections if str(row.get("id")) == library_id), None)
+        library = next((row for row in self._libraries(owner, token)
+                        if row["id"] == library_id), None)
         if not library:
             raise RecipientUnsupported("接收用户无权访问所选音乐资料库")
-        plex.playlists()
-        return {
-            "id": library_id,
-            "name": str(library.get("title") or library.get("name") or "")[:160],
-        }
+        return library
 
     def _create(self, owner, kind, source_id, account, token, library_id):
         library = self._validate(owner, token, library_id)
+        machine = str((owner.get("server") or {}).get("machine") or "")
+        existing = self.registry.find_identity(kind, account.get("id"), machine, library["id"])
+        if existing:
+            self.registry.update(existing["id"], token=token, enabled=True)
+            return self.registry.restore(existing["id"])
+
+        sibling = next((row for row in self.registry.list_public()
+                        if row.get("kind") == kind
+                        and str((row.get("account") or {}).get("id") or "") == str(account.get("id") or "")
+                        and str((row.get("server") or {}).get("machine") or "") == machine), None)
+        if sibling:
+            self.registry.update(sibling["id"], token=token)
+            return self.registry.create_for_library(sibling["id"], library)
+
+        profile_id = _recipient_profile_id(kind, source_id)
+        try:
+            current = self.registry.get(profile_id)
+        except ValueError:
+            current = None
+        if current:
+            profile_id = _recipient_profile_id(kind, f"{source_id}-{library['id']}")
         return self.registry.create(
             name=account.get("username") or ("Plex " + kind),
             kind=kind,
-            profile_id=_recipient_profile_id(kind, source_id),
+            profile_id=profile_id,
             token=token,
             account=account,
             server=dict(owner["server"]),
@@ -242,9 +313,37 @@ class PlexRecipientService:
 
     def import_shared_user(self, owner_profile_id, user_id, library_id):
         owner = self._owner(owner_profile_id)
-        user_id = str(user_id or "")
-        row = next((item for item in self._shared_records(owner) if item["id"] == user_id), None)
-        if not row:
-            raise RecipientUnsupported("该用户没有所选服务器的共享访问令牌")
-        account = {"id": row["id"], "username": row["username"] or row["title"]}
-        return self._create(owner, "shared", user_id, account, row["token"], library_id)
+        token, account = self._recipient_access(owner, "shared", user_id)
+        return self._create(owner, "shared", user_id, account, token, library_id)
+
+    def select_profile_library(self, profile_id, library_id):
+        from .profile_web import connection_is_protected
+        from .scoped_store import ScopedStore
+
+        profile = self.registry.get(profile_id)
+        library_id = str(library_id or "").strip()
+        library = next((row for row in self._libraries(profile, profile.get("token"))
+                        if row["id"] == library_id), None)
+        if not library:
+            raise ValueError("当前 Plex 用户无权访问这个音乐资料库")
+        if str((profile.get("library") or {}).get("id") or "") == library_id:
+            return {"profile": profile, "mode": "unchanged"}
+
+        identity = (
+            profile.get("kind"),
+            (profile.get("account") or {}).get("id"),
+            (profile.get("server") or {}).get("machine"),
+            library_id,
+        )
+        existing = self.registry.find_identity(*identity)
+        if existing:
+            if existing.get("enabled") is False:
+                existing = self.registry.restore(existing["id"])
+            return {"profile": existing, "mode": "switched"}
+
+        scoped = ScopedStore(self.store, profile_id)
+        if connection_is_protected(scoped):
+            created = self.registry.create_for_library(profile_id, library)
+            return {"profile": created, "mode": "created"}
+        switched = self.registry.switch_unmanaged_library(profile_id, library)
+        return {"profile": switched, "mode": "switched"}

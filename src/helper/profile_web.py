@@ -162,6 +162,11 @@ def attach_profile_routes(app, base_store, registry: ProfileRegistry, body, ensu
     def list_profiles():
         return {"active_profile_id": registry.active_id(), "items": registry.list_public(enabled_only=True)}
 
+    @app.get("/api/plex/profiles/libraries")
+    def list_profile_libraries(profile_id: str = "default"):
+        with operation():
+            return {"items": recipients.list_profile_libraries(profile_id)}
+
     @app.post("/api/plex/profiles/select")
     async def select_profile(request: Request):
         data = await body(request)
@@ -205,6 +210,26 @@ def attach_profile_routes(app, base_store, registry: ProfileRegistry, body, ensu
     @app.get("/api/plex/recipients")
     def list_people(owner_profile_id: str = "default"):
         return recipients.list_people(owner_profile_id)
+
+    @app.post("/api/plex/recipients/libraries")
+    async def list_recipient_libraries(request: Request):
+        data = await body(request)
+        ensure_idle()
+        with operation():
+            return recipients.list_recipient_libraries(
+                data.get("owner_profile_id", "default"),
+                data.get("kind"),
+                data.get("user_id"),
+            )
+
+    @app.post("/api/plex/profiles/library")
+    async def select_profile_library(request: Request):
+        data = await body(request)
+        ensure_idle()
+        with operation():
+            return recipients.select_profile_library(
+                data.get("profile_id"), data.get("library_id")
+            )
 
     @app.post("/api/plex/recipients/home/import")
     async def import_home_recipient(request: Request):
