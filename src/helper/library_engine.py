@@ -4,7 +4,7 @@ from __future__ import annotations
 import time
 
 from .base_mixin import BaseMixin
-from .engine import Engine
+from .engine import Engine, WorkflowPaused
 from .single_mixin import SingleMixin
 
 
@@ -20,9 +20,13 @@ class LibraryEngine(SingleMixin, BaseMixin, Engine):
         with self.exclusive():
             single = self._enrich_singles(new_only=False, auto_connect=True)
             if single.get("status") != "completed":
-                return single
+                message = single.get("message") or "整理已暂停，已完成的资料已保存"
+                self._record_workflow_pause("preview", message)
+                raise WorkflowPaused(message)
             if self.single_pause.is_set() or self.workflow_pause.is_set():
-                return single
+                message = "整理已暂停，已完成的资料已保存"
+                self._record_workflow_pause("preview", message)
+                raise WorkflowPaused(message)
             return self._preview(bool(force_sources))
 
     def refresh_new_tracks(self):
@@ -36,10 +40,15 @@ class LibraryEngine(SingleMixin, BaseMixin, Engine):
                 'updated_at': time.time(), 'message': single.get('message') or '',
             }
             def finish_if_paused():
-                if not (self.single_pause.is_set() or self.workflow_pause.is_set()):
+                stopped = self.single_pause.is_set() or self.workflow_pause.is_set()
+                held = single.get('status') in ('paused', 'blocked')
+                if not (stopped or held):
                     return False
-                result.update(status='paused', updated_at=time.time(), message='新增歌曲检查已暂停，进度已经保存')
+                if stopped:
+                    result.update(status='paused', message='新增歌曲检查已暂停，进度已经保存')
+                result['updated_at'] = time.time()
                 self.store.set('incremental_status', result)
+                self._record_workflow_pause('incremental', result['message'])
                 self.progress(result['message'])
                 return True
 
@@ -73,7 +82,11 @@ class LibraryEngine(SingleMixin, BaseMixin, Engine):
                 if finish_if_paused():
                     return result
                 result['theme'] = self._apply(plan['id'], automatic=True)
+                if finish_if_paused():
+                    return result
 
+            if finish_if_paused():
+                return result
             errors = []
             for part in ('base', 'theme'):
                 errors.extend((result.get(part) or {}).get('errors') or [])

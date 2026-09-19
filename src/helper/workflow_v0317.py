@@ -14,7 +14,7 @@ from .library_discovery import discovery_min_tracks, eligible_discovery_groups
 from .qq_auth_v0320 import QQAuthError, QQAuthManager
 from .scoped_store import ScopedStore
 from .theme import DEFAULT_THEME, TOPICS, theme_key
-from .workflow_state import current_review_plan, incremental_is_current
+from .workflow_state import current_review_plan, incremental_is_current, resume_job_kind
 
 
 class ProfileQQAuthManager:
@@ -110,6 +110,7 @@ def build_workflow_status(store, engine, qq_status):
         phase, message = "ready", "最近一次同步已经完成。"
     else:
         phase, message = "idle", "点击整理新增歌曲，先生成预览，确认前不会修改 Plex。"
+    resume_kind = resume_job_kind(paused) if phase == "paused" else ""
     catalog = store.get("catalog", []) or []
     managed = store.get("managed", {}) or {}
     library_count = len(catalog) or int((saved_plan or {}).get("library_count") or 0)
@@ -147,7 +148,7 @@ def build_workflow_status(store, engine, qq_status):
         "version": __version__,
         "workflow": {
             "needs_setup": not all(settings.get(key) for key in ("plex_url", "plex_token", "section")),
-            "state": {"phase": phase, "message": message, "cache_only": bool((plan or {}).get("cache_only")), "result": result},
+            "state": {"phase": phase, "message": message, "resume_kind": resume_kind, "cache_only": bool((plan or {}).get("cache_only")), "result": result},
             "job": {
                 **{key: job.get(key) for key in ("running", "kind", "message", "error", "started_at", "finished_at", "progress_current", "progress_total")},
                 "can_pause": bool(running and str(job.get("kind") or "") in {"preview", "incremental"}),
@@ -185,6 +186,13 @@ def save_theme_settings(store, selected, enabled):
                 row["approved"] = False
     store.set_many({"theme_settings": settings, "sources": sources, "plan": None})
     return {"message": "主题选择已保存；下次整理时生效。"}
+
+
+def start_or_resume_workflow(store, engine):
+    paused = store.get("workflow_pause_state") or {}
+    if paused.get("active") and resume_job_kind(paused) == "incremental":
+        return engine.start_job("incremental")
+    return engine.start_job("preview", force_sources=True)
 
 
 def apply_exclusions(plan, exclusions, min_tracks=5):
@@ -278,7 +286,7 @@ def attach_routes(app, store, engine, body, ensure_idle):
             raise ValueError("请确认开始整理")
         ensure_idle()
         store.set("workflow_cache_only_pending", False)
-        return engine.start_job("preview", force_sources=True)
+        return start_or_resume_workflow(store, engine)
 
     @app.post("/api/workflow/incremental")
     async def workflow_incremental(req: Request):

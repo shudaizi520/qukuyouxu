@@ -18,3 +18,10 @@ def incremental_is_current(plan, incremental):
 def current_review_plan(plan, incremental):
     """An older pending theme preview must not impersonate a newer new-track check."""
     return None if incremental_is_current(plan, incremental) else plan
+
+
+def resume_job_kind(paused):
+    """Return the persisted resumable job, defaulting old records to full analysis."""
+    if isinstance(paused, dict) and paused.get("active") and paused.get("kind") == "incremental":
+        return "incremental"
+    return "preview"

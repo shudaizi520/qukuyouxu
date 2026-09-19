@@ -63,7 +63,7 @@ class Engine(RenamingMixin, DailyMixin):
     def __init__(self,store,plex_factory=None,qq=None):
         self.store=store;self.gate=threading.Lock();self.job_gate=threading.Lock();self.stop=threading.Event();self.workflow_pause=threading.Event()
         self.plex_factory=plex_factory or (lambda cfg:PlexClient(cfg['plex_url'],cfg['plex_token'],store=self.store))
-        self.qq=qq or QQClient();self.status_lock=threading.Lock();self.job={'running':False,'message':'尚未运行','error':''}
+        self.qq=qq or QQClient();self.status_lock=threading.RLock();self.job={'running':False,'message':'尚未运行','error':''}
 
     @contextmanager
     def exclusive(self):
@@ -85,21 +85,25 @@ class Engine(RenamingMixin, DailyMixin):
         with self.status_lock:
             self.job['progress_current']=max(0,int(current or 0))
             self.job['progress_total']=max(0,int(total or 0))
+    def _record_workflow_pause(self,kind,message):
+        self.store.set('workflow_pause_state',{
+            'active':True,'kind':kind if kind in ('preview','incremental') else 'preview',
+            'message':str(message or '整理已暂停，已完成的资料已保存'),'updated_at':time.time(),
+        })
     def _check_workflow_pause(self):
         if self.workflow_pause.is_set():
             message='整理已暂停，已完成的资料已保存'
-            self.store.set('workflow_pause_state',{'active':True,'kind':'preview','message':message,'updated_at':time.time()})
+            with self.status_lock:kind=str(self.job.get('kind') or 'preview')
+            self._record_workflow_pause(kind,message)
             raise WorkflowPaused(message)
     def request_workflow_pause(self):
         with self.status_lock:
             running=bool(self.job.get('running'));kind=str(self.job.get('kind') or '')
-        if not running or kind not in ('preview','incremental'):
-            raise SafetyError('当前步骤不能暂停')
-        if kind=='incremental' and hasattr(self,'request_single_pause'):
+            if not running or kind not in ('preview','incremental'):
+                raise SafetyError('当前步骤不能暂停')
             self.workflow_pause.set()
-            return self.request_single_pause()
-        self.workflow_pause.set()
-        self.progress('正在暂停，当前步骤完成后保存进度')
+            if hasattr(self,'single_pause'):self.single_pause.set()
+            self.job['message']='正在暂停，当前步骤完成后保存进度'
         return {'message':'正在暂停，当前步骤完成后会保存进度'}
     def preview(self,force_sources=False):
         with self.exclusive():return self._preview(force_sources)
@@ -323,6 +327,7 @@ class Engine(RenamingMixin, DailyMixin):
                 raise SafetyError('已有任务在执行，请等完成')
             try:
                 self.workflow_pause.clear()
+                if hasattr(self,'single_pause'):self.single_pause.clear()
                 self.store.set('workflow_pause_state',None)
                 if kind=='preview':self.store.set('plan',None)
                 self.job={'running':True,'kind':kind,'message':'任务开始','error':'','started_at':time.time(),'progress_current':0,'progress_total':0}
@@ -349,11 +354,18 @@ class Engine(RenamingMixin, DailyMixin):
                 elif kind=='single_check':self.check_single_connection()
                 elif kind=='single_enrich':self.enrich_singles()
                 else:raise SafetyError('未知任务')
-                if kind!='incremental':self.progress('任务完成，请查看预览或写入结果')
+                if kind in ('preview','incremental'):
+                    with self.status_lock:
+                        self._check_workflow_pause()
+                        if kind!='incremental':self.job['message']='任务完成，请查看预览或写入结果'
+                        self.job['running']=False;self.job['finished_at']=time.time()
+                elif kind!='incremental':self.progress('任务完成，请查看预览或写入结果')
             except WorkflowPaused as exc:
-                with self.status_lock:self.job['message']=str(exc);self.job['error']=''
+                with self.status_lock:
+                    self.job['message']=str(exc);self.job['error']='';self.job['running']=False;self.job['finished_at']=time.time()
             except Exception as exc:
-                with self.status_lock:self.job['error']=safe_error(exc)
+                with self.status_lock:
+                    self.job['error']=safe_error(exc);self.job['running']=False;self.job['finished_at']=time.time()
                 self.store.log(safe_error(exc),'error')
             finally:
                 finished_at=time.time()

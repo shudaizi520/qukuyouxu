@@ -73,7 +73,17 @@ class SingleMixin:
         self.single_factory=single_factory or (lambda **kw:SingleQQClient(**kw))
         old=self.store.get('single_state')
         if old and old.get('status')=='running':
-            self.store.set('single_state',{**old,'status':'paused','message':'上次运行中断；已完成缓存保留，可继续未完成曲目'})
+            old={**old,'status':'paused','message':'上次运行中断；已完成缓存保留，可继续未完成曲目'}
+            self.store.set('single_state',old)
+        recoverable = old and old.get('status')=='paused' and (
+            old.get('job_kind') in ('preview','incremental') or
+            str(old.get('message') or '').startswith('上次运行中断')
+        )
+        if recoverable and not self.store.get('workflow_pause_state'):
+            self.store.set('workflow_pause_state',{
+                'active':True,'kind':old.get('job_kind') or 'preview','message':old.get('message'),
+                'updated_at':time.time(),
+            })
 
     def single_connection_scope(self):
         from .connection_scope import stable_library_scope
@@ -198,7 +208,8 @@ class SingleMixin:
 
     def _enrich_singles(self,new_only=False,auto_connect=False):
         from .engine import SafetyError
-        self.single_pause.clear();cfg=self.store.get('settings');self.progress('读取本地单曲清单（不要求完整专辑）')
+        if not self.workflow_pause.is_set():self.single_pause.clear()
+        cfg=self.store.get('settings');self.progress('读取本地单曲清单（不要求完整专辑）')
         if not all(cfg.get(k) for k in ('plex_url','plex_token','section')):raise SafetyError('先保存有效的 Plex 连接和音乐资料库')
         p=self.plex_factory(cfg);machine=p.identity()['machine'];tracks=p.tracks(cfg['section'])
         if not tracks:raise SafetyError('Plex曲库为空，停止补全；不清空已保存记录')
@@ -213,6 +224,7 @@ class SingleMixin:
         queue.sort(key=lambda t:(0 if hints.get(str(t['id'])) else 1,str(t['id'])))
         client=None
         state={'scope':scope,'connection_scope':self.single_connection_scope(),'machine':machine,
+               'job_kind':'incremental' if new_only else 'preview',
                'status':'running','started_at':now,'library_count':len(tracks),'processed':len(valid),'cached':len(valid),
                'new_count':len(queue),'remaining':len(queue),'requests':0,
                'message':'开始逐曲补全；仅存助手缓存，不修改歌曲或歌单','retry_after':None}
@@ -226,6 +238,7 @@ class SingleMixin:
             self.store.set('single_state',state)
         update();invalidated=False
         try:
+            if self.single_pause.is_set() or self.workflow_pause.is_set():raise SinglePaused('已暂停；点击继续会复用缓存，不从头查询')
             if not queue:
                 state.update(status='completed',message='没有发现需要查询的新增或有变化歌曲；旧资料继续复用。')
                 return {k:v for k,v in state.items() if k not in ('scope','machine','connection_scope')}
@@ -237,9 +250,9 @@ class SingleMixin:
                     state.update(status='blocked',message=check.get('message') or 'QQ连接检测未通过，已保留进度',
                                  retry_after=check.get('retry_after'))
                     return {k:v for k,v in state.items() if k not in ('scope','machine','connection_scope')}
-            client=self.single_factory(cancelled=lambda:self.stop.is_set() or self.single_pause.is_set(),budget=10000)
+            client=self.single_factory(cancelled=lambda:self.stop.is_set() or self.single_pause.is_set() or self.workflow_pause.is_set(),budget=10000)
             for t in queue:
-                if self.single_pause.is_set() or self.stop.is_set():raise SinglePaused('已暂停；点击继续会复用缓存，不从头查询')
+                if self.single_pause.is_set() or self.workflow_pause.is_set() or self.stop.is_set():raise SinglePaused('已暂停；点击继续会复用缓存，不从头查询')
                 tid=str(t['id']);state['message']=f"逐曲补全 {len(valid)+1}/{len(tracks)}：{t.get('title','')} / {t.get('artist','')}"
                 self.progress(state['message']);self.store.set('single_state',state)
                 result=self._single_lookup(t,hints.get(tid,[]),client);stamp=time.time()
