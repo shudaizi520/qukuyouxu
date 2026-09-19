@@ -159,7 +159,7 @@ def attach_profile_routes(app, base_store, registry: ProfileRegistry, body, ensu
         return engine.exclusive() if engine is not None else nullcontext()
 
     @app.get("/api/plex/profiles")
-    def list_profiles():
+    async def list_profiles():
         return {"active_profile_id": registry.active_id(), "items": registry.list_public(enabled_only=True)}
 
     @app.get("/api/plex/profiles/libraries")

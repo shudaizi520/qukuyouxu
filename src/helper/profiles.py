@@ -210,10 +210,12 @@ class ProfileRegistry:
         return self._saved_active_id()
 
     @contextmanager
-    def fixed_active(self, profile_id=None):
+    def fixed_active(self, profile_id=None, enabled_only=False):
         """Keep dynamic stores and proxies on one profile for an entire request."""
         selected = validate_profile_id(profile_id or self._saved_active_id())
-        self.get(selected)
+        profile = self.get(selected)
+        if enabled_only and profile.get("enabled") is False:
+            raise ValueError("Plex 档案已停用")
         token = self._request_profile.set(selected)
         try:
             yield selected

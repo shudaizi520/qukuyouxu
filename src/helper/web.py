@@ -7,7 +7,7 @@ import time
 import uuid
 import hmac
 import threading
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, nullcontext
 from pathlib import Path
 from urllib.parse import urlsplit
 from fastapi import FastAPI, Request
@@ -83,32 +83,44 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
 
     @app.middleware('http')
     async def security(req, call_next):
-        with profiles.fixed_active():
-            path = str(req.scope.get('path') or '')
-            public_api = ('/api/auth/status', '/api/auth/login', '/api/auth/setup', '/api/auth/logout')
-            if path.startswith('/api/') and path != '/api/plex/webhook':
-                if path not in public_api:
-                    session_user = auth.session_user(req.cookies.get(COOKIE_NAME))
-                    legacy_ok = False
-                    if not session_user and auth.setup_required() and admin_token:
-                        value = req.headers.get('authorization', '')
-                        legacy_ok = hmac.compare_digest(value.encode(), ('Bearer ' + admin_token).encode())
-                    if not session_user and (not legacy_ok):
-                        return JSONResponse({'error': '请先登录'}, status_code=401)
-                origin = req.headers.get('origin')
-                try:
-                    expected_origin = public_origin or _origin(f"{req.scope.get('scheme', 'http')}://{req.headers.get('host', '')}")
-                    request_origin = _origin(origin) if origin else ''
-                except ValueError:
-                    return JSONResponse({'error': '请求地址无效'}, status_code=400)
-                if request_origin and request_origin != expected_origin:
-                    return JSONResponse({'error': '不允许跨站管理请求；请直接使用本应用地址'}, status_code=403)
-                try:
-                    if int(req.headers.get('content-length', '0')) > 2 * 1024 * 1024:
-                        return JSONResponse({'error': '请求超过2MB'}, status_code=413)
-                except ValueError:
-                    return JSONResponse({'error': '无效请求长度'}, status_code=400)
-            r = await call_next(req)
+        path = str(req.scope.get('path') or '')
+        public_api = ('/api/auth/status', '/api/auth/login', '/api/auth/setup', '/api/auth/logout')
+        profile_context = profiles.fixed_active()
+        if path.startswith('/api/') and path != '/api/plex/webhook':
+            if path not in public_api:
+                session_user = auth.session_user(req.cookies.get(COOKIE_NAME))
+                legacy_ok = False
+                if not session_user and auth.setup_required() and admin_token:
+                    value = req.headers.get('authorization', '')
+                    legacy_ok = hmac.compare_digest(value.encode(), ('Bearer ' + admin_token).encode())
+                if not session_user and (not legacy_ok):
+                    return JSONResponse({'error': '请先登录'}, status_code=401)
+                if path == '/api/plex/profiles':
+                    profile_context = nullcontext()
+                else:
+                    requested_profile = str(req.headers.get('x-plex-profile') or '').strip()
+                    profile_context = profiles.fixed_active(
+                        requested_profile or None,
+                        enabled_only=bool(requested_profile),
+                    )
+            origin = req.headers.get('origin')
+            try:
+                expected_origin = public_origin or _origin(f"{req.scope.get('scheme', 'http')}://{req.headers.get('host', '')}")
+                request_origin = _origin(origin) if origin else ''
+            except ValueError:
+                return JSONResponse({'error': '请求地址无效'}, status_code=400)
+            if request_origin and request_origin != expected_origin:
+                return JSONResponse({'error': '不允许跨站管理请求；请直接使用本应用地址'}, status_code=403)
+            try:
+                if int(req.headers.get('content-length', '0')) > 2 * 1024 * 1024:
+                    return JSONResponse({'error': '请求超过2MB'}, status_code=413)
+            except ValueError:
+                return JSONResponse({'error': '无效请求长度'}, status_code=400)
+        try:
+            with profile_context:
+                r = await call_next(req)
+        except ValueError as exc:
+            return JSONResponse({'error': str(exc)[:300]}, status_code=400)
         r.headers['Cache-Control'] = 'no-store'
         r.headers['X-Content-Type-Options'] = 'nosniff'
         r.headers['X-Frame-Options'] = 'DENY'
