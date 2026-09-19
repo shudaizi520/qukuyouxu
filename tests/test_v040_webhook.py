@@ -282,6 +282,50 @@ class PlexWebhookV040Tests(unittest.TestCase):
         self.assertEqual([], self.events("default"))
         self.assertEqual([], self.events("owner-classics"))
 
+    def test_missing_library_identity_uses_unique_cached_catalog_membership(self):
+        from helper.plex_webhook import apply_webhook_event
+        from helper.scoped_store import ScopedStore
+
+        self.registry.create(
+            name="Owner classics", kind="owner", profile_id="owner-classics", token="owner-secret",
+            account={"id": "10", "username": "owner"},
+            server={"machine": "machine-a", "name": "Main", "url": "http://plex:32400"},
+            library={"id": "22", "name": "Classics"},
+        )
+        ScopedStore(self.store, "default").set("catalog", [{"id": "100"}])
+        ScopedStore(self.store, "owner-classics").set("catalog", [{"id": "778"}])
+
+        result = apply_webhook_event(
+            self.store, self.registry, payload("media.scrobble", track="778"), now=100,
+        )
+
+        self.assertEqual("recorded", result["status"])
+        self.assertEqual("owner-classics", result["profile_id"])
+        self.assertEqual([], self.events("default"))
+        self.assertEqual("778", self.events("owner-classics")[0]["track_id"])
+
+    def test_missing_library_identity_rejects_ambiguous_cached_membership(self):
+        from helper.plex_webhook import apply_webhook_event
+        from helper.scoped_store import ScopedStore
+
+        self.registry.create(
+            name="Owner classics", kind="owner", profile_id="owner-classics", token="owner-secret",
+            account={"id": "10", "username": "owner"},
+            server={"machine": "machine-a", "name": "Main", "url": "http://plex:32400"},
+            library={"id": "22", "name": "Classics"},
+        )
+        for profile_id in ("default", "owner-classics"):
+            ScopedStore(self.store, profile_id).set("catalog", [{"id": "778"}])
+
+        result = apply_webhook_event(
+            self.store, self.registry, payload("media.scrobble", track="778"), now=100,
+        )
+
+        self.assertEqual("ignored", result["status"])
+        self.assertEqual("identity_not_unique", result["reason"])
+        self.assertEqual([], self.events("default"))
+        self.assertEqual([], self.events("owner-classics"))
+
     def test_disabled_profile_keeps_existing_history_and_ignores_new_events(self):
         from helper.plex_webhook import apply_webhook_event
         from helper.scoped_store import ScopedStore

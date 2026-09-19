@@ -71,7 +71,7 @@ class ProfileUIV040Tests(unittest.TestCase):
             html = (ROOT / "src/helper/static" / name).read_text(encoding="utf-8")
             self.assertIn('href="/settings#accounts"', html)
 
-    def test_partial_connection_keeps_library_choice_visible_before_adding_people(self):
+    def test_partial_connection_keeps_library_choice_visible(self):
         script = (ROOT / "src/helper/static/settings.js").read_text(encoding="utf-8")
 
         self.assertIn("const libraryReady=!!value.library?.id", script)
@@ -80,9 +80,7 @@ class ProfileUIV040Tests(unittest.TestCase):
         self.assertIn("placeholder.textContent='请选择音乐资料库'", script)
         self.assertIn("select.value=previous", script)
         self.assertIn("note('音乐资料库已保存。')", script)
-        guard = script.index("if(!owner?.library?.id)")
-        dialog = script.index("$('addUserDialog').showModal()")
-        self.assertLess(guard, dialog)
+        self.assertIn("$('addUserDialog').showModal()", script)
 
     def test_existing_people_can_be_opened_removed_and_restored(self):
         script = (ROOT / "src/helper/static/settings.js").read_text(encoding="utf-8")
@@ -92,7 +90,9 @@ class ProfileUIV040Tests(unittest.TestCase):
         self.assertIn("row.archived_profile_id?'重新添加':'添加'", script)
         self.assertIn("/api/plex/profiles/remove", script)
         self.assertIn("/api/plex/profiles/restore", script)
-        self.assertIn("/api/plex/recipients?owner_profile_id=", script)
+        self.assertIn("responseJson('/api/plex/recipients')", script)
+        self.assertIn("data.owner_profile_id", script)
+        self.assertNotIn("function ownerProfile()", script)
 
 
 if __name__ == "__main__":

@@ -157,6 +157,37 @@ def disconnect_profile_connection(store):
     return {"message": "Plex 已断开"}
 
 
+def resolve_owner_profile_id(registry, profile_id=None):
+    """Resolve the current project's Plex owner without crossing servers."""
+    current = registry.get(profile_id or registry.active_id())
+    if current.get("kind") == "owner" and current.get("token_present"):
+        return current["id"]
+    machine = str((current.get("server") or {}).get("machine") or "")
+    owners = [
+        row for row in registry.list_public(enabled_only=True)
+        if row.get("kind") == "owner"
+        and row.get("token_present")
+        and str((row.get("server") or {}).get("machine") or "") == machine
+    ]
+    if len(owners) == 1:
+        return owners[0]["id"]
+    library_id = str((current.get("library") or {}).get("id") or "")
+    same_library = [
+        row for row in owners
+        if library_id and str((row.get("library") or {}).get("id") or "") == library_id
+    ]
+    if len(same_library) == 1:
+        return same_library[0]["id"]
+    candidates = same_library or owners
+    account_ids = {
+        str((row.get("account") or {}).get("id") or "")
+        for row in candidates
+    }
+    if candidates and len(account_ids) == 1 and "" not in account_ids:
+        return sorted(candidates, key=lambda row: row["id"])[0]["id"]
+    raise ValueError("请先打开这个服务器对应的 Plex 所有者账户")
+
+
 def attach_profile_routes(app, base_store, registry: ProfileRegistry, body, ensure_idle, engine=None):
     from .plex_recipients import PlexRecipientService
     recipients = PlexRecipientService(base_store, registry)
@@ -247,8 +278,12 @@ def attach_profile_routes(app, base_store, registry: ProfileRegistry, body, ensu
         return {"items": recipients.list_home_users(owner_profile_id)}
 
     @app.get("/api/plex/recipients")
-    def list_people(owner_profile_id: str = "default"):
-        return recipients.list_people(owner_profile_id)
+    def list_people(owner_profile_id: str = ""):
+        owner_profile_id = owner_profile_id or resolve_owner_profile_id(registry)
+        return {
+            **recipients.list_people(owner_profile_id),
+            "owner_profile_id": owner_profile_id,
+        }
 
     @app.post("/api/plex/recipients/libraries")
     async def list_recipient_libraries(request: Request):

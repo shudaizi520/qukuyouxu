@@ -148,6 +148,80 @@ class ProfileLibrariesV108Tests(unittest.TestCase):
             self.service.select_profile_library("shared-248098626", "99")
 
 
+class ProfileOwnerResolutionTests(unittest.TestCase):
+    def setUp(self):
+        from helper.profiles import ProfileRegistry
+        from helper.store import Store
+
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.base = Store(Path(self.temp.name))
+        self.registry = ProfileRegistry(self.base)
+        self.registry.update(
+            "default", name="Owner A", kind="owner", token="owner-a-token",
+            account={"id": "10", "username": "owner-a"},
+            server={"machine": "machine-a", "name": "Plex A", "url": "http://plex-a"},
+            library={"id": "11", "name": "音乐 A"},
+        )
+        self.owner_b = self.registry.create(
+            name="Owner B", kind="owner", profile_id="owner-b", token="owner-b-token",
+            account={"id": "20", "username": "owner-b"},
+            server={"machine": "machine-b", "name": "Plex B", "url": "http://plex-b"},
+            library={"id": "21", "name": "音乐 B"},
+        )
+        self.child_b = self.registry.create(
+            name="Family B", kind="home", profile_id="family-b", token="family-b-token",
+            account={"id": "21", "username": "family-b"},
+            server={"machine": "machine-b", "name": "Plex B", "url": "http://plex-b"},
+            library={"id": "21", "name": "音乐 B"},
+        )
+
+    def test_child_profile_resolves_owner_on_its_current_server(self):
+        from helper.profile_web import resolve_owner_profile_id
+
+        self.assertEqual(
+            self.owner_b["id"], resolve_owner_profile_id(self.registry, self.child_b["id"])
+        )
+
+    def test_active_owner_resolves_to_itself(self):
+        from helper.profile_web import resolve_owner_profile_id
+
+        self.assertEqual(
+            self.owner_b["id"], resolve_owner_profile_id(self.registry, self.owner_b["id"])
+        )
+
+    def test_child_profile_prefers_owner_for_the_same_library(self):
+        from helper.profile_web import resolve_owner_profile_id
+
+        self.registry.create(
+            name="Owner B classics", kind="owner", profile_id="owner-b-classics",
+            token="owner-b-token",
+            account={"id": "20", "username": "owner-b"},
+            server={"machine": "machine-b", "name": "Plex B", "url": "http://plex-b"},
+            library={"id": "22", "name": "古典 B"},
+        )
+
+        self.assertEqual(
+            self.owner_b["id"], resolve_owner_profile_id(self.registry, self.child_b["id"])
+        )
+
+    def test_child_profile_rejects_two_possible_owners_on_same_server(self):
+        from helper.profile_web import resolve_owner_profile_id
+
+        self.registry.update(
+            self.child_b["id"], library={"id": "99", "name": "共享音乐"}
+        )
+        self.registry.create(
+            name="Owner B2", kind="owner", profile_id="owner-b2", token="owner-b2-token",
+            account={"id": "22", "username": "owner-b2"},
+            server={"machine": "machine-b", "name": "Plex B", "url": "http://plex-b"},
+            library={"id": "22", "name": "古典 B"},
+        )
+
+        with self.assertRaisesRegex(ValueError, "所有者"):
+            resolve_owner_profile_id(self.registry, self.child_b["id"])
+
+
 class ProfileLibraryRoutesV108Tests(unittest.TestCase):
     def setUp(self):
         from helper.profiles import ProfileRegistry

@@ -143,7 +143,8 @@ def parse_webhook_payload(payload: dict):
     return signal
 
 
-def _matching_profiles(registry, machine, account_id, library_id=""):
+def _matching_profiles(registry, machine, account_id, library_id="", base_store=None,
+                       track_id=""):
     profiles = [
         row for row in registry.list_public()
         if row.get("enabled") is not False
@@ -161,6 +162,16 @@ def _matching_profiles(registry, machine, account_id, library_id=""):
             row for row in candidates
             if str((row.get("library") or {}).get("id") or "") == library_id
         ]
+    elif len(candidates) > 1 and base_store is not None and str(track_id).isdigit():
+        track_id = str(track_id)
+        catalog_matches = []
+        for row in candidates:
+            catalog = ScopedStore(base_store, row["id"]).get("catalog", []) or []
+            if any(str(track.get("id") or "") == track_id
+                   for track in catalog if isinstance(track, dict)):
+                catalog_matches.append(row)
+        if len(catalog_matches) == 1:
+            candidates = catalog_matches
     return [row["id"] for row in candidates]
 
 
@@ -282,7 +293,9 @@ def apply_webhook_event(base_store, registry, payload, now=None):
     if not signal:
         return _record_ingress(base_store, signal, {"status": "ignored", "reason": "unsupported_or_incomplete"}, now)
     matches = _matching_profiles(
-        registry, signal["machine"], signal["account_id"], signal.get("library_id") or ""
+        registry, signal["machine"], signal["account_id"],
+        signal.get("library_id") or "", base_store=base_store,
+        track_id=signal["track_id"],
     )
     if len(matches) != 1:
         return _record_ingress(base_store, signal, {"status": "ignored", "reason": "identity_not_unique"}, now)
