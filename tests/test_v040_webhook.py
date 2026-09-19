@@ -182,6 +182,36 @@ class PlexWebhookV040Tests(unittest.TestCase):
 
         self.assertEqual(["completed", "completed"], [row["kind"] for row in self.events()])
 
+    def test_scrobble_keeps_confirmed_replay_active_after_previous_stop(self):
+        from helper.plex_webhook import active_session_count, apply_webhook_event
+        from helper.scoped_store import ScopedStore
+
+        apply_webhook_event(self.store, self.registry, payload("media.play", track="330"), now=10)
+        apply_webhook_event(
+            self.store, self.registry,
+            payload("media.scrobble", track="330", viewOffset=180000), now=100,
+        )
+        apply_webhook_event(
+            self.store, self.registry,
+            payload("media.stop", track="330", viewOffset=190000), now=110,
+        )
+        replay = apply_webhook_event(
+            self.store, self.registry, payload("media.play", track="330"), now=200,
+        )
+        apply_webhook_event(
+            self.store, self.registry,
+            payload("media.scrobble", track="330", viewOffset=180000), now=300,
+        )
+
+        sessions = ScopedStore(self.store, "default").get("behavior_sessions")
+        session = next(iter(sessions.values()))
+        self.assertEqual("duplicate", replay["status"])
+        self.assertEqual("media.play", session["state"])
+        self.assertEqual("", session["terminal_event"])
+        self.assertEqual("media.scrobble", session["completion_event"])
+        self.assertEqual(1, active_session_count(sessions, now=301))
+        self.assertEqual(["completed", "completed"], [row["kind"] for row in self.events()])
+
     def test_duplicate_delivery_across_old_ten_second_bucket_is_ignored(self):
         from helper.plex_webhook import apply_webhook_event
 

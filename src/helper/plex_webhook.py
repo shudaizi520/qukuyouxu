@@ -377,6 +377,8 @@ def apply_webhook_event(base_store, registry, payload, now=None):
             progressed = elapsed >= max(30.0, min(duration or offset, offset) * 0.5)
             if (signal["event"] == "media.stop" and ratio < 0.65) or progressed:
                 session = new_playback(pending_at)
+                if signal["event"] == "media.scrobble":
+                    session_was_playing = True
             else:
                 session = dict(session)
                 session.pop("pending_play_at", None)
