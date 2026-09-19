@@ -110,6 +110,7 @@
  <dialog id="addUserDialog" class="settings-dialog">
   <div class="settings-dialog-head"><h2>添加 Plex 用户</h2><button id="closeAddUser" class="secondary" type="button">关闭</button></div>
   <div id="profileRecipientList" class="settings-user-list dialog-user-list" aria-live="polite"></div>
+  <div id="profileRecipientLibraries" class="recipient-library-list" aria-live="polite" hidden></div>
   <div class="settings-dialog-footer"><button class="secondary" type="button" id="findPeople">刷新名单</button></div>
   <details id="profileManager" class="dialog-independent"><summary>连接独立 Plex 账户</summary><div class="profile-manager-body"><form id="createProfile" class="profile-create"><label for="newProfileName">账户名称</label><input id="newProfileName" maxlength="80"><button class="secondary" type="submit">建立并授权</button></form></div></details>
  </dialog>

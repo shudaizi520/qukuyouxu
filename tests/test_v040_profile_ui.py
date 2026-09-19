@@ -20,11 +20,11 @@ class ProfileUIV040Tests(unittest.TestCase):
         js = (ROOT / "src/helper/static/settings.js").read_text(encoding="utf-8")
         for endpoint in (
             "/api/plex/profiles",
-            "/api/plex/profiles/select",
+            "/api/plex/profiles/libraries",
+            "/api/plex/profiles/library",
             "/api/plex/profiles/create",
-            "/api/plex/recipients/home",
+            "/api/plex/recipients/libraries",
             "/api/plex/recipients/home/import",
-            "/api/plex/recipients/shared",
             "/api/plex/recipients/shared/import",
         ):
             self.assertIn(endpoint, js)
@@ -78,7 +78,8 @@ class ProfileUIV040Tests(unittest.TestCase):
         self.assertIn("const showTools=!configured||!libraryReady||state==='auth_invalid'", script)
         self.assertIn("$('plexConnectionTools').open=showTools", script)
         self.assertIn("placeholder.textContent='请选择音乐资料库'", script)
-        self.assertIn("r.message||'音乐资料库已保存。'", script)
+        self.assertIn("select.value=previous", script)
+        self.assertIn("note('音乐资料库已保存。')", script)
         guard = script.index("if(!owner?.library?.id)")
         dialog = script.index("$('addUserDialog').showModal()")
         self.assertLess(guard, dialog)

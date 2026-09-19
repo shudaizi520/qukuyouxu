@@ -196,6 +196,9 @@ class PlexRecipientService:
                                 and str((item.get("account") or {}).get("id") or "") == row_id
                                 and str((item.get("server") or {}).get("machine") or "")
                                 == str((owner.get("server") or {}).get("machine") or "")), {})
+                if not profile:
+                    legacy_id = _recipient_profile_id(kind, row.get("id"))
+                    profile = next((item for item in profiles if item.get("id") == legacy_id), {})
                 profile_id = profile.get("id") or _recipient_profile_id(kind, row.get("id"))
                 enabled = bool(profile) and profile.get("enabled") is not False
                 items.append({
