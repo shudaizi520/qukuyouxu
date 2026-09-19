@@ -9,7 +9,7 @@ class ProfileUIV040Tests(unittest.TestCase):
     def test_settings_keeps_profile_manager_visible(self):
         html = (ROOT / "src/helper/static/settings.html").read_text(encoding="utf-8")
         self.assertIn('id="plexProfile"', html)
-        self.assertIn('class="sr-only">选择使用者', html)
+        self.assertIn('aria-label="当前用户"', html)
         self.assertIn('id="profileManager"', html)
         start = html.index('id="profileManager"')
         self.assertNotIn(" open", html[start:start + 100])
@@ -62,8 +62,8 @@ class ProfileUIV040Tests(unittest.TestCase):
         self.assertLess(connection, system)
         self.assertIn('id="disconnectPlex"', html)
         self.assertIn('id="profileSwitcher"', html)
-        self.assertIn("active?.account?.username", script)
-        self.assertIn("$('profileSwitcher').hidden=plexProfiles.length<2", script)
+        self.assertIn("function profileLabel(row)", script)
+        self.assertIn("$('profileSwitcher').hidden=!plexProfiles.length", script)
         self.assertIn("/api/plex/disconnect", script)
 
     def test_first_run_pages_link_directly_to_the_accounts_panel(self):

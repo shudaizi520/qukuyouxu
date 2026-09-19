@@ -47,6 +47,8 @@ class ProfileLibraryUIV108Tests(unittest.TestCase):
 
         self.assertIn(current, page.by_id("plexProfile")["ancestors"])
         self.assertIn(current, page.by_id("officialSection")["ancestors"])
+        self.assertIn("account-selector-row", page.by_id("profileSwitcher")["classes"])
+        self.assertIn("account-selector-row", page.by_id("plexLibraryPanel")["classes"])
 
     def test_add_user_dialog_has_separate_people_and_library_steps(self):
         page = self.parse("settings.html")
@@ -72,6 +74,15 @@ class ProfileLibraryUIV108Tests(unittest.TestCase):
             self.assertIn(endpoint, script)
         self.assertNotIn("library_id:String(owner.library?.id||'')", script)
         self.assertIn("PCHAuth.setProfile", script)
+
+    def test_opening_a_managed_user_stays_on_accounts_and_batch_state_is_restored(self):
+        page = self.parse("settings.html")
+        script = (ROOT / "src/helper/static/settings.js").read_text(encoding="utf-8")
+
+        self.assertNotIn("showSettingsPanel('recommend')", script)
+        self.assertIn("/api/profiles/daily/batch-status", script)
+        self.assertIn("/api/profiles/daily/batch-schedule", script)
+        self.assertFalse(page.by_id("batchDailyAuto")["hidden"])
 
 
 if __name__ == "__main__":

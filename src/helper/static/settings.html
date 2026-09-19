@@ -4,9 +4,9 @@
  <meta charset="utf-8">
  <meta name="viewport" content="width=device-width,initial-scale=1">
  <title>曲库有序 · 设置</title>
- <link rel="stylesheet" href="/static/product.css?v=1.1.0">
- <script defer src="/static/auth.js?v=1.1.0"></script>
- <script defer src="/static/settings.js?v=1.1.0"></script>
+ <link rel="stylesheet" href="/static/product.css?v=1.1.1">
+ <script defer src="/static/auth.js?v=1.1.1"></script>
+ <script defer src="/static/settings.js?v=1.1.1"></script>
 </head>
 <body data-view="settings" data-auth-state="checking">
 <div id="bootScreen" class="auth-boot"><div class="boot-mark">♫</div><strong>曲库有序</strong><span>正在进入你的音乐库…</span></div>
@@ -21,7 +21,7 @@
 
 <div id="workspace" hidden>
  <header class="topbar">
-  <a class="brand" href="/"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v1.1.0</small></span></a>
+  <a class="brand" href="/"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v1.1.1</small></span></a>
   <nav><a href="/">每日推荐</a><a href="/mixes">智能歌单</a><a href="/library">曲库整理</a><a href="/status">运行状态</a><a class="active" href="/settings">设置</a></nav>
   <button class="logout" data-auth-logout hidden>退出</button>
  </header>
@@ -42,14 +42,11 @@
     <div class="settings-page-head"><h2>账户与成员</h2><span id="plexState" class="connection-state">未检测</span></div>
     <section id="currentUser" class="settings-section">
      <div class="settings-section-title"><h3>当前账户</h3><div class="settings-actions"><button class="primary compact-button" type="button" id="connectPlex">连接 Plex</button><button class="danger compact-button" type="button" id="disconnectPlex" hidden>断开 Plex</button></div></div>
-     <div class="settings-row profile-current-row">
-      <div class="settings-person"><span class="settings-avatar" id="currentAvatar">P</span><div><strong id="currentProfileName">Plex 账户</strong><span id="profileSummary">尚未连接</span></div></div>
-      <label id="profileSwitcher" class="compact-select" hidden><span class="sr-only">选择使用者</span><select id="plexProfile"></select></label>
-     </div>
+     <label id="profileSwitcher" class="settings-row account-selector-row"><span>当前用户</span><select id="plexProfile" aria-label="当前用户"></select></label>
      <div id="plexSavedSummary" class="connection-summary" hidden>
       <span><b id="savedAccount">Plex 账户</b></span><span><b id="savedServer">Plex 服务器</b></span><span><b id="savedLibrary">尚未选择</b></span><span id="savedHealth">连接资料已保存</span>
      </div>
-     <div id="plexLibraryPanel" class="plex-server-panel account-library-row" hidden><label for="officialSection">音乐资料库</label><select id="officialSection"></select><button class="primary" type="button" id="savePlexLibrary" hidden>保存</button></div>
+     <div id="plexLibraryPanel" class="settings-row account-selector-row account-library-row" hidden><label for="officialSection">音乐资料库</label><select id="officialSection"></select><button class="primary" type="button" id="savePlexLibrary" hidden>保存</button></div>
      <details id="plexConnectionTools" class="connection-tools-inline" hidden><summary>连接选项<span id="plexConnectionLabel" hidden></span></summary><div class="settings-expander-body">
      <p id="plexLoginStatus" class="inline-status" aria-live="polite" hidden></p><button id="showManualFallback" class="secondary" type="button" hidden>备用连接</button>
      <div id="plexServerPanel" class="plex-server-panel" hidden><label for="plexServer">Plex 服务器</label><select id="plexServer"></select><button class="primary" type="button" id="usePlexServer">使用</button></div>
@@ -60,7 +57,7 @@
     <section id="people" class="settings-section">
      <div class="settings-section-title"><h3>每日推荐用户</h3><button class="primary compact-button" type="button" id="openAddUser">添加用户</button></div>
      <div id="managedUserList" class="settings-user-list" aria-live="polite"></div>
-     <div id="batchDailyTools" class="settings-row batch-daily-tools" hidden><strong>批量每日推荐</strong><div class="settings-actions"><button id="batchPreview" class="secondary" type="button">生成预览</button><button id="batchPublish" class="primary" type="button" disabled>发布</button></div></div>
+     <div id="batchDailyTools" class="settings-row batch-daily-tools" hidden><strong>批量每日推荐</strong><div class="batch-daily-controls"><label class="batch-auto-toggle"><span>全部每日更新</span><span id="batchDailyAutoPartial" class="batch-auto-partial" hidden>部分开启</span><input id="batchDailyAuto" class="toggle" type="checkbox"></label><div class="settings-actions"><button id="batchPreview" class="secondary" type="button">生成预览</button><button id="batchPublish" class="primary" type="button" disabled>发布</button></div></div></div>
      <div id="batchResults" class="batch-results compact-results" hidden></div>
     </section>
    </section>
@@ -93,7 +90,7 @@
    <section id="settings-automation" class="settings-panel" hidden>
     <div class="settings-page-head"><h2>自动任务</h2></div>
     <section class="settings-section settings-form-rows">
-     <label class="settings-row"><span><strong>每日推荐</strong><small id="dailyAutoStatus">未开启</small></span><input id="dailyAuto" class="toggle" type="checkbox"></label>
+     <label class="settings-row"><span><strong>当前用户每日更新</strong><small id="dailyAutoStatus">未开启</small></span><input id="dailyAuto" class="toggle" type="checkbox"></label>
      <label class="settings-row"><span>更新时间</span><select id="dailyHour" aria-label="每日推荐更新时间"></select></label>
      <label class="settings-row"><span><strong>检查新增歌曲</strong><small id="libraryAutoStatus">未开启</small></span><input id="libraryAuto" class="toggle" type="checkbox"></label>
     </section>
@@ -101,7 +98,7 @@
 
    <section id="settings-system" class="settings-panel" hidden>
     <div class="settings-page-head"><h2>系统</h2></div>
-    <section class="settings-section settings-form-rows"><div class="settings-row"><span>QQ 曲库资料</span><a class="secondary button" href="/library">管理授权</a></div><div class="settings-row"><span>运行状态</span><a class="secondary button" href="/status">查看</a></div><div class="settings-row"><span>软件版本</span><strong id="systemVersion" class="settings-static-value">1.1.0</strong></div></section>
+    <section class="settings-section settings-form-rows"><div class="settings-row"><span>QQ 曲库资料</span><a class="secondary button" href="/library">管理授权</a></div><div class="settings-row"><span>运行状态</span><a class="secondary button" href="/status">查看</a></div><div class="settings-row"><span>软件版本</span><strong id="systemVersion" class="settings-static-value">1.1.1</strong></div></section>
     <details id="passwordTools" class="settings-section settings-expander"><summary><span>登录密码</span><span id="accountName">admin</span></summary><div class="settings-expander-body"><form id="passwordForm" class="form-grid"><div class="field"><label for="currentPassword">当前密码</label><input id="currentPassword" type="password" autocomplete="current-password"></div><div class="field"><label for="newPassword">新密码</label><input id="newPassword" type="password" autocomplete="new-password" minlength="8"></div><div class="field"><label for="confirmPassword">确认新密码</label><input id="confirmPassword" type="password" autocomplete="new-password" minlength="8"></div><div class="field full"><button class="primary" type="submit">修改密码</button></div></form></div></details>
    </section>
   </div>

@@ -57,6 +57,7 @@ function renderSavedConnection(saved){
  $('savedHealth').textContent=!libraryReady?'请选择音乐资料库':state==='online'?'最近检查正常':state==='unreachable'?'Plex 暂时不可达，设置仍已保存':state==='auth_invalid'?'授权失效，请重新连接':'连接资料已保存';
 }
 function profileDisplayName(row){return row?.account?.username||row?.account?.title||row?.name||'Plex 账户';}
+function profileLabel(row){return profileDisplayName(row)+' · '+(row?.library?.name||row?.library?.id||'选择音乐库');}
 function renderWebhook(webhook){
  const value=webhook||{},state=value.state||'not_connected';webhookStatus=value;$('webhookUrl').textContent=location.origin+(value.endpoint_path||'/api/plex/webhook');updateLearningState();
  const messages={disabled:'已关闭',not_connected:'需要设置',connected_waiting:'已接通',learning:'接收正常'};
@@ -75,12 +76,8 @@ function startWebhookPolling(){if(webhookTimer)return;webhookTimer=setInterval((
 function renderProfiles(data){
  plexProfiles=Array.isArray(data?.items)?data.items:[];const requested=PCHAuth.profile();const fallback=String(data?.active_profile_id||plexProfiles[0]?.id||'default');activeProfile=plexProfiles.some(row=>row.id===requested)?requested:fallback;if(activeProfile!==requested)PCHAuth.setProfile(activeProfile);
  const select=$('plexProfile');select.replaceChildren();
- for(const row of plexProfiles){const option=document.createElement('option');option.value=row.id;option.textContent=profileDisplayName(row)+' · '+(row.library?.name||row.library?.id||'选择音乐库');select.append(option);}
- select.value=activeProfile;select.disabled=plexProfiles.length<2;$('profileSwitcher').hidden=plexProfiles.length<2;
- const active=plexProfiles.find(row=>row.id===activeProfile);
- $('currentProfileName').textContent=active?.account?.username||profileDisplayName(active);
- $('currentAvatar').textContent=profileDisplayName(active).trim().slice(0,1).toUpperCase();
- $('profileSummary').textContent=active?((active.server?.name||'Plex')+' · '+(active.library?.name||active.library?.id||'尚未选择曲库')):'尚未连接';
+ for(const row of plexProfiles){const option=document.createElement('option');option.value=row.id;option.textContent=profileLabel(row);select.append(option);}
+ select.value=activeProfile;select.disabled=plexProfiles.length<2;$('profileSwitcher').hidden=!plexProfiles.length;
  $('batchDailyTools').hidden=plexProfiles.length<2;
  renderManagedUsers();
 }
@@ -102,8 +99,8 @@ async function responseJson(path){
 }
 async function refresh(){
  const profiles=await responseJson('/api/plex/profiles');renderProfiles(profiles);
- const [libraryResult,savedResult,statusResult,policyResult,accountResult,workflowResult]=await Promise.allSettled([
-  responseJson('/api/plex/profiles/libraries?profile_id='+encodeURIComponent(activeProfile)),responseJson('/api/plex/saved'),responseJson('/api/status'),responseJson('/api/daily/policy'),responseJson('/api/product/settings/verified'),responseJson('/api/workflow/status')
+ const [libraryResult,savedResult,statusResult,policyResult,accountResult,workflowResult,batchResult]=await Promise.allSettled([
+  responseJson('/api/plex/profiles/libraries?profile_id='+encodeURIComponent(activeProfile)),responseJson('/api/plex/saved'),responseJson('/api/status'),responseJson('/api/daily/policy'),responseJson('/api/product/settings/verified'),responseJson('/api/workflow/status'),responseJson('/api/profiles/daily/batch-status')
  ]);
  const saved=savedResult.status==='fulfilled'?savedResult.value:{configured:false,state:'not_configured'};
  renderSavedConnection(saved);
@@ -113,6 +110,7 @@ async function refresh(){
  render(s,v,saved);renderOfficialSections(libraryResult.status==='fulfilled'?libraryResult.value.items:[],saved.library?.id||'');
  const workflow=workflowResult.status==='fulfilled'?workflowResult.value.workflow?.settings:{};
  $('libraryAuto').checked=!!workflow?.enabled;$('libraryAuto').disabled=!workflow?.initialized;$('libraryAutoStatus').textContent=workflow?.enabled?'每天 00:00':workflow?.initialized?'未开启':'完成首次整理后可开启';
+ if(batchResult.status==='fulfilled')renderBatch(batchResult.value);
 }
 function ownerProfile(){return plexProfiles.find(row=>row.kind==='owner'&&row.token_present)||null;}
 function profileKind(kind){return {owner:'管理员',home:'家庭成员',shared:'共享朋友'}[kind]||'Plex 用户';}
@@ -122,10 +120,10 @@ function renderManagedUsers(){
   const line=document.createElement('div');line.className='settings-user-row';
   const person=document.createElement('div');person.className='settings-person';
   const avatar=document.createElement('span');avatar.className='settings-avatar';avatar.textContent=profileDisplayName(row).trim().slice(0,1).toUpperCase();
-  const text=document.createElement('div');const name=document.createElement('strong');name.textContent=profileDisplayName(row)+' · '+(row.library?.name||row.library?.id||'选择音乐库');const kind=document.createElement('span');kind.textContent=profileKind(row.kind);text.append(name,kind);person.append(avatar,text);
-  const actions=document.createElement('div');actions.className='settings-actions';
+  const text=document.createElement('div');const name=document.createElement('strong');name.textContent=profileLabel(row);const kind=document.createElement('span');kind.textContent=profileKind(row.kind);text.append(name,kind);person.append(avatar,text);
+  const actions=document.createElement('div');actions.className='settings-actions profile-actions';
   const open=document.createElement('button');open.type='button';open.className='secondary';open.textContent=row.id===activeProfile?'当前':'打开';open.disabled=row.id===activeProfile;
-  open.onclick=()=>action(async()=>{PCHAuth.setProfile(row.id);await refresh();showSettingsPanel('recommend');});actions.append(open);
+  open.onclick=()=>action(async()=>{PCHAuth.setProfile(row.id);await refresh();note('已切换到 '+profileLabel(row));});actions.append(open);
   if(row.kind!=='owner'){
    const remove=document.createElement('button');remove.type='button';remove.className='danger';remove.textContent='移除';
    remove.onclick=()=>action(async()=>{if(!await PCHUI.confirm('停止为“'+(row.name||'这位用户')+'”生成每日推荐？\nPlex 中已有歌单会保留。',{confirmText:'移除用户'}))return;const result=await post('/api/plex/profiles/remove',{profile_id:row.id,confirm:true});if(row.id===activeProfile)PCHAuth.setProfile('default');await refresh();note(result.message);});actions.append(remove);
@@ -160,9 +158,10 @@ $('createProfile').onsubmit=e=>{e.preventDefault();action(async()=>{const name=$
 $('openAddUser').onclick=()=>{const owner=ownerProfile();if(!owner?.library?.id){$('plexConnectionTools').hidden=false;$('plexConnectionTools').open=true;note('请先选择音乐资料库。',true);$('officialSection').focus();return;}$('addUserDialog').showModal();action(loadAvailablePeople);};
 $('closeAddUser').onclick=()=>$('addUserDialog').close();
 $('findPeople').onclick=()=>action(loadAvailablePeople);
-function renderBatch(items){const box=$('batchResults');box.hidden=false;box.replaceChildren();batchPlans={};for(const row of items||[]){const line=document.createElement('div');line.className='batch-row';const name=document.createElement('strong');name.textContent=row.name||row.profile_id;const state=document.createElement('span');state.textContent=row.status==='ready'?`可发布 · ${row.count} 首`:row.status==='published'?`已发布 · ${row.result?.written||0} 首`:row.status==='blocked'?'已暂停':row.error||'失败';line.append(name,state);box.append(line);if(row.status==='ready'&&row.plan_id)batchPlans[row.profile_id]=row.plan_id;}$('batchPublish').disabled=!Object.keys(batchPlans).length;}
-$('batchPreview').onclick=()=>action(async()=>{const result=await post('/api/profiles/daily/batch-preview',{});renderBatch(result.items);note(`已检查所有启用档案，${result.ready} 个可发布。`);});
-$('batchPublish').onclick=()=>action(async()=>{const count=Object.keys(batchPlans).length;if(!count)throw Error('没有可发布的预览。');if(!await PCHUI.confirm(`将为 ${count} 个 Plex 档案分别发布每日推荐。\n每个档案只使用自己的授权、曲库和播放历史。`,{confirmText:'确认批量发布'}))return;const result=await post('/api/profiles/daily/batch-publish',{confirm:true,plans:batchPlans});renderBatch(result.items);note(`已完成：${result.published} 个档案发布成功。`);});
+function renderBatch(result){const items=Array.isArray(result)?result:(result?.items||[]),box=$('batchResults');box.hidden=!items.length;box.replaceChildren();batchPlans={};for(const row of items){const profile=plexProfiles.find(item=>item.id===row.profile_id);const line=document.createElement('div');line.className='batch-row';const name=document.createElement('strong');name.textContent=row.display_name||(profile?profileLabel(profile):row.name||row.profile_id);const state=document.createElement('span');state.textContent=row.status==='ready'?`可发布 · ${row.count} 首`:row.status==='published'?`已发布${row.count?` · ${row.count} 首`:''}`:row.status==='idle'?'尚未生成':row.status==='blocked'?'已暂停':row.error||'失败';line.append(name,state);box.append(line);if(row.status==='ready'&&row.plan_id)batchPlans[row.profile_id]=row.plan_id;}const autoState=result?.auto_state||'off',toggle=$('batchDailyAuto');toggle.indeterminate=autoState==='partial';toggle.checked=autoState==='on';toggle.disabled=!items.length;$('batchDailyAutoPartial').hidden=autoState!=='partial';$('batchPublish').disabled=!Object.keys(batchPlans).length;}
+$('batchPreview').onclick=()=>action(async()=>{const result=await post('/api/profiles/daily/batch-preview',{});renderBatch(result);note(`已检查所有启用用户，${result.ready} 个可发布。`);});
+$('batchPublish').onclick=()=>action(async()=>{const count=Object.keys(batchPlans).length;if(!count)throw Error('没有可发布的预览。');if(!await PCHUI.confirm(`将为 ${count} 个用户分别发布每日推荐。\n每个用户只使用自己的授权、曲库和播放历史。`,{confirmText:'确认批量发布'}))return;const result=await post('/api/profiles/daily/batch-publish',{confirm:true,plans:batchPlans});renderBatch(await responseJson('/api/profiles/daily/batch-status'));note(`已完成：${result.published} 个用户发布成功。`);});
+$('batchDailyAuto').onchange=()=>{const enabled=$('batchDailyAuto').checked;action(async()=>{try{const result=await post('/api/profiles/daily/batch-schedule',{enabled});renderBatch(result);note(result.message);}catch(error){renderBatch(await responseJson('/api/profiles/daily/batch-status'));throw error;}});};
 function loginStatus(text,error=false){const e=$('plexLoginStatus');e.hidden=false;e.textContent=text;e.classList.toggle('is-error',error);}
 function offerManualFallback(){const b=$('showManualFallback');if(b)b.hidden=false;}
 function renderServers(rows){

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import time
 import uuid
+from contextlib import nullcontext
 from datetime import datetime, time as datetime_time, timedelta, timezone
 from fastapi import Request
 
@@ -511,6 +512,107 @@ def public_plan(plan):
     return {key: value for key, value in plan.items() if key not in ("before", "track_fingerprints")}
 
 
+def profile_daily_display_name(profile):
+    """Use the same account-and-library identity everywhere in the settings UI."""
+    account = profile.get("account") or {}
+    library = profile.get("library") or {}
+    account_name = account.get("username") or account.get("title") or profile.get("name") or profile["id"]
+    library_name = library.get("name") or library.get("id")
+    return f"{account_name} · {library_name}" if library_name else str(account_name)
+
+
+def _batch_daily_summary(items):
+    enabled = [bool(row.get("auto_enabled")) for row in items]
+    auto_state = "on" if enabled and all(enabled) else "partial" if any(enabled) else "off"
+    return {
+        "items": items,
+        "ready": sum(row.get("status") == "ready" for row in items),
+        "auto_state": auto_state,
+    }
+
+
+def _batch_daily_row(profile, engine):
+    plan = engine.store.get("daily_plan") or {}
+    managed = engine.store.get("daily_managed") or {}
+    row = {
+        "profile_id": profile["id"],
+        "name": profile.get("name") or profile["id"],
+        "display_name": profile_daily_display_name(profile),
+        "auto_enabled": bool((engine.store.get("daily_settings", {}) or {}).get("enabled")),
+    }
+    if plan.get("id") and not plan.get("applied"):
+        blocked = list(plan.get("blocked") or [])
+        invalidated = str(plan.get("invalidated_reason") or "").strip()
+        if invalidated:
+            blocked.append(invalidated)
+        row.update(
+            status="blocked" if blocked else "ready",
+            plan_id=plan.get("id"), count=len(plan.get("items") or []),
+            blocked=blocked, warnings=list(plan.get("warnings") or []),
+        )
+    elif managed:
+        row.update(status="published", count=int(managed.get("count") or 0))
+    else:
+        row.update(status="idle", count=0)
+    return row
+
+
+def batch_daily_status(runtime, registry):
+    """Restore persisted previews and automation state after any page navigation."""
+    items = []
+    for profile in registry.list_public():
+        if profile.get("enabled") is False:
+            continue
+        items.append(_batch_daily_row(profile, runtime.engine(profile["id"])))
+    return _batch_daily_summary(items)
+
+
+def _daily_schedule_blocker(engine):
+    managed = engine.store.get("daily_managed") or {}
+    if not managed or managed.get("scope") != engine.daily_scope():
+        return "请先预览并发布一次"
+    unresolved = any(
+        row.get("category_id") == "daily"
+        and row.get("status") in ("prepared", "uncertain", "restoring")
+        for row in (engine.store.get("snapshots", []) or [])
+        if isinstance(row, dict)
+    )
+    return "有待核对的发布变更" if unresolved else ""
+
+
+def set_batch_daily_schedule(runtime, registry, enabled):
+    """Enable or pause daily updates for every active profile as one validated action."""
+    if not isinstance(enabled, bool):
+        raise ValueError("每日自动更新开关无效")
+    profiles = [row for row in registry.list_public() if row.get("enabled") is not False]
+    engines = [(profile, runtime.engine(profile["id"])) for profile in profiles]
+    # Every profile engine shares the runtime operation gate. Holding it once
+    # keeps validation, writes, and rollback indivisible across all profiles.
+    operation = engines[0][1].exclusive() if engines else nullcontext()
+    with operation:
+        if enabled:
+            blocked = [
+                f"{profile_daily_display_name(profile)}：{reason}"
+                for profile, engine in engines
+                if (reason := _daily_schedule_blocker(engine))
+            ]
+            if blocked:
+                raise SafetyError("不能开启全部每日更新；" + "；".join(blocked))
+        original = []
+        try:
+            for _profile, engine in engines:
+                saved = dict(engine.store.get("daily_settings", {}) or {})
+                original.append((engine, saved))
+                engine.store.set("daily_settings", {**saved, "enabled": enabled})
+        except Exception:
+            for engine, saved in original:
+                engine.store.set("daily_settings", saved)
+            raise
+    result = batch_daily_status(runtime, registry)
+    result["message"] = "全部用户的每日自动更新已开启" if enabled else "全部用户的每日自动更新已暂停"
+    return result
+
+
 def batch_preview_daily(runtime, registry, now=None):
     """Preview each enabled profile independently; one failure never aborts others."""
     now = time.time() if now is None else float(now)
@@ -518,7 +620,12 @@ def batch_preview_daily(runtime, registry, now=None):
     for profile in registry.list_public():
         if profile.get("enabled") is False:
             continue
-        row = {"profile_id": profile["id"], "name": profile.get("name") or profile["id"]}
+        row = {
+            "profile_id": profile["id"],
+            "name": profile.get("name") or profile["id"],
+            "display_name": profile_daily_display_name(profile),
+        }
+        engine = None
         try:
             engine = runtime.engine(profile["id"])
             cfg = engine.store.get("settings", {}) or {}
@@ -532,8 +639,11 @@ def batch_preview_daily(runtime, registry, now=None):
             )
         except Exception as exc:
             row.update(status="error", error=str(exc)[:300] or "预览失败")
+        row["auto_enabled"] = bool(
+            engine and (engine.store.get("daily_settings", {}) or {}).get("enabled")
+        )
         items.append(row)
-    return {"items": items, "ready": sum(row.get("status") == "ready" for row in items)}
+    return _batch_daily_summary(items)
 
 
 def batch_publish_daily(runtime, registry, plan_ids, now=None):
@@ -548,7 +658,11 @@ def batch_publish_daily(runtime, registry, plan_ids, now=None):
             items.append({"profile_id": str(profile_id), "name": str(profile_id), "status": "error", "error": "档案不存在或已停用"})
             continue
         profile = profiles[profile_id]
-        row = {"profile_id": profile_id, "name": profile.get("name") or profile_id}
+        row = {
+            "profile_id": profile_id,
+            "name": profile.get("name") or profile_id,
+            "display_name": profile_daily_display_name(profile),
+        }
         try:
             result = runtime.engine(profile_id).publish_daily(str(plan_id), now=now)
             row.update(status="published", result=result)
@@ -675,9 +789,18 @@ def attach_smart_mix_routes(app, store, engine, runtime, registry, body, ensure_
         await body(request)
         return batch_preview_daily(runtime, registry)
 
+    @app.get("/api/profiles/daily/batch-status")
+    def daily_batch_status():
+        return batch_daily_status(runtime, registry)
+
     @app.post("/api/profiles/daily/batch-publish")
     async def daily_batch_publish(request: Request):
         data = await body(request)
         if data.get("confirm") is not True:
             raise SafetyError("请先核对每个档案的预览，再明确确认批量发布")
         return batch_publish_daily(runtime, registry, data.get("plans") or {})
+
+    @app.post("/api/profiles/daily/batch-schedule")
+    async def daily_batch_schedule(request: Request):
+        data = await body(request)
+        return set_batch_daily_schedule(runtime, registry, data.get("enabled"))
