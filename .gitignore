@@ -4,6 +4,7 @@ __pycache__/
 .coverage
 htmlcov/
 .venv/
+.worktrees/
 *.egg-info/
 .env
 *.sqlite3
