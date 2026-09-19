@@ -94,6 +94,35 @@ class PlexWebhookV040Tests(unittest.TestCase):
         self.assertEqual("accepted", result["status"])
         self.assertEqual(["completed"], [row["kind"] for row in self.events()])
 
+    def test_scrobble_records_completion_without_ending_current_playback(self):
+        from helper.plex_webhook import active_session_count, apply_webhook_event
+        from helper.scoped_store import ScopedStore
+
+        apply_webhook_event(
+            self.store, self.registry,
+            payload("media.play", track="320", viewOffset=0), now=10,
+        )
+        apply_webhook_event(
+            self.store, self.registry,
+            payload("media.scrobble", track="320", viewOffset=180000), now=180,
+        )
+
+        sessions = ScopedStore(self.store, "default").get("behavior_sessions")
+        session = next(iter(sessions.values()))
+        self.assertEqual("media.play", session["state"])
+        self.assertEqual("", session["terminal_event"])
+        self.assertEqual("media.scrobble", session["completion_event"])
+        self.assertEqual(1, active_session_count(sessions, now=181))
+        self.assertEqual(["completed"], [row["kind"] for row in self.events()])
+
+        apply_webhook_event(
+            self.store, self.registry,
+            payload("media.stop", track="320", viewOffset=195000), now=195,
+        )
+        sessions = ScopedStore(self.store, "default").get("behavior_sessions")
+        self.assertEqual(0, active_session_count(sessions, now=196))
+        self.assertEqual(["completed"], [row["kind"] for row in self.events()])
+
     def test_late_stop_followed_by_scrobble_keeps_the_stronger_completion(self):
         from helper.plex_webhook import apply_webhook_event
 

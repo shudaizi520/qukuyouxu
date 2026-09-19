@@ -59,6 +59,7 @@ class HttpAndUiV047Tests(unittest.TestCase):
     def test_behavior_ui_does_not_claim_learning_before_webhook_connection(self):
         settings = (ROOT / "src/helper/static/settings.html").read_text(encoding="utf-8")
         script = (ROOT / "src/helper/static/settings.js").read_text(encoding="utf-8")
+        status_script = (ROOT / "src/helper/static/status.js").read_text(encoding="utf-8")
         styles = (ROOT / "src/helper/static/product.css").read_text(encoding="utf-8")
         self.assertIn('<code id="webhookUrl"', settings)
         self.assertIn('id="copyWebhook"', settings)
@@ -74,7 +75,8 @@ class HttpAndUiV047Tests(unittest.TestCase):
         self.assertIn("if(!copied)throw Error", script)
         self.assertNotIn('window.open(PLEX_WEBHOOK_SETTINGS', script)
         self.assertIn('startWebhookPolling', script)
-        self.assertIn("connected?'接收正常':'需要设置'", script)
+        self.assertIn("connected?'接收正常':lastReceived?'等待验证':'需要设置'", script)
+        self.assertIn("verification_needed:'待验证'", status_script)
         self.assertIn("profile-learning-toggle", script)
         self.assertNotIn("not_connected:'学习中'", script)
         self.assertIn("a.primary.link{color:#fff", styles)

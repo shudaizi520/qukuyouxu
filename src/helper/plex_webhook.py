@@ -23,6 +23,7 @@ ACTIVE_SESSION_TTL = 6 * 3600
 TERMINAL_SESSION_TTL = 3600
 UNKNOWN_DURATION_PLAYING_TTL = 5 * 60
 PLAYBACK_END_GRACE = 30
+WEBHOOK_CONNECTION_TTL = 6 * 3600
 MAX_BEHAVIOR_SESSIONS = 256
 SUPPORTED_EVENTS = frozenset({
     "media.play", "media.pause", "media.resume", "media.stop", "media.scrobble", "media.rate"
@@ -251,21 +252,33 @@ def webhook_health(base_store, profile_store, now=None):
         key=lambda row: _number(row.get("received_at"), 0) or 0,
         default={},
     )
+    global_connected = bool(
+        global_ingress
+        and now - (_number(global_ingress.get("received_at"), 0) or 0)
+        <= WEBHOOK_CONNECTION_TTL
+    )
     events = recent_behavior_events(profile_store.get("behavior_events", []) or [], now)
     product = profile_store.get("product_settings", {}) or {}
     profile_id = str(getattr(profile_store, "profile_id", "") or "")
     ingress = profile_receipts.get(profile_id) or latest
-    matched = bool(
+    matched_before = bool(
         ingress.get("received_at")
         and (_number(ingress.get("received_at"), 0) or 0) >= secret_created_at
         and ingress.get("profile_id") == profile_id
         and ingress.get("status") in ("accepted", "recorded", "duplicate")
     )
+    matched = bool(
+        matched_before
+        and now - (_number(ingress.get("received_at"), 0) or 0)
+        <= WEBHOOK_CONNECTION_TTL
+    )
     enabled = product.get("behavior_enabled", True) is not False
     if not enabled:
         state = "disabled"
-    elif not matched:
+    elif not matched_before:
         state = "not_connected"
+    elif not matched:
+        state = "verification_needed"
     elif events:
         state = "learning"
     else:
@@ -273,11 +286,11 @@ def webhook_health(base_store, profile_store, now=None):
     return {
         "enabled": enabled,
         "connected": matched,
-        "global_connected": bool(global_ingress),
+        "global_connected": global_connected,
         "state": state,
         "event_count": len(events),
-        "last_received_at": ingress.get("received_at") if matched else None,
-        "last_event": ingress.get("event", "") if matched else "",
+        "last_received_at": ingress.get("received_at") if matched_before else None,
+        "last_event": ingress.get("event", "") if matched_before else "",
         "last_status": ingress.get("status", ""),
         "last_reason": ingress.get("reason", ""),
         "last_behavior_at": max((_number(row.get("at"), 0) or 0 for row in events), default=None),
@@ -316,6 +329,11 @@ def apply_webhook_event(base_store, registry, payload, now=None):
     session_id = signal["account_id"] + ":" + (signal.get("player_id") or "unknown")
     session = sessions.get(session_id)
     matches_session = bool(session and session.get("track_id") == signal["track_id"])
+    session_was_playing = bool(
+        matches_session
+        and not session.get("terminal_event")
+        and session.get("state") in ("media.play", "media.resume")
+    )
 
     def new_playback(started_at=None):
         nonlocal generation
@@ -325,11 +343,11 @@ def apply_webhook_event(base_store, registry, payload, now=None):
         return {
             "track_id": signal["track_id"], "started_at": started_at,
             "playback_id": hashlib.sha256(raw.encode()).hexdigest()[:24],
-            "terminal_event": "",
+            "terminal_event": "", "completion_event": "",
         }
 
     if signal["event"] == "media.play":
-        if matches_session and session.get("terminal_event"):
+        if matches_session and (session.get("terminal_event") or session.get("completion_event")):
             # Plex's webhook payload has no documented playback/session id.  A
             # play after a terminal event is therefore held as a candidate
             # until its next progress event proves whether this is a genuine
@@ -384,13 +402,24 @@ def apply_webhook_event(base_store, registry, payload, now=None):
         seen = dict(sorted(seen.items(), key=lambda item: item[1])[-2000:])
 
     if session is not None and signal["event"] != "media.rate":
-        session.update({
-            "offset_seconds": signal["offset_seconds"],
-            "duration_seconds": signal["duration_seconds"],
-            "state": signal["event"], "user": signal["user"], "updated_at": now,
-        })
-        if signal["event"] in ("media.stop", "media.scrobble"):
-            session["terminal_event"] = signal["event"]
+        if signal["event"] == "media.scrobble" and session_was_playing:
+            if signal["offset_seconds"] > 0 or "offset_seconds" not in session:
+                session["offset_seconds"] = signal["offset_seconds"]
+            if signal["duration_seconds"] > 0 or "duration_seconds" not in session:
+                session["duration_seconds"] = signal["duration_seconds"]
+            session.update({
+                "state": session.get("state") or "media.play",
+                "user": signal["user"], "updated_at": now,
+                "terminal_event": "", "completion_event": "media.scrobble",
+            })
+        else:
+            session.update({
+                "offset_seconds": signal["offset_seconds"],
+                "duration_seconds": signal["duration_seconds"],
+                "state": signal["event"], "user": signal["user"], "updated_at": now,
+            })
+            if signal["event"] in ("media.stop", "media.scrobble"):
+                session["terminal_event"] = signal["event"]
         sessions[session_id] = session
     if len(sessions) > MAX_BEHAVIOR_SESSIONS:
         sessions = dict(sorted(

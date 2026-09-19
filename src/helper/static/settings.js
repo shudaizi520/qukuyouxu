@@ -45,7 +45,7 @@ function profileLabel(row){return profileDisplayName(row)+' · '+(row?.library?.
 function renderWebhook(webhook){
  const value=webhook||{};$('webhookUrl').textContent=location.origin+(value.endpoint_path||'/api/plex/webhook');
  const connected=value.global_connected??value.connected,lastReceived=value.global_last_received_at??value.last_received_at;
- $('webhookMessage').textContent=connected?'接收正常':'需要设置';
+ $('webhookMessage').textContent=connected?'接收正常':lastReceived?'等待验证':'需要设置';
  $('webhookLast').textContent=lastReceived?'最近收到 · '+new Date(lastReceived*1000).toLocaleString('zh-CN',{hour12:false}):'尚未收到播放事件';
 }
 async function copyWebhookAddress(){

@@ -8,21 +8,21 @@ sys.path.insert(0, str(ROOT / "src"))
 
 
 class ReleaseVersionTests(unittest.TestCase):
-    def test_application_and_static_pages_use_release_1_1_6(self):
+    def test_application_and_static_pages_use_release_1_1_7(self):
         from helper import __version__
 
-        self.assertEqual("1.1.6", __version__)
+        self.assertEqual("1.1.7", __version__)
         for name in ("daily.html", "home.html", "mixes.html", "settings.html", "status.html"):
             with self.subTest(name=name):
                 html = (ROOT / "src/helper/static" / name).read_text(encoding="utf-8")
-                self.assertIn("?v=1.1.6", html)
-                self.assertIn(">v1.1.6<", html)
+                self.assertIn("?v=1.1.7", html)
+                self.assertIn(">v1.1.7<", html)
 
     def test_release_notes_describe_library_discovery_and_global_automation(self):
         changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
-        self.assertIn("## 1.1.6 - 2026-09-19", changelog)
+        self.assertIn("## 1.1.7 - 2026-09-19", changelog)
         self.assertIn("分析曲库", readme)
         self.assertIn("自动任务", readme)
         self.assertIn("北京时间", readme)
