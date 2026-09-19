@@ -10,6 +10,7 @@ from fastapi.responses import Response
 
 from . import __version__
 from .managed_cleanup_v0317 import forget_missing_managed_playlist
+from .library_discovery import discovery_min_tracks, eligible_discovery_groups
 from .qq_auth_v0320 import QQAuthError, QQAuthManager
 from .scoped_store import ScopedStore
 from .theme import DEFAULT_THEME, TOPICS, theme_key
@@ -51,12 +52,12 @@ def _topic_sources(store):
     return [row for row in (store.get("sources", []) or []) if str(row.get("kind") or "").startswith("qq_")]
 
 
-def _review(plan, sources):
+def _review(plan, sources, managed=None):
     if not plan or plan.get("applied"):
         return None
     source_map = {str(row.get("id")): row for row in sources}
     groups = []
-    for item in plan.get("groups", []) or []:
+    for item in eligible_discovery_groups(plan, managed):
         blocked = [str(value) for value in (item.get("blocked") or [])]
         kind = "theme" if str(item.get("kind") or "").startswith("qq_") else str(item.get("kind") or "category")
         before = item.get("before") or {}
@@ -110,6 +111,18 @@ def build_workflow_status(store, engine, qq_status):
     else:
         phase, message = "idle", "点击整理新增歌曲，先生成预览，确认前不会修改 Plex。"
     catalog = store.get("catalog", []) or []
+    managed = store.get("managed", {}) or {}
+    library_count = len(catalog) or int((saved_plan or {}).get("library_count") or 0)
+    threshold = discovery_min_tracks(library_count)
+    visible_groups = eligible_discovery_groups(plan, managed)
+    if managed:
+        discovery_phase = "managed"
+    elif running:
+        discovery_phase = "analyzing"
+    elif plan and not plan.get("applied"):
+        discovery_phase = "choose" if visible_groups else "empty"
+    else:
+        discovery_phase = "before_analysis"
     matched = int((saved_plan or {}).get("covered") or 0)
     review_count = int((saved_plan or {}).get("metadata_review_count") or 0)
     topics = _topic_sources(store)
@@ -139,9 +152,10 @@ def build_workflow_status(store, engine, qq_status):
                 **{key: job.get(key) for key in ("running", "kind", "message", "error", "started_at", "finished_at", "progress_current", "progress_total")},
                 "can_pause": bool(running and str(job.get("kind") or "") in {"preview", "incremental"}),
             },
-            "summary": {"library_count": len(catalog) or int((saved_plan or {}).get("library_count") or 0), "matched": matched, "review_count": review_count, "managed": len(store.get("managed", {}) or {})},
+            "summary": {"library_count": library_count, "matched": matched, "review_count": review_count, "managed": len(managed)},
+            "discovery": {"phase": discovery_phase, "threshold": threshold, "candidate_count": len(visible_groups)},
             "settings": {"initialized": bool(store.get("managed", {}) or (saved_plan and saved_plan.get("applied"))), "enabled": bool(settings.get("auto_enabled")), "schedule": "daily_midnight_beijing", "next_run": store.get("library_auto_next_at")},
-            "review": _review(plan, sources), "qq_auth": dict(qq_status or {}),
+            "review": _review(plan, sources, managed), "qq_auth": dict(qq_status or {}),
             "theme": theme_status,
             "single": engine.single_status() if hasattr(engine, "single_status") else {"state": {}},
             "incremental": {key: incremental.get(key) for key in ("status", "message", "new_count", "processed", "updated_at")},
@@ -201,7 +215,7 @@ def _attach_exclusion_filter(store, engine):
 
     def filtered_preview(force_sources=False):
         plan = original(force_sources)
-        revised = apply_exclusions(plan, store.get("theme_exclusions", {}) or {}, (store.get("settings", {}) or {}).get("min_tracks", 5))
+        revised = apply_exclusions(plan, store.get("theme_exclusions", {}) or {}, discovery_min_tracks((plan or {}).get("library_count", 0)))
         store.set("plan", revised)
         return revised
 
@@ -400,7 +414,7 @@ def attach_routes(app, store, engine, body, ensure_idle):
         values = set(str(value) for value in exclusions.get(category_id, []) or [])
         values.add(track_id)
         exclusions[category_id] = sorted(values)
-        revised = apply_exclusions(plan, exclusions, (store.get("settings", {}) or {}).get("min_tracks", 5))
+        revised = apply_exclusions(plan, exclusions, discovery_min_tracks((plan or {}).get("library_count", 0)))
         store.set_many({"theme_exclusions": exclusions, "plan": revised})
         return {"message": "已从这个主题的后续补充中排除；不会删除 Plex 中已有歌曲。"}
 

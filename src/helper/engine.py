@@ -12,6 +12,7 @@ from .rename import RenamingMixin
 from .daily import DailyMixin
 from .metadata import prepare_catalog
 from .match import Catalog, match, normalize, title_key, artist_key, flags
+from .library_discovery import discovery_min_tracks
 
 class SafetyError(ValueError): pass
 class WorkflowPaused(Exception): pass
@@ -141,6 +142,7 @@ class Engine(RenamingMixin, DailyMixin):
                 ],
             })
         playlists=p.playlists();cache=self.store.get('cache');managed=self.store.get('managed');overrides=self.store.get('overrides')
+        minimum_tracks=discovery_min_tracks(len(tracks))
         snapshots=self.store.get('snapshots');groups=[];covered=set();now=time.time()
         active_sources=[src for src in self.store.get('sources') if src.get('enabled',True)]
         self.workflow_progress(0,len(active_sources))
@@ -193,7 +195,7 @@ class Engine(RenamingMixin, DailyMixin):
                 blocked.append('已存在同名未托管歌单：不会接管或覆盖')
             if any(s['category_id']==cid and s['status'] in ('prepared','uncertain','restoring') for s in snapshots):
                 blocked.append('上次写入结果待核对：请先交给维护者核对快照和Plex')
-            if len(desired)<cfg.get('min_tracks',5):blocked.append('本地可靠匹配不足最低歌曲数；不创建稀疏或空歌单')
+            if len(desired)<minimum_tracks:blocked.append('本地可靠匹配不足最低歌曲数；不创建稀疏或空歌单')
             covered.update(matches)
             groups.append({'id':cid,'title':title,'kind':src['kind'],'source_title':entry.get('data',{}).get('title',''),
                            'fetched_at':entry.get('fetched_at'), 'origins':entry.get('data',{}).get('origins',[]) or [{'title':entry.get('data',{}).get('title',''),'url':entry.get('data',{}).get('url','')}],
@@ -203,7 +205,8 @@ class Engine(RenamingMixin, DailyMixin):
             self.workflow_progress(source_index,len(active_sources))
         self._check_workflow_pause()
         plan={'id':uuid.uuid4().hex,'created_at':time.time(),'signature':self.signature(),'machine':identity['machine'],
-              'library_count':len(tracks),'covered':len(covered),'coverage':round(100*len(covered)/len(tracks),2),
+              'library_count':len(tracks),'discovery_threshold':minimum_tracks,
+              'covered':len(covered),'coverage':round(100*len(covered)/len(tracks),2),
               'unclassified':[t for t in tracks if t['id'] not in covered],'groups':groups,
               'track_fingerprints':{t['id']:track_fingerprint(t) for t in tracks},'applied':False,
               'metadata_review_count':sum(t['_metadata_blocked'] for t in effective)}

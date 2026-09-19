@@ -30,7 +30,7 @@ class WorkflowStateV0418Tests(unittest.TestCase):
 
         source = (Path(__file__).resolve().parents[1] / "src/helper/workflow_v0317.py").read_text(encoding="utf-8")
         self.assertIn("plan = current_review_plan(saved_plan, incremental)", source)
-        self.assertIn('"review": _review(plan, sources)', source)
+        self.assertIn('"review": _review(plan, sources, managed)', source)
 
 
 if __name__ == "__main__":

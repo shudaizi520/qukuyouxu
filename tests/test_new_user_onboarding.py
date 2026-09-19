@@ -47,7 +47,7 @@ class _FreshPlex:
                 "guid": f"guid-{index}",
                 "paths": [],
             }
-            for index in range(1, 6)
+            for index in range(1, 13)
         ]
 
     def playlists(self):
@@ -83,7 +83,7 @@ class _FreshQQ:
             "title": source["name"],
             "tracks": [
                 {"id": f"qq-{index}", "title": f"歌曲 {index}", "artist": "歌手"}
-                for index in range(1, 6)
+                for index in range(1, 13)
             ],
             "origins": [],
         }
@@ -184,7 +184,7 @@ class FreshUserThemeOnboardingTests(unittest.TestCase):
                 {"网络热歌", "睡前舒缓"},
                 {group["title"] for group in plan["groups"]},
             )
-            self.assertEqual(5, plan["covered"])
+            self.assertEqual(12, plan["covered"])
 
     def test_first_confirmation_creates_the_selected_playlists_without_old_cache(self):
         from helper.library_engine import LibraryEngine
