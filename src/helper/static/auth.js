@@ -1,5 +1,6 @@
 (()=>{
 'use strict';
+if(window.self!==window.top||new URLSearchParams(location.search).get('embedded')==='1')document.documentElement.classList.add('pch-embedded');
 const $=id=>document.getElementById(id);
 let state={authenticated:false,username:null,setup_required:false};
 const PROFILE_KEY='pch-profile-id';

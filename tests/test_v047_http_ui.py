@@ -53,8 +53,10 @@ class HttpAndUiV047Tests(unittest.TestCase):
         self.assertNotIn("/api/profiles/daily/batch-preview", script)
         settings_script = (static / "settings.js").read_text(encoding="utf-8")
         self.assertIn("/api/profiles/daily/batch-preview", settings_script)
+        home = (static / "playlists.html").read_text(encoding="utf-8")
+        self.assertIn('data-tool-url="/mixes"', home)
         for name in ("daily.html", "home.html", "status.html", "settings.html", "mixes.html"):
-            self.assertIn('href="/mixes"', (static / name).read_text(encoding="utf-8"), name)
+            self.assertIn('href="/">我的歌单</a>', (static / name).read_text(encoding="utf-8"), name)
 
     def test_behavior_ui_does_not_claim_learning_before_webhook_connection(self):
         settings = (ROOT / "src/helper/static/settings.html").read_text(encoding="utf-8")

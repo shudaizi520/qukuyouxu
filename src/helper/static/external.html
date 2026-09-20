@@ -5,9 +5,9 @@
  <meta name="viewport" content="width=device-width,initial-scale=1">
  <meta name="color-scheme" content="light">
  <title>曲库有序 · 外部歌单</title>
- <link rel="stylesheet" href="/static/product.css?v=1.3.1">
- <script defer src="/static/auth.js?v=1.3.1"></script>
- <script defer src="/static/external.js?v=1.3.1"></script>
+ <link rel="stylesheet" href="/static/product.css?v=1.4.0">
+ <script defer src="/static/auth.js?v=1.4.0"></script>
+ <script defer src="/static/external.js?v=1.4.0"></script>
 </head>
 <body data-view="external" data-auth-state="checking">
 <div id="bootScreen" class="auth-boot"><div class="boot-mark">♫</div><strong>曲库有序</strong><span>正在进入你的音乐库…</span></div>
@@ -20,20 +20,19 @@
  </div>
 </section>
 <div id="workspace" hidden>
- <header class="topbar"><a class="brand" href="/"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v1.3.1</small></span></a><nav><a href="/">每日推荐</a><a href="/mixes">智能歌单</a><a class="active" href="/external">外部歌单</a><a href="/library">曲库整理</a><a href="/status">运行状态</a><a href="/settings">设置</a></nav><button class="logout" data-auth-logout hidden>退出</button></header>
+ <header class="topbar"><a class="brand" href="/"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v1.4.0</small></span></a><nav><a href="/">我的歌单</a><a href="/status">运行状态</a><a href="/settings">设置</a></nav><button class="logout" data-auth-logout hidden>退出</button></header>
  <main class="wrap external-shell">
   <div id="notice" class="notice" role="status" hidden></div>
-  <section class="hero"><div><h1>外部歌单</h1><p>把公开歌单与自己的 Plex 曲库对照，只把可靠匹配的本地歌曲建成歌单。</p></div></section>
+  <section class="hero"><div><h1>外部歌单</h1></div></section>
 
   <section id="importCard" class="card external-import-card">
-   <div class="panel-title"><div><h2>导入一个歌单</h2><p class="muted">支持 QQ 音乐公开歌单、QQ 排行榜、网易云音乐公开歌单，也可上传 M3U、TXT 或 CSV。</p></div></div>
+   <div class="panel-title"><h2>导入歌单</h2></div>
    <form id="importForm" class="external-import-form">
     <label class="field external-url-field" for="sourceUrl"><span>公开歌单链接</span><input id="sourceUrl" type="url" inputmode="url" autocomplete="off" placeholder="粘贴 QQ 音乐或网易云音乐公开歌单链接"></label>
     <button id="importSource" class="primary" type="submit">导入并分析</button>
     <label class="secondary button external-file-action" for="sourceFile">选择歌单文件<input id="sourceFile" type="file" accept=".m3u,.m3u8,.txt,.csv,text/plain,text/csv,audio/x-mpegurl" hidden></label>
    </form>
-   <p id="selectedFile" class="muted external-file-name">也可以选择本地导出的歌单文件，文件不会离开这台 NAS。</p>
-   <p class="external-trust-note">这里只读取公开歌单或你选择的文件，不会登录或改动外部音乐平台，也不会下载外部音频。</p>
+   <span id="selectedFile" class="external-file-name">支持 QQ 音乐、网易云音乐、M3U、TXT 和 CSV</span>
   </section>
 
   <section id="sourceWorkspace" class="external-workspace" hidden>
@@ -44,7 +43,7 @@
 
    <div class="external-detail-stack">
     <section id="detailCard" class="card">
-     <div class="external-detail-head"><div><span id="sourceProvider" class="eyebrow"></span><h2 id="sourceTitle">歌单</h2><p id="sourceState" class="muted"></p></div><div class="actions"><button id="refreshSource" class="secondary" type="button">重新读取</button><button id="removeSource" class="danger" type="button">移除</button></div></div>
+     <div class="external-detail-head"><div><span id="sourceProvider" class="eyebrow"></span><h2 id="sourceTitle">歌单</h2><span id="sourceState" class="external-state"></span></div><div class="actions"><button id="refreshSource" class="secondary" type="button">重新读取</button><button id="removeSource" class="danger" type="button">移除</button></div></div>
      <div class="external-counts" aria-label="匹配结果">
       <button class="external-count-tab active" type="button" data-match-status="matched"><span>已匹配</span><strong id="matchedCount">0</strong></button>
       <button class="external-count-tab" type="button" data-match-status="review"><span>待确认</span><strong id="reviewCount">0</strong></button>
@@ -52,19 +51,19 @@
      </div>
      <div id="trackList" class="external-track-list" aria-live="polite"></div>
      <div id="trackPaging" class="external-paging"><button id="previousTracks" class="secondary" type="button">上一页</button><span id="trackRange"></span><button id="nextTracks" class="secondary" type="button">下一页</button></div>
-     <div id="auditionBar" class="external-audition" hidden><span id="auditionLabel">试听本地音轨</span><audio id="auditionPlayer" controls preload="none"></audio></div>
+     <audio id="auditionPlayer" preload="none" hidden></audio>
     </section>
 
     <section id="publishCard" class="card external-publish-card">
-     <div><h2>在 Plex 创建</h2><p id="publishExplanation" class="muted">只会加入可靠匹配的本地歌曲，待确认和缺失歌曲不会被算进去。</p></div>
+     <div><h2>创建 Plex 歌单</h2></div>
      <label class="field external-title-field" for="plexPlaylistTitle"><span>Plex 歌单名称</span><input id="plexPlaylistTitle" maxlength="80"></label>
-     <div class="external-publish-actions"><label class="external-follow-label"><input id="followUpdates" type="checkbox">曲库整理时自动刷新这个外部歌单</label><button id="publishSource" class="primary" type="button">在 Plex 创建歌单（0首）</button></div>
+     <div class="external-publish-actions"><label id="followUpdatesRow" class="external-follow-label"><input id="followUpdates" type="checkbox">曲库整理时自动刷新</label><button id="publishSource" class="primary" type="button">创建歌单（0首）</button></div>
     </section>
 
     <section id="replenishmentCard" class="card external-replenishment" hidden>
-     <div class="panel-title"><div><h2>生成补歌清单</h2><p class="muted">把缺失歌曲复制或下载后，自己粘贴到 QQ 音乐、网易云音乐等官方客户端里建歌单。</p></div></div>
+     <div class="panel-title"><h2>缺失歌曲</h2></div>
      <div class="actions"><button id="copyMissing" class="primary" type="button">复制歌单内容</button><button id="downloadImage" class="secondary" type="button">下载歌单长图</button><details class="external-more"><summary class="secondary button">更多格式</summary><div><a id="downloadText" class="link" href="#">下载 TXT</a><a id="downloadCsv" class="link" href="#">下载 CSV</a></div></details></div>
-     <div class="external-share-row"><button id="copyShareLink" class="secondary" type="button">复制清单页面链接</button><span>这只是查看链接，不会把歌单写入任何音乐平台。</span></div>
+     <div class="external-share-row"><button id="copyShareLink" class="secondary" type="button">复制清单页面链接</button></div>
     </section>
    </div>
   </section>
