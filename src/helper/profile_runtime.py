@@ -164,7 +164,13 @@ class ProfileRuntime:
             "smart": "smart_mix_managed",
             "daily": "daily_managed",
         }
-        return bool(engine.store.get(keys[task], {}) or {})
+        if engine.store.get(keys[task], {}) or {}:
+            return True
+        if task == "library":
+            from .external_store import ExternalRepository
+            profile_id = str(getattr(engine.store, "profile_id", "default") or "default")
+            return ExternalRepository(engine.store).has_managed(profile_id)
+        return False
 
     @staticmethod
     def _scheduled_operation(engine, task, scheduled, settings, now):

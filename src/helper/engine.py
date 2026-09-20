@@ -353,6 +353,11 @@ class Engine(RenamingMixin, DailyMixin):
                 elif kind=='base_apply':self.apply_base(kwargs['plan_id'])
                 elif kind=='single_check':self.check_single_connection()
                 elif kind=='single_enrich':self.enrich_singles()
+                elif kind=='external_import':self.external.import_source(value=kwargs.get('value'),filename=kwargs.get('filename'),content=kwargs.get('content'))
+                elif kind=='external_refresh':self.external.refresh(str(kwargs.get('source_id') or ''),force=bool(kwargs.get('force')))
+                elif kind=='external_publish':self.external.publish(str(kwargs.get('source_id') or ''),str(kwargs.get('title') or ''),str(kwargs.get('expected_revision') or ''))
+                elif kind=='external_confirm':self.external.confirm(str(kwargs.get('source_id') or ''),str(kwargs.get('track_key') or ''),dict(kwargs.get('choice') or {}))
+                elif kind=='external_delete':self.external.remove(str(kwargs.get('source_id') or ''),str(kwargs.get('confirm_title') or ''))
                 else:raise SafetyError('未知任务')
                 if kind in ('preview','incremental'):
                     with self.status_lock:

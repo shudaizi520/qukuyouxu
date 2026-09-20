@@ -322,6 +322,44 @@ class ExternalRepository:
         with self.store.lock, self.store._db() as db:
             return self._require_source(db, profile_id, source_id)
 
+    def set_follow_updates(self, profile_id: str, source_id: str, enabled: bool) -> dict:
+        profile_id = self._profile(profile_id)
+        if not isinstance(enabled, bool):
+            raise ValueError("自动刷新开关无效")
+        with self.store.lock, self.store._db() as db:
+            self._require_source(db, profile_id, source_id)
+            db.execute(
+                "UPDATE external_source SET follow_updates=? WHERE profile_id=? AND id=?",
+                (int(enabled), profile_id, source_id),
+            )
+            return self._require_source(db, profile_id, source_id)
+
+    def set_needs_confirmation(self, profile_id: str, source_id: str, enabled: bool) -> dict:
+        profile_id = self._profile(profile_id)
+        if not isinstance(enabled, bool):
+            raise ValueError("确认状态无效")
+        with self.store.lock, self.store._db() as db:
+            self._require_source(db, profile_id, source_id)
+            db.execute(
+                "UPDATE external_source SET needs_confirmation=? WHERE profile_id=? AND id=?",
+                (int(enabled), profile_id, source_id),
+            )
+            return self._require_source(db, profile_id, source_id)
+
+    def delete_source(self, profile_id: str, source_id: str) -> None:
+        profile_id = self._profile(profile_id)
+        with self.store.lock, self.store._db() as db:
+            self._require_source(db, profile_id, source_id)
+            for table in ("external_match", "external_track", "external_managed", "external_run"):
+                db.execute(
+                    f"DELETE FROM {table} WHERE profile_id=? AND source_id=?",
+                    (profile_id, source_id),
+                )
+            db.execute(
+                "DELETE FROM external_source WHERE profile_id=? AND id=?",
+                (profile_id, source_id),
+            )
+
     def list_tracks(self, profile_id: str, source_id: str) -> list[dict]:
         profile_id = self._profile(profile_id)
         with self.store.lock, self.store._db() as db:

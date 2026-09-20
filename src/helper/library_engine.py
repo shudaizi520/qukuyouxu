@@ -11,9 +11,15 @@ from .single_mixin import SingleMixin
 class LibraryEngine(SingleMixin, BaseMixin, Engine):
     def __init__(self, store, plex_factory=None, qq=None, single_factory=None):
         Engine.__init__(self, store, plex_factory=plex_factory, qq=qq)
+        from .external_service import ExternalPlaylistService
+        from .external_sources import ExternalProviderRegistry, SafeSourceHttp
         from .connection_scope import migrate_managed_scopes
         migrate_managed_scopes(store)
         self._init_single(single_factory=single_factory)
+        self.external = ExternalPlaylistService(
+            store, self.plex_factory,
+            ExternalProviderRegistry(self.qq, SafeSourceHttp()),
+        )
 
     def analyze_library(self, force_sources=True):
         """Resume full song enrichment, then derive a read-only category preview."""
@@ -37,7 +43,7 @@ class LibraryEngine(SingleMixin, BaseMixin, Engine):
             result = {
                 'status': single.get('status'), 'new_count': int(single.get('new_count') or 0),
                 'processed': int(single.get('processed') or 0), 'base': None, 'theme': None,
-                'updated_at': time.time(), 'message': single.get('message') or '',
+                'external': None, 'updated_at': time.time(), 'message': single.get('message') or '',
             }
             def finish_if_paused():
                 stopped = self.single_pause.is_set() or self.workflow_pause.is_set()
@@ -58,6 +64,10 @@ class LibraryEngine(SingleMixin, BaseMixin, Engine):
                 self.store.set('incremental_status', result)
                 self.progress(result['message'] or '新增歌曲检查已暂停，进度已经保存')
                 return result
+            result['external'] = {
+                'rematch': self.external.rematch_missing(),
+                'refresh': self.external.auto_refresh(),
+            }
             if not result['new_count']:
                 result['message'] = '检查完成，没有发现需要查询的新增或有变化歌曲。'
                 self.store.set('incremental_status', result)
