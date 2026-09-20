@@ -446,7 +446,7 @@ def attach_playlist_hub_routes(app, store, runtime, profiles, body, ensure_idle)
         ensure_idle()
         target = fixed_engine()
         kind = str(data.get("kind") or "")
-        if kind in ("smart", "category"):
+        with target.exclusive():
             return remove_playlist(
                 target, kind, data.get("key"), str(data.get("title") or ""),
             )
@@ -462,8 +462,4 @@ def attach_playlist_hub_routes(app, store, runtime, profiles, body, ensure_idle)
             return edit_playlist_track(
                 target, str(data.get("kind") or ""), data.get("key"),
                 data.get("track_id"), str(data.get("operation") or ""),
-            )
-        with target.exclusive():
-            return remove_playlist(
-                target, kind, data.get("key"), str(data.get("title") or ""),
             )

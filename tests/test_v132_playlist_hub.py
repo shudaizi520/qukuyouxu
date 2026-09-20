@@ -258,6 +258,15 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn('@app.get("/api/playlists/{kind}/{key}")', hub)
         self.assertIn('@app.post("/api/playlists/remove")', hub)
 
+    def test_remove_route_dispatches_every_managed_playlist_kind_under_the_lock(self):
+        hub = (ROOT / "src/helper/playlist_hub.py").read_text(encoding="utf-8")
+        remove_route = hub.split('@app.post("/api/playlists/remove")', 1)[1].split(
+            '@app.post("/api/playlists/tracks/edit")', 1
+        )[0]
+        self.assertNotIn('if kind in ("smart", "category")', remove_route)
+        self.assertIn("with target.exclusive():", remove_route)
+        self.assertIn("return remove_playlist(", remove_route)
+
     def test_home_player_keeps_one_queue_and_advances_when_a_track_ends(self):
         script = (STATIC / "playlists.js").read_text(encoding="utf-8")
         self.assertIn("player.addEventListener('ended',playNext)", script)
@@ -269,6 +278,8 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn("playerArtwork", script)
         self.assertIn("/api/playlists/search", script)
         self.assertIn("/tracks/edit", script)
+        self.assertIn("keepPlayingTrack", script)
+        self.assertIn("tracks.findIndex", script)
 
 
 class ExternalPlaylistPreviewUiTests(unittest.TestCase):
