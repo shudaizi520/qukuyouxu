@@ -8,6 +8,9 @@ let current=null;
 let activeStatus='matched';
 let page=1;
 let pollTimer=null;
+let previewButton=null;
+let previewProgress=null;
+let previewKey='';
 
 function notify(message,error=false){
  if(window.PCHUI){PCHUI.notify(message,{error});return;}
@@ -55,7 +58,7 @@ async function loadSources(preferred=''){
 }
 async function openSource(sourceId,updateUrl=true){
  if(!current||current.id!==sourceId)page=1;
- if(current&&current.id!==sourceId)stopAudition();
+ if(current)stopAudition();
  current=await json('/api/external/sources/'+encodeURIComponent(sourceId)+'?status='+encodeURIComponent(activeStatus)+'&page='+page+'&limit='+PAGE_SIZE);
  if(updateUrl){const url=new URL(location.href);url.searchParams.set('source',sourceId);url.searchParams.set('tab',activeStatus);history.replaceState(null,'',url);}
  renderSourceList();renderDetail();
@@ -70,12 +73,12 @@ function renderDetail(){
  $('plexPlaylistTitle').value=current.managed?.title||current.title||'';
  $('plexPlaylistTitle').disabled=!!current.managed;
  $('followUpdates').checked=!!current.follow_updates;
- $('followUpdates').disabled=!current.managed||!['qq','netease'].includes(current.provider);
+ $('followUpdatesRow').hidden=!['qq','netease'].includes(current.provider);
+ $('followUpdates').disabled=!['qq','netease'].includes(current.provider);
  $('refreshSource').textContent=current.needs_confirmation?'确认继续刷新':'重新读取';
  const matched=count('matched');
  $('publishSource').textContent=(current.managed?'更新 Plex 歌单（':'在 Plex 创建“'+(current.title||'外部歌单')+'”歌单（')+matched+'首）';
  $('publishSource').disabled=!matched;
- $('publishExplanation').textContent=current.managed?'只更新由本软件创建并验证过的 Plex 歌单，其他同名歌单不会改动。':'只会加入 '+matched+' 首可靠匹配的本地歌曲，待确认和缺失歌曲不会被算进去。';
  $('replenishmentCard').hidden=!count('missing');
  const exportBase='/api/external/sources/'+encodeURIComponent(current.id)+'/export?format=';
  $('downloadText').dataset.url=exportBase+'text';$('downloadCsv').dataset.url=exportBase+'csv';
@@ -112,19 +115,23 @@ function renderReviewActions(actions,track){
  missing.onclick=()=>action(async()=>{await json('/api/external/sources/'+encodeURIComponent(current.id)+'/confirm','POST',{track_key:track.source_track_key,choice:{status:'missing'}});notify('已放入缺失清单');await openSource(current.id,false);});actions.append(missing);
 }
 function auditionButton(track,candidate='',label='试听'){
- const button=document.createElement('button');button.type='button';button.className='secondary';button.textContent=label;
- button.onclick=()=>playTrack(track,candidate);return button;
+ const control=document.createElement('span');control.className='external-preview-control';
+ const button=document.createElement('button');button.type='button';button.className='secondary external-preview-button';button.textContent=label;
+ const progress=document.createElement('span');progress.className='external-preview-progress';progress.textContent='0:00';
+ button.onclick=()=>playTrack(track,candidate,button,progress);control.append(button,progress);return control;
 }
 function stopAudition(){
- const player=$('auditionPlayer');player.pause();player.removeAttribute('src');player.load();$('auditionBar').hidden=true;
+ const player=$('auditionPlayer');player.pause();player.removeAttribute('src');player.load();if(previewButton)previewButton.textContent='试听';if(previewProgress)previewProgress.textContent='0:00';previewButton=null;previewProgress=null;previewKey='';
 }
-function playTrack(track,candidate=''){
- stopAudition();
+function playTrack(track,candidate='',button,progress){
+ const key=String(track.source_track_key||'')+'\0'+String(candidate||''),player=$('auditionPlayer');
+ if(previewKey===key&&player.src){if(player.paused)player.play().catch(()=>notify('浏览器暂时无法播放这个音频格式，可以换一首试听。',true));else player.pause();return;}
+ stopAudition();previewButton=button;previewProgress=progress;previewKey=key;
  const params=new URLSearchParams();const profile=PCHAuth.profile();if(profile)params.set('profile_id',profile);if(candidate)params.set('candidate',String(candidate));
- const player=$('auditionPlayer');player.src='/api/external/sources/'+encodeURIComponent(current.id)+'/tracks/'+encodeURIComponent(track.source_track_key)+'/audio?'+params.toString();
- $('auditionLabel').textContent='正在试听：'+(track.title||'本地音轨');$('auditionBar').hidden=false;
+ player.src='/api/external/sources/'+encodeURIComponent(current.id)+'/tracks/'+encodeURIComponent(track.source_track_key)+'/audio?'+params.toString();
  player.play().catch(()=>notify('浏览器暂时无法播放这个音频格式，可以换一首试听。',true));
 }
+function audioTime(value){const seconds=Math.max(0,Math.floor(Number(value)||0));return Math.floor(seconds/60)+':'+String(seconds%60).padStart(2,'0');}
 function renderSearchActions(actions,track){
  const query=encodeURIComponent([track.title,...(track.artists||[])].filter(Boolean).join(' '));
  const qq=document.createElement('a');qq.className='secondary button';qq.target='_blank';qq.rel='noopener noreferrer';qq.href='https://y.qq.com/n/ryqq/search?w='+query;qq.textContent='去 QQ 音乐搜索';
@@ -188,7 +195,7 @@ async function downloadLongImages(){
 }
 
 $('importForm').addEventListener('submit',event=>{event.preventDefault();action(beginImport);});
-$('sourceFile').onchange=()=>{$('sourceUrl').value='';$('selectedFile').textContent=$('sourceFile').files[0]?.name||'也可以选择本地导出的歌单文件，文件不会离开这台 NAS。';};
+$('sourceFile').onchange=()=>{$('sourceUrl').value='';$('selectedFile').textContent=$('sourceFile').files[0]?.name||'支持 QQ 音乐、网易云音乐、M3U、TXT 和 CSV';};
 $('sourceUrl').oninput=()=>{if($('sourceUrl').value)$('sourceFile').value='';};
 $('reloadSources').onclick=()=>action(()=>loadSources(current?.id||''));
 $('refreshSource').onclick=()=>action(async()=>{const force=!!current.needs_confirmation;if(force&&!await PCHUI.confirm('来源歌曲比上次少很多。确认用最新公开歌单覆盖上次读取结果？Plex 歌单仍会先经过归属校验。'))return;await json('/api/external/sources/'+encodeURIComponent(current.id)+'/refresh','POST',{confirm_large_removal:force});notify('正在重新读取来源');await pollJob('刷新完成');});
@@ -203,6 +210,7 @@ $('downloadImage').onclick=()=>action(async()=>{await downloadLongImages();notif
 $('downloadText').onclick=event=>{event.preventDefault();action(()=>downloadExport('text'));};
 $('downloadCsv').onclick=event=>{event.preventDefault();action(()=>downloadExport('csv'));};
 $('copyShareLink').onclick=()=>action(async()=>{const url=new URL(location.href);url.searchParams.set('source',current.id);url.searchParams.set('tab','missing');await copyText(url.toString());notify('查看链接已复制；打开后仍需登录本应用。');});
+const player=$('auditionPlayer');player.addEventListener('playing',()=>{const button=previewButton;if(button)button.textContent='暂停';});player.addEventListener('pause',()=>{if(previewButton&&previewKey)previewButton.textContent='继续';});player.addEventListener('timeupdate',()=>{if(previewProgress)previewProgress.textContent=audioTime(player.currentTime)+(Number.isFinite(player.duration)?' / '+audioTime(player.duration):'');});player.addEventListener('ended',()=>{if(previewButton)previewButton.textContent='重播';if(previewProgress&&Number.isFinite(player.duration))previewProgress.textContent=audioTime(player.duration)+' / '+audioTime(player.duration);});player.addEventListener('error',()=>{if(previewButton)previewButton.textContent='重试';});
 window.addEventListener('pch-profile-change',()=>action(async()=>{current=null;page=1;await loadSources();}));
 async function boot(){
  const requested=new URLSearchParams(location.search).get('tab');if(['matched','review','missing'].includes(requested))activeStatus=requested;
