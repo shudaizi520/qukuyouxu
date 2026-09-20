@@ -168,6 +168,13 @@ function restorePlaylistView(){
  if(current){workspace.show({type:'playlist',kind:current.kind,key:current.key,panel:'playlist'});return;}
  const first=playlists.find(row=>row.playlist_id)||playlists[0];if(first)action(()=>openPlaylist(first));
 }
+async function returnFromWorkspace(){
+ const view=workspace.current();
+ const preferred=view.type==='playlist'&&view.kind?{kind:view.kind,key:view.key}:current?{kind:current.kind,key:current.key}:null;
+ const requestId=profileRequest;
+ librarySearch.reset();setSidebarOpen(false);++playlistRequest;setPlaylistLoading(false);
+ await loadPlaylists(preferred,requestId);
+}
 function openWorkspacePage(url,title,type='tool',navigation=null){
  setSidebarOpen(false);++playlistRequest;setPlaylistLoading(false);workspace.openPage(url,title,{type,navigation});
 }
@@ -205,11 +212,16 @@ function mount(){
   const selected={kind:current.kind,key:current.key};if(playingFrom(selected))playlistPlayer.stop();
   const result=await json('/api/playlists/remove','POST',{kind:selected.kind,key:selected.key,title:current.title,confirm:true});notify(result.message);current=null;await loadPlaylists();
  });
- $('playlistToolBack').onclick=restorePlaylistView;
+ $('playlistToolBack').onclick=()=>action(returnFromWorkspace);
  document.querySelectorAll('#playlistTools button').forEach(button=>button.onclick=()=>openTool(button.dataset.toolUrl,button.textContent.trim()));
  document.querySelectorAll('[data-workspace-url]').forEach(button=>button.onclick=()=>openWorkspacePage(button.dataset.workspaceUrl,button.textContent.trim(),'system'));
  window.addEventListener('pch-profile-change',event=>{const profileId=String(event.detail?.profile_id||'');if(profileId&&profileId!==loadedProfileId)action(()=>switchProfile(profileId,false));});
  window.addEventListener('pch-auth-logout',resetSession);
+ window.addEventListener('message',event=>{
+  if(event.origin!==location.origin||event.source!==$('playlistToolFrame').contentWindow||event.data?.type!=='pch-player-preview')return;
+  const track=event.data.track;if(!track||typeof track.source!=='string'||!track.source.startsWith('/api/external/'))return;
+  playlistPlayer.playPreview(track);
+ });
  window.addEventListener('keydown',event=>{if(event.key==='Escape')setSidebarOpen(false);});
 }
 async function boot(){const requestId=profileRequest,profileId=await loadProfiles();if(requestId!==profileRequest)return;await switchProfile(profileId,false);}

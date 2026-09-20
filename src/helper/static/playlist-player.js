@@ -34,7 +34,7 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
   artwork.replaceChildren();artwork.classList.toggle('has-image',!!track?.thumb);
   if(!track?.thumb){artwork.textContent='♫';return;}
   const image=document.createElement('img');image.alt='';image.src=mediaUrl('artwork',track,context);
-  image.onerror=()=>{artwork.replaceChildren(document.createTextNode('♫'));artwork.classList.remove('has-image');};
+  image.onerror=()=>{if(!image.isConnected)return;artwork.replaceChildren(document.createTextNode('♫'));artwork.classList.remove('has-image');};
   artwork.append(image);
  }
  function handleFailure(generation,error,failedSource=activeSource){
@@ -74,7 +74,7 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
  function startQueueTrack(index,autoplay=true){
   const track=queue[index];if(!track||!context)return;
   const generation=++playbackGeneration;clearTimeout(retryTimer);retryCount=0;recoveryPending=false;resettingSource=false;
-  queueIndex=index;activeTrackId=String(track.id);activeSource=mediaUrl('audio',track,context);
+  queueIndex=index;activeTrackId=String(track.id);activeSource=context.kind==='preview'&&track.source?track.source:mediaUrl('audio',track,context);
   clearFeedback();audio.pause();audio.onerror=()=>handleFailure(generation,audio.error,currentSource());audio.src=activeSource;
   byId(document,'playerTitle').textContent=track.title||'未知歌曲';
   byId(document,'playerArtist').textContent=track.artist||'未知歌手';
@@ -104,7 +104,12 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
  function stop(){
   playbackGeneration+=1;clearTimeout(retryTimer);audio.onerror=null;audio.pause();audio.removeAttribute('src');audio.load();
   queue=[];context=null;queueIndex=-1;activeTrackId='';activeSource='';retryCount=0;recoveryPending=false;resettingSource=false;
-  clearFeedback();byId(document,'playerTitle').textContent='未播放';byId(document,'playerArtist').textContent='请选择歌曲';byId(document,'playerQueue').textContent='0 / 0';onStateChange();
+  clearFeedback();updateArtwork(null);byId(document,'playerTitle').textContent='未播放';byId(document,'playerArtist').textContent='请选择歌曲';byId(document,'playerQueue').textContent='0 / 0';
+  byId(document,'playerCurrent').textContent='0:00';byId(document,'playerDuration').textContent='0:00';byId(document,'playerSeek').value='0';byId(document,'playerToggle').textContent='▶';onStateChange();
+ }
+ function playPreview(track){
+  if(!track?.source)return;
+  playAt([track],0,{kind:'preview',key:'external',profileId:String(track.profileId||'')});
  }
  function mount(){
   byId(document,'playerToggle').onclick=()=>{if(audio.paused)attemptPlay();else audio.pause();};
@@ -121,7 +126,7 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
  }
 
  return {
-  mount,startQueue,playAt,playNext,playPrevious,stop,
+  mount,startQueue,playAt,playPreview,playNext,playPrevious,stop,
   paused:()=>audio.paused,trackId:()=>activeTrackId,
   isContext:sameContext,
   isPlayingTrack:(track,candidate)=>sameContext(candidate)&&String(track?.id)===activeTrackId,

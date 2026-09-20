@@ -125,11 +125,15 @@ function stopAudition(){
 }
 function showPreviewError(){if(previewButton)previewButton.textContent='重试';if(previewProgress){previewProgress.textContent='无法播放';previewProgress.classList.add('is-error');}}
 function playTrack(track,candidate='',button,progress){
- const key=String(track.source_track_key||'')+'\0'+String(candidate||''),player=$('auditionPlayer');
+  const key=String(track.source_track_key||'')+'\0'+String(candidate||''),player=$('auditionPlayer');
+  const params=new URLSearchParams();const profile=PCHAuth.profile();if(profile)params.set('profile_id',profile);if(candidate)params.set('candidate',String(candidate));
+ const source='/api/external/sources/'+encodeURIComponent(current.id)+'/tracks/'+encodeURIComponent(track.source_track_key)+'/audio?'+params.toString();
+ if(window.parent!==window){
+  window.parent.postMessage({type:'pch-player-preview',track:{id:key,title:track.title||'未知歌曲',artist:(track.artists||[]).join(' / ')||'未知歌手',source,profileId:profile}},location.origin);
+  button.textContent='底部播放';progress.textContent='';return;
+ }
  if(previewKey===key&&player.src){if(player.paused)player.play().catch(showPreviewError);else player.pause();return;}
- stopAudition();previewButton=button;previewProgress=progress;previewKey=key;
- const params=new URLSearchParams();const profile=PCHAuth.profile();if(profile)params.set('profile_id',profile);if(candidate)params.set('candidate',String(candidate));
- player.src='/api/external/sources/'+encodeURIComponent(current.id)+'/tracks/'+encodeURIComponent(track.source_track_key)+'/audio?'+params.toString();
+ stopAudition();previewButton=button;previewProgress=progress;previewKey=key;player.src=source;
  player.play().catch(showPreviewError);
 }
 function audioTime(value){const seconds=Math.max(0,Math.floor(Number(value)||0));return Math.floor(seconds/60)+':'+String(seconds%60).padStart(2,'0');}

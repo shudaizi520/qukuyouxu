@@ -698,6 +698,54 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn("transform:translateX(-100%)", mobile)
         self.assertIn(".playlist-sidebar-open .playlist-sidebar", mobile)
 
+    def test_stopping_player_clears_every_visible_track_state(self):
+        player = (STATIC / "playlist-player.js").read_text(encoding="utf-8")
+        stop = player.split("function stop()", 1)[1].split("function mount()", 1)[0]
+
+        self.assertIn("updateArtwork(null)", stop)
+        self.assertIn("playerCurrent", stop)
+        self.assertIn("playerDuration", stop)
+        self.assertIn("playerSeek", stop)
+        self.assertIn("0:00", stop)
+
+    def test_embedded_external_preview_uses_the_single_bottom_player(self):
+        external = (STATIC / "external.js").read_text(encoding="utf-8")
+        script = (STATIC / "playlists.js").read_text(encoding="utf-8")
+        player = (STATIC / "playlist-player.js").read_text(encoding="utf-8")
+
+        self.assertIn("pch-player-preview", external)
+        self.assertIn("window.parent.postMessage", external)
+        self.assertIn("pch-player-preview", script)
+        self.assertIn("playlistToolFrame", script)
+        self.assertIn("event.origin!==location.origin", script)
+        self.assertIn("playPreview", player)
+        self.assertIn("context.kind==='preview'&&track.source", player)
+
+    def test_returning_from_a_tool_refreshes_the_playlist_inventory(self):
+        script = (STATIC / "playlists.js").read_text(encoding="utf-8")
+
+        self.assertIn("async function returnFromWorkspace()", script)
+        refresh = script.split("async function returnFromWorkspace()", 1)[1].split(
+            "function openWorkspacePage", 1
+        )[0]
+        self.assertIn("workspace.current()", refresh)
+        self.assertIn("view.type==='playlist'", refresh)
+        self.assertIn("await loadPlaylists(preferred,requestId)", refresh)
+        self.assertIn("playlistToolBack", script)
+        self.assertIn("returnFromWorkspace", script.split("playlistToolBack", 1)[1])
+
+    def test_library_search_handles_failures_stale_errors_and_keyboard_playback(self):
+        search = (STATIC / "playlist-search.js").read_text(encoding="utf-8")
+
+        run = search.split("async function run(query)", 1)[1].split(
+            "async function confirmAdd", 1
+        )[0]
+        self.assertIn("catch(error)", run)
+        self.assertGreaterEqual(run.count("requestId!==requestGeneration"), 2)
+        self.assertIn("搜索失败，请重试", run)
+        self.assertIn("row.onkeydown", search)
+        self.assertIn("event.key==='Enter'||event.key===' '", search)
+
 
 class ExternalPlaylistPreviewUiTests(unittest.TestCase):
     def test_audio_player_is_hidden_and_playback_controls_stay_in_the_track_row(self):

@@ -28,13 +28,14 @@ export function createLibrarySearch({
   byId(document,'librarySearchDialog').showModal();
  }
 
- function render(){
+ function render(emptyText='没有找到歌曲'){
   const box=byId(document,'librarySearchResults');
   box.replaceChildren();
   results.forEach((track,index)=>{
    const row=document.createElement('div');
    row.className='playlist-search-result';row.tabIndex=0;row.setAttribute('role','button');
-   row.onclick=()=>onPlayQueue(results.slice(),index,{kind:'library',key:'all',profileId:getProfileId()});
+   const play=()=>onPlayQueue(results.slice(),index,{kind:'library',key:'all',profileId:getProfileId()});
+   row.onclick=play;row.onkeydown=event=>{if(event.target===row&&(event.key==='Enter'||event.key===' ')){event.preventDefault();play();}};
    const number=document.createElement('span');number.className='playlist-track-number';number.textContent=String(index+1);
    const identity=document.createElement('span'),title=document.createElement('strong'),artist=document.createElement('small');
    title.textContent=track.title||'未知歌曲';artist.textContent=track.artist||'未知歌手';identity.append(title,artist);
@@ -43,7 +44,7 @@ export function createLibrarySearch({
    add.onclick=event=>{event.stopPropagation();openAddDialog(track);};
    row.append(number,identity,album,add);box.append(row);
   });
-  if(!results.length){const empty=document.createElement('div');empty.className='playlist-empty';empty.textContent='没有找到歌曲';box.append(empty);}
+  if(!results.length&&emptyText){const empty=document.createElement('div');empty.className='playlist-empty';empty.textContent=emptyText;box.append(empty);}
  }
 
  async function run(query){
@@ -53,12 +54,17 @@ export function createLibrarySearch({
   onSearchStart(query);
   byId(document,'librarySearchTitle').textContent='“'+query+'”';
   byId(document,'librarySearchSummary').textContent='正在搜索当前曲库…';
-  results=[];render();
-  const response=await requestJson('/api/playlists/search?q='+encodeURIComponent(query));
-  if(requestId!==requestGeneration||profileId!==getProfileId())return;
-  results=Array.isArray(response.items)?response.items:[];
-  byId(document,'librarySearchSummary').textContent='找到 '+results.length+' 首歌曲';
-  render();
+  results=[];render('');
+  try{
+   const response=await requestJson('/api/playlists/search?q='+encodeURIComponent(query));
+   if(requestId!==requestGeneration||profileId!==getProfileId())return;
+   results=Array.isArray(response.items)?response.items:[];
+   byId(document,'librarySearchSummary').textContent='找到 '+results.length+' 首歌曲';
+   render();
+  }catch(error){
+   if(requestId!==requestGeneration||profileId!==getProfileId())return;
+   results=[];byId(document,'librarySearchSummary').textContent='搜索失败，请重试';render('暂时无法搜索，请重试');throw error;
+  }
  }
 
  async function confirmAdd(){
