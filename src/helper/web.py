@@ -131,7 +131,9 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
             return JSONResponse(payload, status_code=400)
         r.headers['Cache-Control'] = 'no-store'
         r.headers['X-Content-Type-Options'] = 'nosniff'
-        embedded = req.query_params.get('embedded') == '1' and path in ('/daily', '/mixes', '/external', '/library')
+        embedded = req.query_params.get('embedded') == '1' and path in (
+            '/daily', '/mixes', '/external', '/library', '/status', '/settings',
+        )
         r.headers['X-Frame-Options'] = 'SAMEORIGIN' if embedded else 'DENY'
         r.headers['Referrer-Policy'] = 'no-referrer'
         frame_ancestors = "'self'" if embedded else "'none'"

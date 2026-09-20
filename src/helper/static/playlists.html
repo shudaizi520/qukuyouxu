@@ -3,7 +3,6 @@
 <head>
  <meta charset="utf-8">
  <meta name="viewport" content="width=device-width,initial-scale=1">
- <meta name="color-scheme" content="light">
  <title>曲库有序 · 我的歌单</title>
  <link rel="stylesheet" href="/static/product.css?v=1.4.2">
  <script defer src="/static/auth.js?v=1.4.2"></script>
@@ -51,8 +50,10 @@
      </header>
      <div class="playlist-track-head"><span>#</span><span>歌曲</span><span>专辑</span><span>时长</span></div>
     </div>
-    <div id="playlistTracks" class="playlist-tracks"></div>
-    <div id="playlistEmpty" class="playlist-empty">还没有可显示的歌单</div>
+    <div class="playlist-track-scroll">
+     <div id="playlistTracks" class="playlist-tracks"></div>
+     <div id="playlistEmpty" class="playlist-empty">还没有可显示的歌单</div>
+    </div>
    </section>
    <section id="playlistSearchView" class="playlist-search-view" hidden>
     <header class="playlist-search-head"><div><span class="playlist-kind">全库搜索</span><h1 id="librarySearchTitle">搜索结果</h1><p id="librarySearchSummary" class="muted"></p></div><button id="librarySearchBack" class="secondary" type="button">返回歌单</button></header>

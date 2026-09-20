@@ -383,6 +383,7 @@ class PlaylistHubPageTests(unittest.TestCase):
     def test_workspace_switches_do_not_destroy_the_persistent_audio_element(self):
         page = (STATIC / "playlists.html").read_text(encoding="utf-8")
         workspace = (STATIC / "playlist-workspace.js").read_text(encoding="utf-8")
+        web = (ROOT / "src/helper/web.py").read_text(encoding="utf-8")
 
         self.assertEqual(1, page.count('id="playerAudio"'))
         open_workspace = workspace.split("function openPage", 1)[1].split(
@@ -391,6 +392,9 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertNotIn("location.href", open_workspace)
         self.assertNotIn("stopPlayback", open_workspace)
         self.assertIn("embedded", open_workspace)
+        embedded_routes = web.split("embedded =", 1)[1].split("r.headers['X-Frame-Options']", 1)[0]
+        self.assertIn("'/status'", embedded_routes)
+        self.assertIn("'/settings'", embedded_routes)
 
     def test_home_is_a_single_management_and_playback_surface(self):
         page = (STATIC / "playlists.html").read_text(encoding="utf-8")
@@ -471,8 +475,10 @@ class PlaylistHubPageTests(unittest.TestCase):
         styles = (STATIC / "product.css").read_text(encoding="utf-8")
         self.assertNotIn('data-tool-url="/daily"', page)
         self.assertIn('id="playlistStickyHead"', page)
-        self.assertIn(".playlist-sticky-head{position:sticky", styles)
-        self.assertIn(".playlist-sidebar{position:fixed", styles)
+        self.assertIn('class="playlist-track-scroll"', page)
+        self.assertIn(".playlist-sticky-head{", styles)
+        sidebar = styles.split(".playlist-sidebar{", 1)[1].split("}", 1)[0]
+        self.assertNotIn("position:fixed", sidebar)
         self.assertIn(".playlist-list-scroll{", styles)
 
     def test_initial_load_is_lazy_and_profile_events_reload_loaded_data(self):
@@ -529,11 +535,27 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn("++playlistRequest", open_workspace)
         self.assertIn("setPlaylistLoading(false)", open_workspace)
 
-    def test_sticky_header_stays_below_navigation_and_loading_is_visible(self):
+    def test_playlist_shell_owns_the_viewport_and_only_content_regions_scroll(self):
+        page = (STATIC / "playlists.html").read_text(encoding="utf-8")
         styles = (STATIC / "product.css").read_text(encoding="utf-8")
-        self.assertIn(".playlist-sticky-head{position:sticky;z-index:9;top:80px", styles)
+        external = (STATIC / "external.js").read_text(encoding="utf-8")
+        body_rule = styles.split("body[data-view=playlists]{", 1)[1].split("}", 1)[0]
+        workspace_rule = styles.split("body[data-view=playlists] #workspace{", 1)[1].split("}", 1)[0]
+        hub_rule = styles.split(".playlist-hub{", 1)[1].split("}", 1)[0]
+        player_rule = styles.split(".playlist-player{", 1)[1].split("}", 1)[0]
+        feedback_rule = styles.split(".playlist-player-feedback{", 1)[1].split("}", 1)[0]
+        self.assertIn("overflow:hidden", body_rule)
+        self.assertIn("height:100dvh", workspace_rule)
+        self.assertIn("grid-template-rows:64px minmax(0,1fr) 72px", workspace_rule)
+        self.assertIn("min-height:0", hub_rule)
+        self.assertIn(".playlist-track-scroll{min-height:0;overflow:auto", styles)
+        self.assertIn("height:72px", player_rule)
+        self.assertNotIn("position:fixed", player_rule)
+        self.assertNotIn("position:absolute", feedback_rule)
+        self.assertIn('class="playlist-track-scroll"', page)
         self.assertIn("#playlistView.is-loading .playlist-tracks", styles)
-        self.assertIn(".playlist-sticky-head{position:static", styles)
+        self.assertNotIn("pch-tool-height", external)
+        self.assertNotIn("is-auto-height", styles)
 
     def test_player_is_compact_theme_ready_and_keeps_errors_beside_controls(self):
         page = (STATIC / "playlists.html").read_text(encoding="utf-8")
@@ -560,7 +582,7 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn("'playlist-player.js'", web)
         player_styles = styles.split(".playlist-player{", 1)[1].split(".playlist-search-dialog", 1)[0]
         self.assertNotIn("min-height:88px", player_styles)
-        self.assertIn("height:68px", player_styles)
+        self.assertIn("height:72px", player_styles)
         self.assertIn(".playlist-player-feedback{", styles)
         self.assertIn("--playlist-wallpaper:", styles)
         self.assertIn("--playlist-accent:", styles)
@@ -601,13 +623,13 @@ class ExternalPlaylistPreviewUiTests(unittest.TestCase):
         self.assertIn("external-page-title", page)
         self.assertIn("external-source-strip", page)
         self.assertIn("function showPreviewError", script)
-        self.assertIn("ResizeObserver", script)
-        self.assertIn("pch-tool-height", script)
-        self.assertIn("pch-tool-height", hub_script)
+        self.assertNotIn("ResizeObserver", script)
+        self.assertNotIn("pch-tool-height", script)
+        self.assertNotIn("pch-tool-height", hub_script)
         self.assertNotIn("player.play().catch(()=>notify('浏览器暂时无法播放", script)
         self.assertIn(".pch-embedded body[data-view=external] .external-shell", styles)
         self.assertIn(".external-source-list{display:flex", styles)
-        self.assertIn("scrolling", hub_script)
+        self.assertNotIn("is-auto-height", styles)
 
 
 if __name__ == "__main__":
