@@ -73,6 +73,12 @@ def playlist_rows(store):
             "daily", "daily", daily, count,
             daily.get("published_at") or published.get("published_at"), "/daily",
         ))
+    else:
+        rows.append({
+            "kind": "daily", "kind_label": KIND_LABELS["daily"], "key": "daily",
+            "playlist_id": "", "title": KIND_LABELS["daily"], "count": 0,
+            "updated_at": 0, "manage_url": "/daily", "status": "未建立",
+        })
 
     smart_plans = store.get("smart_mix_plans", {}) or {}
     for kind, record in (store.get("smart_mix_managed", {}) or {}).items():

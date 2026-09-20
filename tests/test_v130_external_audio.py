@@ -223,6 +223,36 @@ class PlexAudioPartV130Tests(unittest.TestCase):
         self.assertIn("add-transcode-target", kwargs["headers"]["X-Plex-Client-Profile-Extra"])
         response.close()
 
+    def test_browser_audio_uses_the_selected_media_and_part_indexes(self):
+        from helper.clients import PlexClient
+
+        class Session:
+            def __init__(self):
+                self.calls = []
+
+            def request(self, method, url, **kwargs):
+                self.calls.append((method, url, kwargs))
+                return FakeAudioResponse(status=200, headers={"Content-Type": "audio/mpeg"})
+
+        client = object.__new__(PlexClient)
+        client.base = "http://plex"
+        client.session = Session()
+        client._xml = lambda _path: ET.fromstring(
+            '<MediaContainer><Track ratingKey="10">'
+            '<Media container="flac"><Part key="/unsafe" accessible="0" /></Media>'
+            '<Media container="flac" audioCodec="flac">'
+            '<Part key="/library/parts/missing.flac" exists="0" />'
+            '<Part key="/library/parts/selected.flac" accessible="1" exists="1" />'
+            '</Media></Track></MediaContainer>'
+        )
+
+        response = client.open_browser_audio("10")
+
+        params = client.session.calls[-1][2]["params"]
+        self.assertEqual("1", params["mediaIndex"])
+        self.assertEqual("1", params["partIndex"])
+        response.close()
+
         client.session.calls.clear()
         client._xml = lambda _path: ET.fromstring(
             '<MediaContainer><Track ratingKey="10"><Media container="mp3" audioCodec="mp3"><Part key="/library/parts/2/file.mp3" container="mp3" accessible="1" exists="1" /></Media></Track></MediaContainer>'

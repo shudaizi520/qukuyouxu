@@ -297,16 +297,18 @@ class PlexClient:
         tracks = [row for row in root.findall('Track') if str(row.get('ratingKey') or '') == track_id]
         if len(tracks) != 1:raise PlexError('Plex音频曲目不存在或不唯一')
         parts = [
-            (media, part) for media in tracks[0].findall('Media') for part in media.findall('Part')
+            (media_index, part_index, media, part)
+            for media_index, media in enumerate(tracks[0].findall('Media'))
+            for part_index, part in enumerate(media.findall('Part'))
             if part.get('exists', '1') != '0' and part.get('accessible', '1') != '0'
             and str(part.get('key') or '').startswith('/library/parts/')
             and not str(part.get('key') or '').startswith('//')
         ]
         if len(parts) != 1:raise PlexError('Plex音频文件不存在、不安全或不唯一')
-        return track_id, parts[0][0], parts[0][1]
+        return track_id, *parts[0]
 
     def open_audio_part(self, track_id, range_header=''):
-        track_id, _media, part = self._audio_source(track_id)
+        track_id, _media_index, _part_index, _media, part = self._audio_source(track_id)
         range_header = validate_audio_range(range_header)
         headers = {'Range': range_header} if range_header else {}
         try:
@@ -323,11 +325,14 @@ class PlexClient:
 
     def open_browser_audio(self, track_id, range_header=''):
         """Return a browser-safe audio stream without modifying the source file."""
-        track_id, media, part = self._audio_source(track_id)
+        track_id, media_index, part_index, media, part = self._audio_source(track_id)
         range_header = validate_audio_range(range_header)
         container = str(media.get('container') or part.get('container') or '').lower()
         codec = str(media.get('audioCodec') or '').lower()
-        browser_safe = container in {'mp3', 'm4a', 'mp4', 'aac', 'ogg', 'oga', 'opus', 'wav', 'webm'} and codec not in {'alac', 'ape', 'wma', 'dca', 'dts'}
+        browser_safe = (
+            (container == 'mp3' and codec in {'', 'mp3'})
+            or (container in {'m4a', 'mp4'} and codec in {'', 'aac', 'mp3'})
+        )
         if browser_safe:
             headers = {'Range': range_header} if range_header else {}
             url = self.base + part.get('key')
@@ -336,8 +341,8 @@ class PlexClient:
         else:
             url = self.base + '/music/:/transcode/universal/start.mp3'
             params = {
-                'path': f'/library/metadata/{track_id}', 'mediaIndex': '0',
-                'partIndex': '0', 'protocol': 'http', 'directPlay': '0',
+                'path': f'/library/metadata/{track_id}', 'mediaIndex': str(media_index),
+                'partIndex': str(part_index), 'protocol': 'http', 'directPlay': '0',
                 'directStream': '0', 'directStreamAudio': '0',
                 'musicBitrate': '320', 'offset': '0', 'location': 'lan',
             }

@@ -75,6 +75,20 @@ class PlaylistHubRowsTests(unittest.TestCase):
         self.assertTrue(all(row["playlist_id"] for row in rows))
         self.assertTrue(all(row["manage_url"].startswith("/") for row in rows))
 
+    def test_daily_entry_remains_available_before_its_first_publish(self):
+        from helper.playlist_hub import playlist_rows
+
+        self.store.set("daily_managed", None)
+        self.store.set("daily_published_view", None)
+
+        rows = playlist_rows(self.store)
+        daily = rows[0]
+        self.assertEqual("daily", daily["kind"])
+        self.assertEqual("每日推荐", daily["title"])
+        self.assertEqual("", daily["playlist_id"])
+        self.assertEqual("未建立", daily["status"])
+        self.assertEqual("/daily", daily["manage_url"])
+
     def test_every_automatic_playlist_writer_applies_manual_track_choices(self):
         for name in ("daily.py", "smart_mix_web.py", "engine.py", "external_service.py"):
             source = (ROOT / "src/helper" / name).read_text(encoding="utf-8")
@@ -376,6 +390,30 @@ class PlaylistHubPageTests(unittest.TestCase):
         open_playlist = script.split("async function openPlaylist", 1)[1].split("function renderTracks", 1)[0]
         self.assertNotIn("stopPlayback()", open_playlist)
         self.assertIn("setPlaylistLoading", open_playlist)
+
+    def test_profile_switch_discards_stale_account_requests(self):
+        script = (STATIC / "playlists.js").read_text(encoding="utf-8")
+        self.assertIn("let profileRequest=0", script)
+        self.assertIn("requestId!==profileRequest", script)
+        self.assertIn("++playlistRequest", script)
+
+    def test_playlist_deletion_only_stops_audio_from_that_playlist(self):
+        script = (STATIC / "playlists.js").read_text(encoding="utf-8")
+        self.assertIn("function playingFrom(item)", script)
+        remove_track = script.split("async function removeTrack", 1)[1].split(
+            "async function switchProfile", 1
+        )[0]
+        remove_playlist = script.split("$('playlistRemove').onclick", 1)[1].split(
+            "$('playlistToolBack').onclick", 1
+        )[0]
+        self.assertIn("playingFrom(selected)", remove_track)
+        self.assertIn("playingFrom(selected)", remove_playlist)
+
+    def test_sticky_header_stays_below_navigation_and_loading_is_visible(self):
+        styles = (STATIC / "product.css").read_text(encoding="utf-8")
+        self.assertIn(".playlist-sticky-head{position:sticky;z-index:9;top:80px", styles)
+        self.assertIn("#playlistView.is-loading .playlist-tracks", styles)
+        self.assertIn(".playlist-sticky-head{position:static", styles)
 
     def test_player_is_compact_theme_ready_and_keeps_errors_beside_controls(self):
         page = (STATIC / "playlists.html").read_text(encoding="utf-8")
