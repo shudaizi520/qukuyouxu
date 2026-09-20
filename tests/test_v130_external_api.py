@@ -175,6 +175,10 @@ class ExternalApiV130Tests(unittest.TestCase):
         self.assertEqual(413, status)
         self.assertIn("2MB", payload["error"])
 
+    def test_audio_route_is_attached_inside_the_authenticated_api(self):
+        paths = {getattr(route, "path", "") for route in self.app.routes}
+        self.assertIn("/api/external/sources/{source_id}/tracks/{track_key}/audio", paths)
+
 
 if __name__ == "__main__":
     unittest.main()

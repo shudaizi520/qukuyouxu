@@ -215,6 +215,19 @@ def parse_plex_track(e):
         'moods':[x.get('tag') for x in e.findall('Mood') if x.get('tag')][:20],
         'bitrate':max([int(m.get('bitrate') or 0) for m in e.findall('Media')]+[0])}
 
+
+def validate_audio_range(value):
+    value = str(value or '').strip()
+    if not value:
+        return ''
+    match = re.fullmatch(r'bytes=(\d*)-(\d*)', value)
+    if not match or not any(match.groups()):
+        raise ValueError('音频 Range 请求无效')
+    start, end = match.groups()
+    if start and end and int(start) > int(end):
+        raise ValueError('音频 Range 请求无效')
+    return value
+
 class PlexClient:
     def __init__(self,base,token,session=None,store=None):
         self.base=validate_base(base)
@@ -272,6 +285,33 @@ class PlexClient:
     def tracks(self,section):
         if not str(section).isdigit():raise ValueError('音乐资料库ID无效')
         return [parse_plex_track(e) for e in self._page(f'/library/sections/{section}/all','Track',{'type':10})]
+
+    def open_audio_part(self, track_id, range_header=''):
+        track_id = str(track_id or '')
+        if not track_id.isdigit():raise PlexError('音频曲目ID无效')
+        range_header = validate_audio_range(range_header)
+        root = self._xml(f'/library/metadata/{track_id}')
+        tracks = [row for row in root.findall('Track') if str(row.get('ratingKey') or '') == track_id]
+        if len(tracks) != 1:raise PlexError('Plex音频曲目不存在或不唯一')
+        parts = [
+            part for part in tracks[0].findall('./Media/Part')
+            if part.get('exists', '1') != '0' and part.get('accessible', '1') != '0'
+            and str(part.get('key') or '').startswith('/library/parts/')
+            and not str(part.get('key') or '').startswith('//')
+        ]
+        if len(parts) != 1:raise PlexError('Plex音频文件不存在、不安全或不唯一')
+        headers = {'Range': range_header} if range_header else {}
+        try:
+            response = self.session.request(
+                'GET', self.base + parts[0].get('key'), headers=headers,
+                timeout=(5, 25), allow_redirects=False, stream=True,
+            )
+        except requests.RequestException:
+            raise PlexError('Plex音频连接失败，请稍后重试') from None
+        if response.status_code not in (200, 206):
+            response.close()
+            raise PlexError(f'Plex音频返回HTTP {response.status_code}')
+        return response
 
     def playlists(self):
         return [dict(e.attrib) for e in self._page('/playlists','Playlist',{'playlistType':'audio'})]

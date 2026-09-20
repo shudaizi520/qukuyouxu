@@ -1,0 +1,203 @@
+import asyncio
+import tempfile
+import unittest
+from pathlib import Path
+from xml.etree import ElementTree as ET
+
+import requests
+
+from tests.test_v130_external_service import snapshot
+
+
+class FakeAudioResponse:
+    def __init__(self, status=206, headers=None, chunks=None):
+        self.status_code = status
+        self.headers = headers or {
+            "Content-Type": "audio/flac", "Content-Length": "1024",
+            "Content-Range": "bytes 0-1023/4096", "Accept-Ranges": "bytes",
+            "X-Plex-Token": "must-not-leak",
+        }
+        self.chunks = list(chunks or [b"a" * 512, b"b" * 512])
+        self.closed = False
+
+    def iter_content(self, size):
+        if size != 65536:
+            raise AssertionError("wrong chunk size")
+        yield from self.chunks
+
+    def close(self):
+        self.closed = True
+
+
+class FakePlex:
+    def __init__(self, response=None, error=None):
+        self.response = response or FakeAudioResponse()
+        self.error = error
+        self.calls = []
+
+    def open_audio_part(self, track_id, range_header=""):
+        self.calls.append((track_id, range_header))
+        if self.error:
+            raise self.error
+        return self.response
+
+
+async def close_response(response):
+    if response.background:
+        await response.background()
+
+
+class ExternalAudioV130Tests(unittest.TestCase):
+    def setUp(self):
+        from helper.external_store import ExternalRepository
+        from helper.profiles import ProfileRegistry
+        from helper.scoped_store import ScopedStore
+        from helper.store import Store
+
+        self.temp = tempfile.TemporaryDirectory()
+        self.base = Store(Path(self.temp.name))
+        registry = ProfileRegistry(self.base)
+        registry.create("长辈", "home", profile_id="parent")
+        self.store = ScopedStore(self.base, "default", registry=registry)
+        self.other = ScopedStore(self.base, "parent", registry=registry)
+        settings = self.store.get("settings")
+        settings.update(plex_url="http://plex", plex_token="token-token", section="11")
+        self.store.set("settings", settings)
+        self.store.set("catalog", [
+            {"id": "10", "title": "已有一", "artist": "歌手甲", "available": True},
+            {"id": "40", "title": "同名歌", "artist": "歌手丁", "available": True},
+        ])
+        repository = ExternalRepository(self.store)
+        self.source = repository.upsert_source("default", snapshot(), 2_000_000_000)
+        repository.replace_matches("default", self.source["id"], [
+            {"source_track_key": "a", "status": "matched", "plex_track_id": "10", "candidate_ids": [], "reason": "matched", "manual": False},
+            {"source_track_key": "b", "status": "missing", "plex_track_id": "", "candidate_ids": [], "reason": "missing", "manual": False},
+            {"source_track_key": "d", "status": "review", "plex_track_id": "", "candidate_ids": ["40"], "reason": "ambiguous", "manual": False},
+        ], "catalog-r1")
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def stream(self, plex=None, track="a", range_header="bytes=0-1023", session="session-a", candidate=""):
+        from helper.external_audio import stream_local_audio
+
+        plex = plex or FakePlex()
+        response = stream_local_audio(
+            self.store, lambda _cfg: plex, self.source["id"], track,
+            range_header, session, candidate_id=candidate,
+        )
+        return plex, response
+
+    def test_audio_requires_source_and_match_in_current_profile(self):
+        from helper.external_audio import stream_local_audio
+
+        with self.assertRaisesRegex(ValueError, "当前歌单"):
+            stream_local_audio(self.other, lambda _cfg: FakePlex(), self.source["id"], "a", "", "other")
+        with self.assertRaisesRegex(ValueError, "可靠匹配"):
+            self.stream(track="b")
+
+    def test_range_and_safe_headers_are_forwarded_without_token(self):
+        plex, response = self.stream()
+        self.assertEqual(206, response.status_code)
+        self.assertEqual("bytes 0-1023/4096", response.headers["Content-Range"])
+        self.assertNotIn("X-Plex-Token", response.headers)
+        self.assertEqual([("10", "bytes=0-1023")], plex.calls)
+        asyncio.run(close_response(response))
+        self.assertTrue(plex.response.closed)
+
+    def test_review_candidate_must_belong_to_that_row(self):
+        plex, response = self.stream(track="d", candidate="40")
+        self.assertEqual([("40", "bytes=0-1023")], plex.calls)
+        asyncio.run(close_response(response))
+        with self.assertRaisesRegex(ValueError, "候选"):
+            self.stream(track="d", candidate="10", session="candidate-invalid")
+
+    def test_invalid_multiple_ranges_and_unavailable_catalog_tracks_are_rejected(self):
+        for value in ("items=0-1", "bytes=0-1,4-5", "bytes=-", "bytes=abc-10"):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "Range"):
+                self.stream(range_header=value, session="bad-" + value)
+        catalog = self.store.get("catalog")
+        catalog[0]["available"] = False
+        self.store.set("catalog", catalog)
+        with self.assertRaisesRegex(ValueError, "当前曲库"):
+            self.stream(session="unavailable")
+
+    def test_redirect_timeout_and_oversized_declared_audio_are_rejected_and_closed(self):
+        from helper.clients import PlexError
+
+        redirect = FakeAudioResponse(status=302)
+        with self.assertRaisesRegex(PlexError, "HTTP"):
+            self.stream(FakePlex(response=redirect), session="redirect")
+        self.assertTrue(redirect.closed)
+
+        oversized = FakeAudioResponse(headers={"Content-Type": "audio/flac", "Content-Length": str(1024 ** 3 + 1)})
+        with self.assertRaisesRegex(ValueError, "过大"):
+            self.stream(FakePlex(response=oversized), session="oversized")
+        self.assertTrue(oversized.closed)
+
+        with self.assertRaisesRegex(PlexError, "连接"):
+            self.stream(FakePlex(error=requests.Timeout()), session="timeout")
+
+    def test_only_two_active_streams_per_session_and_profile(self):
+        first_plex, first = self.stream(session="same-session")
+        second_plex, second = self.stream(session="same-session")
+        with self.assertRaisesRegex(ValueError, "试听"):
+            self.stream(session="same-session")
+        asyncio.run(close_response(first))
+        third_plex, third = self.stream(session="same-session")
+        asyncio.run(close_response(second))
+        asyncio.run(close_response(third))
+        self.assertTrue(first_plex.response.closed)
+        self.assertTrue(second_plex.response.closed)
+        self.assertTrue(third_plex.response.closed)
+
+    def test_client_disconnect_cleanup_closes_upstream_and_releases_slot(self):
+        plex, response = self.stream(session="disconnect")
+        asyncio.run(response.background())
+        self.assertTrue(plex.response.closed)
+        _next_plex, next_response = self.stream(session="disconnect")
+        asyncio.run(next_response.background())
+
+
+class PlexAudioPartV130Tests(unittest.TestCase):
+    def test_part_lookup_rejects_ambiguous_or_unsafe_parts_and_disables_redirects(self):
+        from helper.clients import PlexClient, PlexError
+
+        class Session:
+            def __init__(self):
+                self.calls = []
+
+            def request(self, method, url, **kwargs):
+                self.calls.append((method, url, kwargs))
+                return FakeAudioResponse()
+
+        client = object.__new__(PlexClient)
+        client.base = "http://plex"
+        client.session = Session()
+        client._xml = lambda _path: ET.fromstring(
+            '<MediaContainer><Track ratingKey="10"><Media><Part key="/library/parts/1/file.flac" accessible="1" exists="1" /></Media></Track></MediaContainer>'
+        )
+        response = client.open_audio_part("10", "bytes=0-1023")
+        self.assertEqual("http://plex/library/parts/1/file.flac", client.session.calls[0][1])
+        self.assertFalse(client.session.calls[0][2]["allow_redirects"])
+        self.assertEqual("bytes=0-1023", client.session.calls[0][2]["headers"]["Range"])
+        response.close()
+
+        client._xml = lambda _path: ET.fromstring(
+            '<MediaContainer><Track ratingKey="10"><Media><Part key="https://attacker.example/a" /></Media></Track></MediaContainer>'
+        )
+        with self.assertRaisesRegex(PlexError, "音频"):
+            client.open_audio_part("10")
+
+    def test_page_uses_one_shared_audio_player_without_timeline_calls(self):
+        root = Path(__file__).resolve().parents[1] / "src/helper/static"
+        page = (root / "external.html").read_text(encoding="utf-8")
+        script = (root / "external.js").read_text(encoding="utf-8")
+        self.assertEqual(1, page.count('<audio id="auditionPlayer"'))
+        self.assertIn("/audio?", script)
+        self.assertNotIn("/:/timeline", script)
+        self.assertNotIn("behavior", script)
+
+
+if __name__ == "__main__":
+    unittest.main()

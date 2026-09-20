@@ -8,7 +8,9 @@ from urllib.parse import quote
 from fastapi import Request
 from fastapi.responses import Response
 
+from .auth import COOKIE_NAME
 from .engine import SafetyError
+from .external_audio import stream_local_audio
 from .external_export import format_missing_csv, format_missing_text, missing_download_name
 from .external_sources import recognize_source
 
@@ -198,3 +200,14 @@ def attach_external_routes(app, store, engine, runtime, profiles, body, ensure_i
         filename = missing_download_name(data["title"], extension)
         disposition = f"attachment; filename*=UTF-8''{quote(filename)}"
         return Response(content, media_type=media_type, headers={"Content-Disposition": disposition})
+
+    @app.get("/api/external/sources/{source_id}/tracks/{track_key}/audio")
+    def audition_track(source_id: str, track_key: str, request: Request, candidate: str = "", profile_id: str = ""):
+        selected_profile = str(profile_id or store.profile_id)
+        with profiles.fixed_active(selected_profile, enabled_only=True):
+            current = runtime.engine(selected_profile).external
+            return stream_local_audio(
+                current.store, current.plex_factory, source_id, track_key,
+                str(request.headers.get("range") or ""),
+                str(request.cookies.get(COOKIE_NAME) or ""), candidate_id=candidate,
+            )

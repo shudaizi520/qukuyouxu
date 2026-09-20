@@ -54,6 +54,7 @@ async function loadSources(preferred=''){
  await openSource(sourceId,false);
 }
 async function openSource(sourceId,updateUrl=true){
+ if(current&&current.id!==sourceId)stopAudition();
  current=await json('/api/external/sources/'+encodeURIComponent(sourceId)+'?status='+encodeURIComponent(activeStatus)+'&page='+page+'&limit='+PAGE_SIZE);
  if(updateUrl){const url=new URL(location.href);url.searchParams.set('source',sourceId);url.searchParams.set('tab',activeStatus);history.replaceState(null,'',url);}
  renderSourceList();renderDetail();
@@ -88,6 +89,7 @@ function renderTracks(){
   const status=addText(row,'span',activeStatus==='matched'?'已在曲库':activeStatus==='review'?'需要你确认':'曲库未找到','bucket'+(activeStatus==='review'?' warn':''));
   status.setAttribute('aria-label','匹配状态');
   const actions=document.createElement('div');actions.className='song-actions';
+  if(activeStatus==='matched')actions.append(auditionButton(track));
   if(activeStatus==='review')renderReviewActions(actions,track);
   if(activeStatus==='missing')renderSearchActions(actions,track);
   row.append(actions);list.append(row);
@@ -100,12 +102,26 @@ function renderTracks(){
 function renderReviewActions(actions,track){
  const candidates=(track.candidates||[]).length?track.candidates:(track.candidate_ids||[]).map(id=>({id,title:'Plex 曲目 '+id,artist:''}));
  for(const candidate of candidates){
-  const button=document.createElement('button');button.type='button';button.className='secondary';button.textContent='选 '+[candidate.title,candidate.artist,candidate.album].filter(Boolean).join(' · ');
+ const button=document.createElement('button');button.type='button';button.className='secondary';button.textContent='选 '+[candidate.title,candidate.artist,candidate.album].filter(Boolean).join(' · ');
   button.onclick=()=>action(async()=>{await json('/api/external/sources/'+encodeURIComponent(current.id)+'/confirm','POST',{track_key:track.source_track_key,choice:{status:'matched',plex_track_id:String(candidate.id)}});notify('已确认匹配');await openSource(current.id,false);});
-  actions.append(button);
+  actions.append(auditionButton(track,candidate.id,'试听候选'),button);
  }
  const missing=document.createElement('button');missing.type='button';missing.className='secondary';missing.textContent='标为缺失';
  missing.onclick=()=>action(async()=>{await json('/api/external/sources/'+encodeURIComponent(current.id)+'/confirm','POST',{track_key:track.source_track_key,choice:{status:'missing'}});notify('已放入缺失清单');await openSource(current.id,false);});actions.append(missing);
+}
+function auditionButton(track,candidate='',label='试听'){
+ const button=document.createElement('button');button.type='button';button.className='secondary';button.textContent=label;
+ button.onclick=()=>playTrack(track,candidate);return button;
+}
+function stopAudition(){
+ const player=$('auditionPlayer');player.pause();player.removeAttribute('src');player.load();$('auditionBar').hidden=true;
+}
+function playTrack(track,candidate=''){
+ stopAudition();
+ const params=new URLSearchParams();const profile=PCHAuth.profile();if(profile)params.set('profile_id',profile);if(candidate)params.set('candidate',String(candidate));
+ const player=$('auditionPlayer');player.src='/api/external/sources/'+encodeURIComponent(current.id)+'/tracks/'+encodeURIComponent(track.source_track_key)+'/audio?'+params.toString();
+ $('auditionLabel').textContent='正在试听：'+(track.title||'本地音轨');$('auditionBar').hidden=false;
+ player.play().catch(()=>notify('浏览器暂时无法播放这个音频格式，可以换一首试听。',true));
 }
 function renderSearchActions(actions,track){
  const query=encodeURIComponent([track.title,...(track.artists||[])].filter(Boolean).join(' '));
