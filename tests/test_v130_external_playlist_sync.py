@@ -101,6 +101,46 @@ def managed_for(state, **extra):
 
 
 class ExternalPlaylistSyncV130Tests(unittest.TestCase):
+    def test_confirmed_missing_managed_playlist_can_be_recreated_safely(self):
+        from helper.clients import PlexNotFound
+        from helper.external_playlist_sync import create_or_reconcile_external_playlist
+
+        original = owned_state()
+        managed = managed_for(original)
+
+        class MissingPlex(FakePlex):
+            def playlist_state(self, playlist_id):
+                if str(playlist_id) == managed["id"] and str(playlist_id) not in self.states:
+                    raise PlexNotFound("Plex 歌单不存在")
+                return super().playlist_state(playlist_id)
+
+        plex = MissingPlex()
+        after, revised = create_or_reconcile_external_playlist(
+            plex, INSTALL, SOURCE, managed, ["1", "2"]
+        )
+        self.assertEqual(["1", "2"], ids(after))
+        self.assertNotEqual(managed["id"], revised["id"])
+        self.assertEqual(1, len(plex.created))
+
+        blocked = MissingPlex(playlists=[{"ratingKey": "9", "title": SOURCE["title"], "summary": ""}])
+        with self.assertRaisesRegex(Exception, "同名"):
+            create_or_reconcile_external_playlist(blocked, INSTALL, SOURCE, managed, ["1", "2"])
+        self.assertEqual([], blocked.created)
+
+    def test_confirmed_missing_managed_playlist_allows_local_cleanup(self):
+        from helper.clients import PlexNotFound
+        from helper.external_playlist_sync import delete_owned_external_playlist
+
+        class MissingPlex(FakePlex):
+            def playlist_state(self, playlist_id):
+                raise PlexNotFound("Plex 歌单不存在")
+
+        original = owned_state()
+        result = delete_owned_external_playlist(
+            MissingPlex(), INSTALL, SOURCE["id"], managed_for(original), SOURCE["title"]
+        )
+        self.assertEqual({"removed": "77", "already_missing": True}, result)
+
     def test_same_name_without_marker_is_never_adopted(self):
         from helper.engine import SafetyError
         from helper.external_playlist_sync import create_or_reconcile_external_playlist

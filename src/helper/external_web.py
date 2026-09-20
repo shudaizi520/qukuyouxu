@@ -130,7 +130,10 @@ def attach_external_routes(app, store, engine, runtime, profiles, body, ensure_i
             raise ValueError("刷新确认状态无效")
         service().repository.get_source(service().profile_id, source_id)
         ensure_idle()
-        return fixed_engine().start_job("external_refresh", source_id=source_id, force=bool(data.get("confirm_large_removal")))
+        return fixed_engine().start_job(
+            "external_refresh", source_id=source_id,
+            force=bool(data.get("confirm_large_removal")), bypass_retry=True,
+        )
 
     @app.post("/api/external/sources/{source_id}/confirm")
     async def confirm_track(source_id: str, request: Request):

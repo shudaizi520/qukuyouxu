@@ -177,6 +177,87 @@ class ExternalServiceV130Tests(unittest.TestCase):
         self.assertEqual(before, after["counts"])
         self.assertEqual(1, after["failure_count"])
 
+    def test_plex_failure_during_refresh_preserves_snapshot_matches_and_manual_choice(self):
+        imported = self.service.import_source(value=QQ_URL)
+        confirmed = self.service.confirm(imported["id"], "d", {"status": "matched", "plex_track_id": "40"})
+        before = self.service.public_source(imported["id"])
+        changed = snapshot([
+            *snapshot()["tracks"],
+            source_track("e", "新增歌", ["歌手戊"], 4),
+        ], revision="source-r2")
+        self.providers.results.append(changed)
+
+        def unavailable(_section):
+            raise RuntimeError("Plex unavailable")
+
+        self.plex.tracks = unavailable
+        with self.assertRaisesRegex(RuntimeError, "unavailable"):
+            self.service.refresh(imported["id"], force=True)
+
+        after = self.service.public_source(imported["id"])
+        self.assertEqual(before["revision"], after["revision"])
+        self.assertEqual(before["tracks"], after["tracks"])
+        manual = next(row for row in after["tracks"] if row["source_track_key"] == "d")
+        self.assertTrue(manual["manual"])
+        self.assertEqual("40", manual["plex_track_id"])
+        self.assertEqual(1, after["failure_count"])
+        self.assertEqual("40", next(row for row in confirmed["tracks"] if row["source_track_key"] == "d")["plex_track_id"])
+
+    def test_successful_refresh_preserves_manual_choice_for_unchanged_source_track(self):
+        imported = self.service.import_source(value=QQ_URL)
+        self.service.confirm(imported["id"], "d", {"status": "matched", "plex_track_id": "40"})
+        self.providers.results.append(snapshot(revision="source-r2"))
+
+        self.service.refresh(imported["id"], force=True)
+
+        refreshed = self.service.public_source(imported["id"])
+        manual = next(row for row in refreshed["tracks"] if row["source_track_key"] == "d")
+        self.assertTrue(manual["manual"])
+        self.assertEqual("40", manual["plex_track_id"])
+
+    def test_reimporting_changed_source_cannot_bypass_large_removal_confirmation(self):
+        many = [source_track(f"k{i}", f"歌曲{i}", [f"歌手{i}"], i) for i in range(50)]
+        self.providers.results = [snapshot(many, revision="many")]
+        imported = self.service.import_source(value=QQ_URL)
+        self.providers.results.append(snapshot(many[:39], revision="reduced"))
+
+        result = self.service.import_source(value=QQ_URL)
+
+        self.assertEqual(imported["revision"], result["revision"])
+        self.assertEqual(50, len(result["tracks"]))
+        self.assertTrue(result["needs_confirmation"])
+
+    def test_manual_retry_bypasses_backoff_without_confirming_large_removal(self):
+        many = [source_track(f"k{i}", f"歌曲{i}", [f"歌手{i}"], i) for i in range(50)]
+        self.providers.results = [snapshot(many, revision="many")]
+        imported = self.service.import_source(value=QQ_URL)
+        self.service.repository.record_failure("default", imported["id"], "暂时失败", self.now)
+        self.providers.results.append(snapshot(many[:39], revision="reduced"))
+
+        result = self.service.refresh(imported["id"], bypass_retry=True)
+
+        self.assertEqual("confirmation_required", result["status"])
+        self.assertEqual(50, len(self.service.repository.list_tracks("default", imported["id"])))
+
+    def test_uploaded_file_source_cannot_enable_remote_follow_updates(self):
+        file_snapshot = {
+            **snapshot(), "provider": "txt", "external_id": "upload:abc", "url": "",
+        }
+        source = self.service.repository.upsert_source("default", file_snapshot, self.now)
+
+        with self.assertRaisesRegex(ValueError, "本地文件"):
+            self.service.set_follow_updates(source["id"], True)
+
+        self.assertFalse(self.service.repository.get_source("default", source["id"])["follow_updates"])
+
+    def test_source_without_match_rows_counts_every_track_as_missing(self):
+        source = self.service.repository.upsert_source("default", snapshot(), self.now)
+
+        public = self.service.public_source(source["id"])
+
+        self.assertEqual(4, public["counts"]["missing"])
+        self.assertEqual(4, len([row for row in public["tracks"] if row["status"] == "missing"]))
+
 
 if __name__ == "__main__":
     unittest.main()

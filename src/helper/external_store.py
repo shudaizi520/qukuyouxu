@@ -382,6 +382,19 @@ class ExternalRepository:
 
     def replace_matches(self, profile_id: str, source_id: str, rows: list[dict], catalog_revision: str) -> None:
         profile_id = self._profile(profile_id)
+        clean, seen, catalog_revision = self._clean_matches(profile_id, source_id, rows, catalog_revision)
+        with self.store.lock, self.store._db() as db:
+            self._require_source(db, profile_id, source_id)
+            valid = {row[0] for row in db.execute(
+                "SELECT source_track_key FROM external_track WHERE profile_id=? AND source_id=?",
+                (profile_id, source_id),
+            )}
+            if not seen.issubset(valid):
+                raise ValueError("匹配结果包含不属于当前歌单的歌曲")
+            self._replace_match_rows(db, profile_id, source_id, clean)
+
+    @staticmethod
+    def _clean_matches(profile_id: str, source_id: str, rows: list[dict], catalog_revision: str):
         catalog_revision = _bounded_text(catalog_revision, "曲库修订", 128, required=True)
         if not isinstance(rows, list):
             raise ValueError("匹配结果无效")
@@ -402,21 +415,43 @@ class ExternalRepository:
                 _bounded_text(row.get("reason"), "匹配原因", 120), int(bool(row.get("manual"))), catalog_revision,
             ))
             seen.add(key)
+        return clean, seen, catalog_revision
+
+    @staticmethod
+    def _replace_match_rows(db, profile_id: str, source_id: str, clean: list[tuple]) -> None:
+        db.execute("DELETE FROM external_match WHERE profile_id=? AND source_id=?", (profile_id, source_id))
+        db.executemany(
+            """INSERT INTO external_match(profile_id,source_id,source_track_key,status,
+                plex_track_id,candidate_ids,reason,manual,catalog_revision)
+                VALUES (?,?,?,?,?,?,?,?,?)""",
+            clean,
+        )
+
+    def replace_snapshot_and_matches(
+        self, profile_id: str, source_id: str, snapshot: dict, now: float,
+        rows: list[dict], catalog_revision: str,
+    ) -> dict:
+        """Atomically publish a validated source snapshot and its Plex matches."""
+        profile_id = self._profile(profile_id)
+        snapshot = _validated_snapshot(snapshot)
+        now = _number(now, "抓取时间")
+        clean, seen, _ = self._clean_matches(profile_id, source_id, rows, catalog_revision)
+        track_keys = {row["source_track_key"] for row in snapshot["tracks"]}
+        if not seen.issubset(track_keys):
+            raise ValueError("匹配结果包含不属于新歌单快照的歌曲")
         with self.store.lock, self.store._db() as db:
-            self._require_source(db, profile_id, source_id)
-            valid = {row[0] for row in db.execute(
-                "SELECT source_track_key FROM external_track WHERE profile_id=? AND source_id=?",
-                (profile_id, source_id),
-            )}
-            if not seen.issubset(valid):
-                raise ValueError("匹配结果包含不属于当前歌单的歌曲")
-            db.execute("DELETE FROM external_match WHERE profile_id=? AND source_id=?", (profile_id, source_id))
-            db.executemany(
-                """INSERT INTO external_match(profile_id,source_id,source_track_key,status,
-                    plex_track_id,candidate_ids,reason,manual,catalog_revision)
-                    VALUES (?,?,?,?,?,?,?,?,?)""",
-                clean,
+            current = self._require_source(db, profile_id, source_id)
+            if (snapshot["provider"], snapshot["external_id"]) != (current["provider"], current["external_id"]):
+                raise ValueError("刷新结果与原外部歌单不一致")
+            db.execute(
+                """UPDATE external_source SET source_url=?,title=?,revision=?,fetched_at=?,
+                    last_error='',failure_count=0,next_retry_at=NULL,needs_confirmation=0
+                    WHERE profile_id=? AND id=?""",
+                (snapshot["url"], snapshot["title"], snapshot["revision"], now, profile_id, source_id),
             )
+            self._replace_tracks(db, profile_id, source_id, snapshot["tracks"])
+            self._replace_match_rows(db, profile_id, source_id, clean)
+            return self._require_source(db, profile_id, source_id)
 
     def list_matches(self, profile_id: str, source_id: str) -> list[dict]:
         profile_id = self._profile(profile_id)

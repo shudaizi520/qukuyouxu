@@ -12,6 +12,7 @@ from .plex_identity import plex_headers
 
 class SourceError(RuntimeError): pass
 class PlexError(RuntimeError): pass
+class PlexNotFound(PlexError): pass
 
 QQ_HOSTS={'y.qq.com','i.y.qq.com','c.y.qq.com','u.y.qq.com'}
 
@@ -244,6 +245,7 @@ class PlexClient:
         if not path.startswith('/') or path.startswith('//'):raise PlexError('拒绝异常Plex路径')
         try:
             with self.session.request(method,self.base+path,params=params,timeout=(5,25),allow_redirects=False,stream=True) as r:
+                if r.status_code==404:raise PlexNotFound('Plex 中没有这个项目')
                 if r.status_code not in (200,201,204):raise PlexError(f'Plex返回HTTP {r.status_code}，请核对地址、Token和权限')
                 chunks=[];size=0
                 for b in r.iter_content(65536):

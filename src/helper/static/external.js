@@ -54,6 +54,7 @@ async function loadSources(preferred=''){
  await openSource(sourceId,false);
 }
 async function openSource(sourceId,updateUrl=true){
+ if(!current||current.id!==sourceId)page=1;
  if(current&&current.id!==sourceId)stopAudition();
  current=await json('/api/external/sources/'+encodeURIComponent(sourceId)+'?status='+encodeURIComponent(activeStatus)+'&page='+page+'&limit='+PAGE_SIZE);
  if(updateUrl){const url=new URL(location.href);url.searchParams.set('source',sourceId);url.searchParams.set('tab',activeStatus);history.replaceState(null,'',url);}
@@ -67,8 +68,9 @@ function renderDetail(){
  $('reviewCount').textContent=String(count('review'));
  $('missingCount').textContent=String(count('missing'));
  $('plexPlaylistTitle').value=current.managed?.title||current.title||'';
+ $('plexPlaylistTitle').disabled=!!current.managed;
  $('followUpdates').checked=!!current.follow_updates;
- $('followUpdates').disabled=!current.managed;
+ $('followUpdates').disabled=!current.managed||!['qq','netease'].includes(current.provider);
  $('refreshSource').textContent=current.needs_confirmation?'确认继续刷新':'重新读取';
  const matched=count('matched');
  $('publishSource').textContent=(current.managed?'更新 Plex 歌单（':'在 Plex 创建“'+(current.title||'外部歌单')+'”歌单（')+matched+'首）';

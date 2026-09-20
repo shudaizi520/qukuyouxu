@@ -45,6 +45,14 @@ def public_resolver(host, port, *args, **kwargs):
 
 
 class ExternalSourcesV130Tests(unittest.TestCase):
+    def test_platform_track_key_is_stable_when_playlist_position_changes(self):
+        from helper.external_sources import make_track
+
+        first = make_track(0, "同一首歌", ["歌手"], source_id="12345")
+        moved = make_track(37, "同一首歌", ["歌手"], source_id="12345")
+
+        self.assertEqual(first["source_track_key"], moved["source_track_key"])
+
     def fixture(self, name):
         return (FIXTURES / name).read_bytes()
 

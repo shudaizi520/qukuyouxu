@@ -76,6 +76,30 @@ class ExternalPlaylistService:
         self.repository.replace_matches(self.profile_id, source_id, rows, catalog_revision)
         return rows
 
+    def _apply_snapshot(self, source, snapshot, *, force, started, kind):
+        old_count = len(self.repository.list_tracks(self.profile_id, source["id"]))
+        new_count = len(snapshot.get("tracks") or [])
+        if not force and refresh_needs_confirmation(old_count, new_count):
+            self.repository.set_needs_confirmation(self.profile_id, source["id"], True)
+            self._record(source["id"], kind, "attention", started, "歌曲减少较多，等待确认")
+            return {
+                "source_id": source["id"], "status": "confirmation_required",
+                "old_count": old_count, "new_count": new_count,
+            }
+        plex, tracks, catalog_revision = self._catalog()
+        previous = {
+            row["source_track_key"]: row
+            for row in self.repository.list_matches(self.profile_id, source["id"])
+            if row.get("manual")
+        }
+        rows = match_external_tracks(snapshot.get("tracks") or [], tracks, previous, catalog_revision)
+        source = self.repository.replace_snapshot_and_matches(
+            self.profile_id, source["id"], snapshot, self.clock(), rows, catalog_revision,
+        )
+        sync = self._sync_managed(source, plex, rows)
+        self._record(source["id"], kind, "completed", started, "刷新完成", counts=_counts(rows))
+        return {"source_id": source["id"], "status": "updated", "counts": _counts(rows), "sync": sync}
+
     def _sync_managed(self, source, plex, rows):
         managed = self.repository.get_managed(self.profile_id, source["id"])
         if not managed:
@@ -118,10 +142,21 @@ class ExternalPlaylistService:
             row for row in self.repository.list_sources(self.profile_id)
             if row["provider"] == snapshot["provider"] and row["external_id"] == snapshot["external_id"]
         ), None)
-        if existing and existing["revision"] == snapshot["revision"]:
+        if existing:
             source = existing
-            if not self.repository.list_matches(self.profile_id, source["id"]):
-                self.match(source["id"])
+            if existing["revision"] == snapshot["revision"]:
+                if not self.repository.list_matches(self.profile_id, source["id"]):
+                    self.match(source["id"])
+            else:
+                try:
+                    self._apply_snapshot(source, snapshot, force=False, started=started, kind="import")
+                except Exception as exc:
+                    self.repository.record_failure(
+                        self.profile_id, source["id"], str(exc)[:300] or type(exc).__name__, self.clock()
+                    )
+                    self._record(source["id"], "import", "error", started, str(exc)[:300])
+                    raise
+                return self.public_source(source["id"])
         else:
             source = self.repository.upsert_source(self.profile_id, snapshot, self.clock())
             self.match(source["id"])
@@ -185,34 +220,26 @@ class ExternalPlaylistService:
         self._record(source["id"], "publish", status, started, "发布完成", playlist_id=after["id"])
         return {"playlist_id": after["id"], "count": len(after["items"]), "order_attention": record.get("order_attention", False)}
 
-    def refresh(self, source_id, *, force=False):
-        if not isinstance(force, bool):
+    def refresh(self, source_id, *, force=False, bypass_retry=False):
+        if not isinstance(force, bool) or not isinstance(bypass_retry, bool):
             raise ValueError("刷新方式无效")
         started = self.clock()
         source = self.repository.get_source(self.profile_id, source_id)
-        if not force and source.get("next_retry_at") and float(source["next_retry_at"]) > self.clock():
+        if not (force or bypass_retry) and source.get("next_retry_at") and float(source["next_retry_at"]) > self.clock():
             return {"source_id": source["id"], "status": "waiting", "retry_at": source["next_retry_at"]}
         recognized = {"provider": source["provider"], "external_id": source["external_id"], "url": source["source_url"]}
         try:
             snapshot = self.providers.fetch(recognized)
-            old_count = len(self.repository.list_tracks(self.profile_id, source["id"]))
-            new_count = len(snapshot.get("tracks") or [])
-            if not force and refresh_needs_confirmation(old_count, new_count):
-                self.repository.set_needs_confirmation(self.profile_id, source["id"], True)
-                self._record(source["id"], "refresh", "attention", started, "歌曲减少较多，等待确认")
-                return {"source_id": source["id"], "status": "confirmation_required", "old_count": old_count, "new_count": new_count}
-            source = self.repository.replace_snapshot(self.profile_id, source["id"], snapshot, self.clock())
-            plex, tracks, revision = self._catalog()
-            rows = self._match_with_catalog(source["id"], tracks, revision)
-            sync = self._sync_managed(source, plex, rows)
-            self._record(source["id"], "refresh", "completed", started, "刷新完成", counts=_counts(rows))
-            return {"source_id": source["id"], "status": "updated", "counts": _counts(rows), "sync": sync}
+            return self._apply_snapshot(source, snapshot, force=force, started=started, kind="refresh")
         except Exception as exc:
             self.repository.record_failure(self.profile_id, source["id"], str(exc)[:300] or type(exc).__name__, self.clock())
             self._record(source["id"], "refresh", "error", started, str(exc)[:300])
             raise
 
     def set_follow_updates(self, source_id, enabled):
+        source = self.repository.get_source(self.profile_id, source_id)
+        if enabled and source.get("provider") not in ("qq", "netease"):
+            raise ValueError("本地文件不能跟随远程更新，需要变化时请重新上传")
         source = self.repository.set_follow_updates(self.profile_id, source_id, enabled)
         return {"id": source["id"], "follow_updates": source["follow_updates"]}
 
@@ -280,6 +307,6 @@ class ExternalPlaylistService:
             }})
         managed = self.repository.get_managed(self.profile_id, source["id"])
         return {
-            **source, "counts": _counts(list(matches.values())), "tracks": public_tracks,
+            **source, "counts": _counts(public_tracks), "tracks": public_tracks,
             "managed": ({"id": managed["id"], "title": managed["title"], "order_attention": bool(managed.get("order_attention"))} if managed else None),
         }

@@ -50,6 +50,11 @@ class ExternalPlaylistUiV130Tests(unittest.TestCase):
         self.assertIn("IMAGE_PAGE_ROWS=80", script)
         self.assertIn("encodeURIComponent", script)
 
+    def test_switching_sources_resets_paging_and_managed_title_is_not_misleadingly_editable(self):
+        script = (STATIC / "external.js").read_text(encoding="utf-8")
+        self.assertIn("if(!current||current.id!==sourceId)page=1", script)
+        self.assertIn("$('plexPlaylistTitle').disabled=!!current.managed", script)
+
     def test_element_ids_are_unique_and_mobile_layout_cannot_overflow_page(self):
         page = (STATIC / "external.html").read_text(encoding="utf-8")
         ids = re.findall(r'\bid="([^"]+)"', page)

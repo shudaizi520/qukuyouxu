@@ -5,6 +5,8 @@ import hashlib
 import json
 import re
 
+from .clients import PlexNotFound
+
 
 def _safety(message):
     from .engine import SafetyError
@@ -103,12 +105,22 @@ def _initial_state(plex, source, marker, managed, desired):
         title = str(managed.get("title") or "")
         if not playlist_id or not title or not managed.get("fingerprint"):
             raise _safety("外部歌单托管记录不完整")
-        current = plex.playlist_state(playlist_id)
-        if not _owned_state(current, playlist_id, title, marker):
-            raise _safety("Plex 歌单名称、标识或管理标记已被修改，停止写入")
-        if playlist_fingerprint(current) != managed.get("fingerprint"):
-            raise _safety("Plex 歌单内容已被手工修改，停止写入")
-        return current, title
+        try:
+            current = plex.playlist_state(playlist_id)
+        except PlexNotFound:
+            # A confirmed 404 is different from a timeout: it is safe to look
+            # for the exact ownership marker or recreate without adopting a
+            # user's same-name playlist.
+            source_title = title
+            managed = None
+        if managed is None:
+            current = None
+        else:
+            if not _owned_state(current, playlist_id, title, marker):
+                raise _safety("Plex 歌单名称、标识或管理标记已被修改，停止写入")
+            if playlist_fingerprint(current) != managed.get("fingerprint"):
+                raise _safety("Plex 歌单内容已被手工修改，停止写入")
+            return current, title
 
     listed = plex.playlists()
     exact = [
@@ -214,7 +226,10 @@ def delete_owned_external_playlist(plex, installation_id, source_id, managed, co
     title = str(managed.get("title") or "")
     if str(confirm_title or "") != title:
         raise _safety("确认名称不一致，不删除 Plex 歌单")
-    current = plex.playlist_state(playlist_id)
+    try:
+        current = plex.playlist_state(playlist_id)
+    except PlexNotFound:
+        return {"removed": playlist_id, "already_missing": True}
     if not _owned_state(current, playlist_id, title, marker):
         raise _safety("Plex 歌单标识、名称或管理标记不一致，不删除")
     if playlist_fingerprint(current) != managed.get("fingerprint"):

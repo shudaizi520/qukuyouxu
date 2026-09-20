@@ -72,12 +72,13 @@ class NetEasePublicPlaylistSource:
             ordered_ids.append(song_id)
         if len(set(ordered_ids)) != len(ordered_ids):
             raise ExternalSourceError("网易云歌单包含重复歌曲标识", kind="upstream")
+        ordered_id_set = set(ordered_ids)
         details = {}
         for row in raw_tracks:
             if not isinstance(row, dict):
                 raise ExternalSourceError("网易云歌曲详情不完整", kind="protocol")
             song_id = _integer(row.get("id"), "歌曲标识", minimum=1, maximum=10**18)
-            if song_id in details or song_id not in set(ordered_ids):
+            if song_id in details or song_id not in ordered_id_set:
                 raise ExternalSourceError("网易云歌曲详情重复或不属于歌单", kind="upstream")
             details[song_id] = row
         missing = [song_id for song_id in ordered_ids if song_id not in details]

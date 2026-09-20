@@ -78,7 +78,12 @@ def make_track(position, title, artists, album="", duration_ms=0, source_id="", 
     source_id = _clean(source_id, "平台歌曲标识", required=False)
     if not isinstance(duration_ms, int) or not 0 <= duration_ms <= 86_400_000:
         raise ExternalSourceError("歌曲时长无效")
-    key_seed = "\0".join((str(position), source_id, title, "\0".join(artists), album))
+    # Platform IDs remain stable when a playlist is reordered or receives a
+    # new song near the beginning. File rows have no platform ID, so their
+    # position remains part of the fallback identity.
+    key_seed = f"platform\0{source_id}" if source_id else "\0".join(
+        ("file", str(position), title, "\0".join(artists), album)
+    )
     return {
         "source_track_key": "t-" + hashlib.sha256(key_seed.encode("utf-8")).hexdigest()[:24],
         "position": int(position),
