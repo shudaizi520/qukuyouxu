@@ -304,7 +304,13 @@ class PlexClient:
             and str(part.get('key') or '').startswith('/library/parts/')
             and not str(part.get('key') or '').startswith('//')
         ]
-        if len(parts) != 1:raise PlexError('Plex音频文件不存在、不安全或不唯一')
+        if not parts:raise PlexError('Plex音频文件不存在或不安全')
+        def selected(value):
+            return str(value or '').lower() in {'1', 'true', 'yes'}
+        parts.sort(key=lambda row: (
+            not (selected(row[2].get('selected')) or selected(row[3].get('selected'))),
+            row[0], row[1],
+        ))
         return track_id, *parts[0]
 
     def open_audio_part(self, track_id, range_header=''):

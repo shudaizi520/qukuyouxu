@@ -166,6 +166,24 @@ class ExternalAudioV130Tests(unittest.TestCase):
 
 
 class PlexAudioPartV130Tests(unittest.TestCase):
+    def test_audio_source_prefers_the_selected_safe_media_without_rejecting_alternatives(self):
+        from helper.clients import PlexClient
+
+        client = object.__new__(PlexClient)
+        client._xml = lambda _path: ET.fromstring(
+            '<MediaContainer><Track ratingKey="10">'
+            '<Media container="flac"><Part key="/library/parts/first.flac" accessible="1" exists="1" /></Media>'
+            '<Media container="flac" selected="1"><Part key="/library/parts/selected.flac" accessible="1" exists="1" /></Media>'
+            '</Track></MediaContainer>'
+        )
+
+        track_id, media_index, part_index, _media, part = client._audio_source("10")
+
+        self.assertEqual("10", track_id)
+        self.assertEqual(1, media_index)
+        self.assertEqual(0, part_index)
+        self.assertEqual("/library/parts/selected.flac", part.get("key"))
+
     def test_part_lookup_rejects_ambiguous_or_unsafe_parts_and_disables_redirects(self):
         from helper.clients import PlexClient, PlexError
 
