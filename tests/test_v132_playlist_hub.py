@@ -377,6 +377,31 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertNotIn("stopPlayback()", open_playlist)
         self.assertIn("setPlaylistLoading", open_playlist)
 
+    def test_player_is_compact_theme_ready_and_keeps_errors_beside_controls(self):
+        page = (STATIC / "playlists.html").read_text(encoding="utf-8")
+        script = (STATIC / "playlists.js").read_text(encoding="utf-8")
+        styles = (STATIC / "product.css").read_text(encoding="utf-8")
+        player = page.split('<footer id="playlistPlayer"', 1)[1].split("</footer>", 1)[0]
+        self.assertIn('id="playerFeedback"', player)
+        self.assertIn('id="playerRetry"', player)
+        self.assertIn('id="playerErrorNext"', player)
+        self.assertIn('id="playerVolume"', player)
+        self.assertIn("function showPlayerError", script)
+        self.assertIn("function clearPlayerError", script)
+        self.assertIn("playerRetry", script)
+        self.assertIn("playerVolume", script)
+        player_styles = styles.split(".playlist-player{", 1)[1].split(".playlist-search-dialog", 1)[0]
+        self.assertNotIn("min-height:88px", player_styles)
+        self.assertIn("height:68px", player_styles)
+        self.assertIn(".playlist-player-feedback{", styles)
+        self.assertIn("--playlist-wallpaper:", styles)
+        self.assertIn("--playlist-accent:", styles)
+
+    def test_tool_switch_does_not_stop_the_persistent_player(self):
+        script = (STATIC / "playlists.js").read_text(encoding="utf-8")
+        open_tool = script.split("function openTool", 1)[1].split("function fillSearchTargets", 1)[0]
+        self.assertNotIn("stopPlayback", open_tool)
+
 
 class ExternalPlaylistPreviewUiTests(unittest.TestCase):
     def test_audio_player_is_hidden_and_playback_controls_stay_in_the_track_row(self):

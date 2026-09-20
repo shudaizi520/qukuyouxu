@@ -19,6 +19,9 @@ let playlistLoading=false;
 let pendingPlaylist=null;
 
 function notify(message,error=false){const node=$('playlistNotice');node.hidden=!message;node.textContent=message||'';node.className='notice'+(error?' error':'');}
+function showPlayerError(message=''){const title=$('playerTitle').textContent||'这首歌';$('playerFeedbackMessage').textContent=message||'无法播放《'+title+'》，你可以重试或播放下一首。';$('playerFeedback').hidden=false;}
+function clearPlayerError(){$('playerFeedback').hidden=true;$('playerFeedbackMessage').textContent='';}
+function attemptPlay(){const source=player.currentSrc||player.src;return player.play().catch(error=>{if(error?.name!=='AbortError'&&(player.currentSrc||player.src)===source)showPlayerError();});}
 async function json(path,method='GET',body){return (await PCHAuth.request(path,method,body)).json();}
 async function action(fn){try{return await (window.PCHUI?PCHUI.run(fn):fn());}catch(error){notify(error.message||'操作失败',true);}}
 function profileLabel(row){const account=row.account?.username||row.name||'Plex 用户',library=row.library?.name||'音乐';return account+' · '+library;}
@@ -82,13 +85,13 @@ function updateArtwork(track,context=playContext){
 function playAt(index,autoplay=true){
  if(!current||index<0||index>=tracks.length)return;
  const track=tracks[index],sameContext=playContext?.kind===current.kind&&playContext?.key===current.key;
- if(sameContext&&track.id===playingTrackId&&player.src){if(player.paused&&autoplay)player.play().catch(()=>notify('浏览器暂时无法播放这个音频格式。',true));else if(!player.paused)player.pause();return;}
+ if(sameContext&&track.id===playingTrackId&&player.src){if(player.paused&&autoplay)attemptPlay();else if(!player.paused)player.pause();return;}
  playQueue=tracks.slice();playContext={kind:current.kind,key:current.key,profileId:loadedProfileId};startQueueTrack(index,autoplay);
 }
-function startQueueTrack(index,autoplay=true){const track=playQueue[index];if(!track||!playContext)return;queueIndex=index;playingTrackId=track.id;player.src=mediaUrl('audio',track,playContext);$('playerTitle').textContent=track.title||'未知歌曲';$('playerArtist').textContent=track.artist||'未知歌手';$('playerQueue').textContent=(index+1)+' / '+playQueue.length;updateArtwork(track,playContext);$('playlistPlayer').hidden=false;renderTracks();if(autoplay)player.play().catch(()=>notify('浏览器暂时无法播放这个音频格式。',true));}
+function startQueueTrack(index,autoplay=true){const track=playQueue[index];if(!track||!playContext)return;clearPlayerError();queueIndex=index;playingTrackId=track.id;player.src=mediaUrl('audio',track,playContext);$('playerTitle').textContent=track.title||'未知歌曲';$('playerArtist').textContent=track.artist||'未知歌手';$('playerQueue').textContent=(index+1)+' / '+playQueue.length;updateArtwork(track,playContext);$('playlistPlayer').hidden=false;renderTracks();if(autoplay)attemptPlay();}
 function playNext(){if(queueIndex+1<playQueue.length)startQueueTrack(queueIndex+1);else{player.pause();player.currentTime=0;}}
 function playPrevious(){if(player.currentTime>5){player.currentTime=0;return;}if(queueIndex>0)startQueueTrack(queueIndex-1);}
-function stopPlayback(){player.pause();player.removeAttribute('src');player.load();playQueue=[];playContext=null;queueIndex=-1;playingTrackId='';$('playlistPlayer').hidden=true;}
+function stopPlayback(){player.pause();player.removeAttribute('src');player.load();clearPlayerError();playQueue=[];playContext=null;queueIndex=-1;playingTrackId='';$('playlistPlayer').hidden=true;}
 function openTool(url,title='创建与整理'){
  const target=new URL(url,location.origin);target.searchParams.set('embedded','1');$('playlistView').hidden=true;$('playlistToolView').hidden=false;$('playlistToolTitle').textContent=title;$('playlistToolFrame').src=target.pathname+target.search;document.querySelectorAll('#playlistTools button').forEach(button=>button.classList.toggle('active',button.dataset.toolUrl===target.pathname));
 }
@@ -112,12 +115,14 @@ $('playlistManage').onclick=()=>{if(current?.manage_url)openTool(current.manage_
 $('playlistRemove').onclick=()=>action(async()=>{if(!current)return;if(!await PCHUI.confirm('确认删除 Plex 歌单“'+current.title+'”？',{confirmText:'删除歌单'}))return;const selected={kind:current.kind,key:current.key};stopPlayback();const result=await json('/api/playlists/remove','POST',{kind:selected.kind,key:selected.key,title:current.title,confirm:true});notify(result.message);await loadPlaylists();});
 $('playlistToolBack').onclick=()=>{const selected=current;$('playlistToolFrame').src='about:blank';document.querySelectorAll('#playlistTools button').forEach(button=>button.classList.remove('active'));if(selected)action(()=>openPlaylist(selected,false));else{$('playlistToolView').hidden=true;$('playlistView').hidden=false;}};
 document.querySelectorAll('#playlistTools button').forEach(button=>button.onclick=()=>openTool(button.dataset.toolUrl,button.textContent.trim()));
-$('playerToggle').onclick=()=>{if(!player.src&&tracks.length){playAt(Math.max(0,queueIndex));return;}if(player.paused)player.play().catch(()=>notify('浏览器暂时无法播放这个音频格式。',true));else player.pause();};
+$('playerToggle').onclick=()=>{if(!player.src&&tracks.length){playAt(Math.max(0,queueIndex));return;}if(player.paused)attemptPlay();else player.pause();};
 $('playerPrevious').onclick=playPrevious;$('playerNext').onclick=playNext;
+$('playerRetry').onclick=()=>{clearPlayerError();player.load();attemptPlay();};$('playerErrorNext').onclick=()=>{clearPlayerError();playNext();};
 $('playerSeek').oninput=()=>{if(Number.isFinite(player.duration)&&player.duration>0)player.currentTime=player.duration*Number($('playerSeek').value)/1000;};
+$('playerVolume').oninput=()=>{player.volume=Number($('playerVolume').value);player.muted=false;$('playerMute').textContent=player.volume?'音量':'静音';};$('playerMute').onclick=()=>{player.muted=!player.muted;$('playerMute').textContent=player.muted?'取消静音':'音量';};
 player.addEventListener('ended',playNext);
 player.addEventListener('timeupdate',()=>{const duration=Number.isFinite(player.duration)?player.duration:0;$('playerCurrent').textContent=formatTime(player.currentTime);$('playerDuration').textContent=formatTime(duration);$('playerSeek').value=duration?String(Math.round(player.currentTime/duration*1000)):'0';});
-player.addEventListener('playing',()=>{$('playerToggle').textContent='❚❚';renderTracks();});player.addEventListener('pause',()=>{$('playerToggle').textContent='▶';renderTracks();});player.addEventListener('error',()=>notify('这首歌暂时无法播放，可以试试下一首。',true));
+player.addEventListener('playing',()=>{clearPlayerError();$('playerToggle').textContent='❚❚';renderTracks();});player.addEventListener('pause',()=>{$('playerToggle').textContent='▶';renderTracks();});player.addEventListener('error',()=>showPlayerError());
 window.addEventListener('pch-profile-change',event=>{const profileId=String(event.detail?.profile_id||'');if(profileId&&profileId!==loadedProfileId)action(()=>switchProfile(profileId,false));});
 async function boot(){const profileId=await loadProfiles();await switchProfile(profileId,false);}
 window.addEventListener('pch-auth-ready',event=>{if(event.detail?.authenticated)action(boot);});window.addEventListener('pch-auth-login',()=>action(boot));
