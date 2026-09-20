@@ -28,6 +28,7 @@ from .plex_webhook import attach_webhook_route
 from .profile_runtime import ActiveEngineProxy, ProfileRuntime, current_qq_status
 from .smart_mix_web import attach_smart_mix_routes
 from .automation import attach_automation_routes
+from .external_web import attach_external_routes
 STATIC = Path(__file__).with_name('static')
 
 def _origin(value):
@@ -518,6 +519,7 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
         return Response(json.dumps(export, ensure_ascii=False, indent=2), media_type='application/json', headers={'Content-Disposition': 'attachment; filename="classification-report.json"'})
     attach_profile_routes(app, base_store, profiles, body, ensure_idle, engine=engine)
     attach_automation_routes(app, base_store, profiles, runtime, body)
+    attach_external_routes(app, store, engine, runtime, profiles, body, ensure_idle)
     attach_webhook_route(app, base_store, profiles)
     attach_smart_mix_routes(app, store, engine, runtime, profiles, body, ensure_idle)
     attach_routes(app, store, engine, body, ensure_idle)
