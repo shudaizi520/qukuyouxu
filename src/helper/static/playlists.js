@@ -43,7 +43,7 @@ async function loadPlaylists(preferred){
 }
 async function openPlaylist(item,stop=true){
  const keepPlayingTrack=!stop&&current?.kind===item.kind&&current?.key===item.key&&player.src?playingTrackId:'';
- if(stop)stopPlayback();current=item;const detail=await json('/api/playlists/'+encoded(item.kind)+'/'+encoded(item.key));tracks=Array.isArray(detail.tracks)?detail.tracks:[];filtered=tracks.slice();
+ if(stop)stopPlayback();const detail=await json('/api/playlists/'+encoded(item.kind)+'/'+encoded(item.key));current=item;tracks=Array.isArray(detail.tracks)?detail.tracks:[];filtered=tracks.slice();
  if(keepPlayingTrack){queueIndex=tracks.findIndex(track=>track.id===keepPlayingTrack);if(queueIndex>=0){playingTrackId=keepPlayingTrack;$('playerQueue').textContent=(queueIndex+1)+' / '+tracks.length;}else stopPlayback();}else{queueIndex=-1;playingTrackId='';}
  $('playlistToolView').hidden=true;$('playlistView').hidden=false;$('playlistKind').textContent=item.kind_label;$('playlistTitle').textContent=detail.title;$('playlistSummary').textContent=tracks.length+' 首歌曲';$('playlistAddTrack').hidden=false;$('playlistManage').hidden=!item.manage_url;$('playlistRemove').hidden=false;$('playlistPlayAll').disabled=!tracks.length;$('playlistSearch').value='';notify('');renderPlaylistList();renderTracks();
 }

@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 
 
@@ -118,6 +119,7 @@ class _PlaylistEngine:
     def __init__(self, store, plex):
         self.store = store
         self.plex = plex
+        self.exclusive_entries = 0
 
     def plex_factory(self, _settings):
         return self.plex
@@ -127,6 +129,11 @@ class _PlaylistEngine:
 
     def daily_scope(self):
         return "scope-a"
+
+    @contextmanager
+    def exclusive(self):
+        self.exclusive_entries += 1
+        yield
 
     def _save_snapshot(self, snapshot):
         rows = list(self.store.get("snapshots", []) or [])
@@ -191,6 +198,7 @@ class PlaylistHubPlaybackTests(unittest.TestCase):
 
         result = remove_playlist(self.engine, "daily", "daily", "每日推荐")
         self.assertEqual(["900"], self.plex.deleted)
+        self.assertEqual(1, self.engine.exclusive_entries)
         self.assertIsNone(self.store.get("daily_managed"))
         self.assertEqual("applied", self.store.get("snapshots")[-1]["status"])
         self.assertIn("音乐文件未删除", result["message"])
@@ -264,11 +272,12 @@ class PlaylistHubPageTests(unittest.TestCase):
             '@app.post("/api/playlists/tracks/edit")', 1
         )[0]
         self.assertNotIn('if kind in ("smart", "category")', remove_route)
-        self.assertIn("with target.exclusive():", remove_route)
+        self.assertNotIn("with target.exclusive():", remove_route)
         self.assertIn("return remove_playlist(", remove_route)
 
     def test_home_player_keeps_one_queue_and_advances_when_a_track_ends(self):
         script = (STATIC / "playlists.js").read_text(encoding="utf-8")
+        styles = (STATIC / "product.css").read_text(encoding="utf-8")
         self.assertIn("player.addEventListener('ended',playNext)", script)
         self.assertIn("player.addEventListener('timeupdate'", script)
         self.assertIn("function playNext()", script)
@@ -280,6 +289,8 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn("/tracks/edit", script)
         self.assertIn("keepPlayingTrack", script)
         self.assertIn("tracks.findIndex", script)
+        self.assertNotIn("if(stop)stopPlayback();current=item;const detail", script)
+        self.assertIn("grid-template-columns:34px minmax(0,1fr) 58px 58px", styles)
 
 
 class ExternalPlaylistPreviewUiTests(unittest.TestCase):

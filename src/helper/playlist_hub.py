@@ -382,7 +382,8 @@ def _remove_daily(engine, confirm_title, now=None):
 def remove_playlist(engine, kind, key, confirm_title):
     kind, key = str(kind or ""), _safe_key(key)
     if kind == "daily" and key == "daily":
-        return _remove_daily(engine, confirm_title)
+        with engine.exclusive():
+            return _remove_daily(engine, confirm_title)
     if kind == "smart":
         from .smart_mix_web import remove_smart_mix
         return remove_smart_mix(engine, key, confirm_title)
@@ -390,7 +391,8 @@ def remove_playlist(engine, kind, key, confirm_title):
         from .daily_mix_v036 import remove_managed_playlist
         return remove_managed_playlist(engine, key, confirm_title)
     if kind == "external":
-        return engine.external.remove(key, confirm_title)
+        with engine.exclusive():
+            return engine.external.remove(key, confirm_title)
     raise ValueError("歌单类型无效")
 
 
@@ -446,10 +448,9 @@ def attach_playlist_hub_routes(app, store, runtime, profiles, body, ensure_idle)
         ensure_idle()
         target = fixed_engine()
         kind = str(data.get("kind") or "")
-        with target.exclusive():
-            return remove_playlist(
-                target, kind, data.get("key"), str(data.get("title") or ""),
-            )
+        return remove_playlist(
+            target, kind, data.get("key"), str(data.get("title") or ""),
+        )
 
     @app.post("/api/playlists/tracks/edit")
     async def edit_track(request: Request):
