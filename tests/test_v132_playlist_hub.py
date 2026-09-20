@@ -303,6 +303,52 @@ class PlaylistHubPlaybackTests(unittest.TestCase):
 
 
 class PlaylistHubPageTests(unittest.TestCase):
+    def test_home_uses_one_workspace_state_for_global_search_and_navigation(self):
+        page = (STATIC / "playlists.html").read_text(encoding="utf-8")
+        script = (STATIC / "playlists.js").read_text(encoding="utf-8")
+        workspace = (STATIC / "playlist-workspace.js").read_text(encoding="utf-8")
+        search = (STATIC / "playlist-search.js").read_text(encoding="utf-8")
+        web = (ROOT / "src/helper/web.py").read_text(encoding="utf-8")
+
+        topbar = page.split('<header class="topbar">', 1)[1].split("</header>", 1)[0]
+        self.assertIn('id="librarySearchInput"', topbar)
+        self.assertIn('id="librarySearchForm"', topbar)
+        self.assertNotIn('id="playlistSearch"', page)
+        self.assertIn('id="playlistSearchView"', page)
+        self.assertIn('id="librarySearchResults"', page)
+        self.assertIn('data-workspace-url="/status"', topbar)
+        self.assertIn('data-workspace-url="/settings"', topbar)
+        self.assertNotIn('href="/status"', topbar)
+        self.assertNotIn('href="/settings"', topbar)
+
+        self.assertIn("import {createPlaylistWorkspace}", script)
+        self.assertIn("import {createLibrarySearch}", script)
+        self.assertIn("export function createPlaylistWorkspace", workspace)
+        self.assertIn("export function createLibrarySearch", search)
+        self.assertIn("let requestGeneration=0", search)
+        self.assertIn("requestId!==requestGeneration", search)
+        self.assertIn("profileId!==getProfileId()", search)
+        self.assertIn("'playlist-workspace.js'", web)
+        self.assertIn("'playlist-search.js'", web)
+
+        navigation = workspace.split("function renderNavigation", 1)[1].split(
+            "function show", 1
+        )[0]
+        self.assertIn("#playlistList button,#playlistTools button,[data-workspace-url]", navigation)
+        self.assertIn("classList.toggle('active'", navigation)
+
+    def test_workspace_switches_do_not_destroy_the_persistent_audio_element(self):
+        page = (STATIC / "playlists.html").read_text(encoding="utf-8")
+        workspace = (STATIC / "playlist-workspace.js").read_text(encoding="utf-8")
+
+        self.assertEqual(1, page.count('id="playerAudio"'))
+        open_workspace = workspace.split("function openPage", 1)[1].split(
+            "return {", 1
+        )[0]
+        self.assertNotIn("location.href", open_workspace)
+        self.assertNotIn("stopPlayback", open_workspace)
+        self.assertIn("embedded", open_workspace)
+
     def test_home_is_a_single_management_and_playback_surface(self):
         page = (STATIC / "playlists.html").read_text(encoding="utf-8")
         self.assertIn('id="playlistProfile"', page)
@@ -323,15 +369,17 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn('id="librarySearchDialog"', page)
         self.assertIn('id="librarySearchResults"', page)
         self.assertNotIn("不会删除音乐文件", page)
-        self.assertLessEqual(page.count('class="muted"'), 1)
+        self.assertLessEqual(page.count('class="muted"'), 2)
 
     def test_every_main_page_links_to_the_playlist_home_once(self):
         for name in (
             "daily.html", "home.html", "mixes.html", "external.html",
-            "status.html", "settings.html", "playlists.html",
+            "status.html", "settings.html",
         ):
             page = (STATIC / name).read_text(encoding="utf-8")
             self.assertEqual(1, page.count('href="/">我的歌单</a>'), name)
+        playlist_home = (STATIC / "playlists.html").read_text(encoding="utf-8")
+        self.assertEqual(1, playlist_home.count('id="workspaceHome"'))
 
     def test_server_serves_playlist_home_and_moves_daily_workflow_to_daily_route(self):
         source = (ROOT / "src/helper/web.py").read_text(encoding="utf-8")
@@ -354,6 +402,7 @@ class PlaylistHubPageTests(unittest.TestCase):
 
     def test_home_player_keeps_one_queue_and_advances_when_a_track_ends(self):
         script = (STATIC / "playlists.js").read_text(encoding="utf-8")
+        search = (STATIC / "playlist-search.js").read_text(encoding="utf-8")
         styles = (STATIC / "product.css").read_text(encoding="utf-8")
         self.assertIn("player.addEventListener('ended',playNext)", script)
         self.assertIn("player.addEventListener('timeupdate'", script)
@@ -362,8 +411,8 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn("function playAt(index", script)
         self.assertIn("function openTool(", script)
         self.assertIn("playerArtwork", script)
-        self.assertIn("/api/playlists/search", script)
-        self.assertIn("/tracks/edit", script)
+        self.assertIn("/api/playlists/search", search)
+        self.assertIn("/tracks/edit", script + search)
         self.assertIn("playQueue", script)
         self.assertIn("startQueueTrack", script)
         self.assertIn("playContext", script)
@@ -387,7 +436,7 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertNotIn("for(const candidate of candidates)", script)
         self.assertNotIn("else await json('/api/playlists/'", script)
         self.assertIn("unavailablePlaylists", script)
-        open_playlist = script.split("async function openPlaylist", 1)[1].split("function renderTracks", 1)[0]
+        open_playlist = script.split("async function openPlaylist", 1)[1].split("async function openFirstAvailable", 1)[0]
         self.assertNotIn("stopPlayback()", open_playlist)
         self.assertIn("setPlaylistLoading", open_playlist)
 
@@ -404,7 +453,7 @@ class PlaylistHubPageTests(unittest.TestCase):
         reset_view = script.split("function resetPlaylistView", 1)[1].split(
             "async function switchProfile", 1
         )[0]
-        self.assertIn("playlistToolFrame", reset_view)
+        self.assertIn("workspace.reset()", reset_view)
         self.assertIn("正在载入歌单", reset_view)
 
     def test_playlist_deletion_only_stops_audio_from_that_playlist(self):
@@ -426,13 +475,13 @@ class PlaylistHubPageTests(unittest.TestCase):
         )[0]
         self.assertIn("(isPlaying?' playing':'')", render_tracks)
         unbuilt = script.split("if(!item.playlist_id)", 1)[1].split("return;", 1)[0]
-        self.assertIn("pendingPlaylist=item", unbuilt)
+        self.assertIn("navigation:{type:'playlist',kind:item.kind,key:item.key}", unbuilt)
         self.assertNotIn("current=null", unbuilt)
-        open_tool = script.split("function openTool", 1)[1].split(
-            "function fillSearchTargets", 1
+        open_workspace = script.split("function openWorkspacePage", 1)[1].split(
+            "function openTool", 1
         )[0]
-        self.assertIn("++playlistRequest", open_tool)
-        self.assertIn("setPlaylistLoading(false)", open_tool)
+        self.assertIn("++playlistRequest", open_workspace)
+        self.assertIn("setPlaylistLoading(false)", open_workspace)
 
     def test_sticky_header_stays_below_navigation_and_loading_is_visible(self):
         styles = (STATIC / "product.css").read_text(encoding="utf-8")
@@ -462,8 +511,8 @@ class PlaylistHubPageTests(unittest.TestCase):
 
     def test_tool_switch_does_not_stop_the_persistent_player(self):
         script = (STATIC / "playlists.js").read_text(encoding="utf-8")
-        open_tool = script.split("function openTool", 1)[1].split("function fillSearchTargets", 1)[0]
-        self.assertNotIn("stopPlayback", open_tool)
+        open_workspace = script.split("function openWorkspacePage", 1)[1].split("function openTool", 1)[0]
+        self.assertNotIn("stopPlayback", open_workspace)
 
 
 class ExternalPlaylistPreviewUiTests(unittest.TestCase):

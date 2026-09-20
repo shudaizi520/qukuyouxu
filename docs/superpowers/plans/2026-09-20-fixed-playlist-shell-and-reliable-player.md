@@ -16,7 +16,9 @@
 - The bottom player is always present; playlist, search, creation tool, status, and settings switches never destroy playback.
 - Exactly one sidebar destination may be active at a time.
 - No new frontend framework or runtime dependency.
+- Split workspace state, library search, and playback into native ES modules; `playlists.js` remains an orchestrator rather than a shared-state monolith.
 - Theme/wallpaper support must remain CSS-variable driven and must not control layout dimensions.
+- The default desktop presentation is a full-bleed, theme-neutral music application with dense aligned rows; it must not retain floating dashboard cards or hard-code a dark/light dependency into layout.
 - Existing recommendation, learning, import, and playlist ownership behavior must not change.
 
 ## Review Focus
@@ -32,17 +34,20 @@
 ### Task 1: One application-shell state and whole-library search
 
 **Files:**
+- Create: `src/helper/static/playlist-workspace.js`
+- Create: `src/helper/static/playlist-search.js`
 - Modify: `src/helper/static/playlists.html`
 - Modify: `src/helper/static/playlists.js`
+- Modify: `src/helper/web.py`
 - Test: `tests/test_v132_playlist_hub.py`
 
 **Interfaces:**
 - Consumes: existing `GET /api/playlists/search?q=` response `{items: Track[]}`.
-- Produces: `setWorkspaceView(kind, key?)`, `openWorkspacePage(url, title, type)`, `runLibrarySearch(query)`, and a search result queue consumed by Task 3.
+- Produces: `createPlaylistWorkspace(options)` from `playlist-workspace.js`, `createLibrarySearch(options)` from `playlist-search.js`, and a search result queue callback consumed by Task 3.
 
 - [ ] **Step 1: Write failing page behavior tests**
 
-Add tests that assert the top bar owns `librarySearchInput`, the old `playlistSearch` is absent, `playlistSearchView` exists, and the script exposes one workspace-view transition that removes every old `.active` class before applying one destination. Assert the status and settings controls use in-workspace URLs rather than direct full-page navigation.
+Add tests that assert the top bar owns `librarySearchInput`, the old `playlistSearch` is absent, `playlistSearchView` exists, and `playlist-workspace.js` exposes one workspace transition that removes every old `.active` class before applying one destination. Assert the status and settings controls use in-workspace URLs rather than direct full-page navigation. Assert `playlists.js` imports the modules and the static route serves them.
 
 - [ ] **Step 2: Run the focused tests and verify RED**
 
@@ -52,18 +57,14 @@ Expected: FAIL because the search remains inside the current playlist and naviga
 
 - [ ] **Step 3: Implement the shell state and full-library result view**
 
-Move the search form into `.topbar`, add `playlistSearchView`, preserve the previously open playlist, and replace `toolOpen`/`pendingPlaylist` highlight composition with a single state. Status and settings use the same contained workspace loader as creation tools, with `embedded=1`, so the document and audio element are never replaced:
+Move the search form into `.topbar`, add `playlistSearchView`, preserve the previously open playlist, and replace `toolOpen`/`pendingPlaylist` highlight composition with one `createPlaylistWorkspace()` instance. Status and settings use the same contained workspace loader as creation tools, with `embedded=1`, so the document and audio element are never replaced:
 
 ```javascript
-let workspaceView={type:'playlist',kind:'',key:''};
-function setWorkspaceView(next){
-  workspaceView=next;
-  document.querySelectorAll('#playlistList button,#playlistTools button')
-    .forEach(button=>button.classList.toggle('active',matchesView(button,next)));
-}
+const workspace=createPlaylistWorkspace({document});
+workspace.show({type:'playlist',kind:item.kind,key:item.key});
 ```
 
-Search requests must capture both `profileRequest` and a dedicated `searchRequest`; only matching generations may render. Only logout, profile switch, refresh, or explicit player controls may call `stopPlayback()`.
+`createLibrarySearch()` owns its request generation and captures the current profile ID; only matching generations may render. Only logout, profile switch, refresh, or explicit player controls may stop playback.
 
 - [ ] **Step 4: Run focused tests and verify GREEN**
 
@@ -74,7 +75,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/helper/static/playlists.html src/helper/static/playlists.js tests/test_v132_playlist_hub.py
+git add src/helper/static/playlist-workspace.js src/helper/static/playlist-search.js src/helper/static/playlists.html src/helper/static/playlists.js src/helper/web.py tests/test_v132_playlist_hub.py
 git commit -m "feat: add one-state playlist workspace search"
 ```
 
@@ -121,14 +122,16 @@ git commit -m "feat: stream scoped library search results"
 
 **Files:**
 - Modify: `src/helper/clients.py`
+- Create: `src/helper/static/playlist-player.js`
 - Modify: `src/helper/static/playlists.html`
 - Modify: `src/helper/static/playlists.js`
+- Modify: `src/helper/web.py`
 - Test: `tests/test_v130_external_audio.py`
 - Test: `tests/test_v132_playlist_hub.py`
 
 **Interfaces:**
 - Consumes: Task 1 queue contexts and Task 2 media URLs.
-- Produces: deterministic `_audio_source()` selection and tokenized `startQueueTrack()`/`attemptPlay()` recovery.
+- Produces: deterministic `_audio_source()` selection and `createPlaylistPlayer(options)` with tokenized start/recovery.
 
 - [ ] **Step 1: Write failing audio-source and player-state tests**
 
@@ -142,7 +145,7 @@ Expected: FAIL on multi-media selection, metadata preload, hidden player, and mi
 
 - [ ] **Step 3: Implement minimal reliable playback behavior**
 
-Select one safe media tuple deterministically. Render the player unconditionally. On a new track, increment `playbackGeneration`, assign the source without metadata preload, then attempt one play. For non-`AbortError`/non-`NotAllowedError` failures, call `load()` and retry the same generation once after a short delay. Only the current generation may reveal `playerFeedback`.
+Select one safe media tuple deterministically. Render the player unconditionally. In `playlist-player.js`, increment `playbackGeneration` on a new track, assign the source without metadata preload, then attempt one play. For non-`AbortError`/non-`NotAllowedError` failures, call `load()` and retry the same generation once after a short delay. Only the current generation may reveal `playerFeedback`; `playlists.js` only supplies queues and context callbacks.
 
 - [ ] **Step 4: Run focused tests and verify GREEN**
 
@@ -153,7 +156,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/helper/clients.py src/helper/static/playlists.html src/helper/static/playlists.js tests/test_v130_external_audio.py tests/test_v132_playlist_hub.py
+git add src/helper/clients.py src/helper/static/playlist-player.js src/helper/static/playlists.html src/helper/static/playlists.js src/helper/web.py tests/test_v130_external_audio.py tests/test_v132_playlist_hub.py
 git commit -m "fix: make first browser playback reliable"
 ```
 
@@ -181,7 +184,7 @@ Expected: FAIL because body scrolling and dynamic iframe height remain.
 
 - [ ] **Step 3: Implement the fixed shell and responsive player**
 
-Build CSS grid rows `64px minmax(0,1fr) 72px`; make the content row a two-column grid; give the main view `grid-template-rows:auto minmax(0,1fr)`; wrap track content in `.playlist-track-scroll`; keep feedback inside the 72px player; use a compact mobile layout without changing the body scroll owner. Remove `pch-tool-height` handling from the parent.
+Build CSS grid rows `64px minmax(0,1fr) 72px`; make the content row a two-column full-bleed grid; give the main view `grid-template-rows:auto minmax(0,1fr)`; wrap track content in `.playlist-track-scroll`; keep feedback inside the 72px player; use a compact mobile layout without changing the body scroll owner. Replace floating dashboard cards with theme-variable surfaces, dense aligned track rows, a flat full-height rail, and graphical player controls. Remove `pch-tool-height` handling from the parent.
 
 - [ ] **Step 4: Run focused tests and verify GREEN**
 

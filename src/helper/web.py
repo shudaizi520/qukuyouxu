@@ -295,7 +295,12 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
 
     @app.get('/static/{name}')
     def static(name):
-        if name not in ('home.js', 'home.css', 'theme_home.js', 'product.css', 'daily.js', 'refined.js', 'status.js', 'settings.js', 'auth.js', 'mixes.js', 'external.js', 'playlists.js'):
+        if name not in (
+            'home.js', 'home.css', 'theme_home.js', 'product.css', 'daily.js',
+            'refined.js', 'status.js', 'settings.js', 'auth.js', 'mixes.js',
+            'external.js', 'playlists.js', 'playlist-workspace.js',
+            'playlist-search.js',
+        ):
             return Response(status_code=404)
         return FileResponse(STATIC / name, media_type='text/javascript' if name.endswith('.js') else 'text/css')
 

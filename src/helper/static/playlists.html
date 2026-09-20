@@ -7,7 +7,7 @@
  <title>曲库有序 · 我的歌单</title>
  <link rel="stylesheet" href="/static/product.css?v=1.4.2">
  <script defer src="/static/auth.js?v=1.4.2"></script>
- <script defer src="/static/playlists.js?v=1.4.2"></script>
+ <script type="module" src="/static/playlists.js?v=1.4.2"></script>
 </head>
 <body data-view="playlists" data-auth-state="checking">
 <div id="bootScreen" class="auth-boot"><div class="boot-mark">♫</div><strong>曲库有序</strong><span>正在进入你的音乐库…</span></div>
@@ -20,7 +20,11 @@
  </div>
 </section>
 <div id="workspace" hidden>
- <header class="topbar"><a class="brand" href="/"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v1.4.2</small></span></a><nav><a class="active" href="/">我的歌单</a><a href="/status">运行状态</a><a href="/settings">设置</a></nav><button class="logout" data-auth-logout hidden>退出</button></header>
+ <header class="topbar">
+  <button class="brand" id="workspaceHome" type="button"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v1.4.2</small></span></button>
+  <form id="librarySearchForm" class="playlist-global-search" role="search"><span aria-hidden="true">⌕</span><input id="librarySearchInput" type="search" placeholder="搜索全库歌曲、歌手或专辑" autocomplete="off"><button type="submit">搜索</button></form>
+  <nav><button type="button" data-workspace-url="/status">运行状态</button><button type="button" data-workspace-url="/settings">设置</button></nav><button class="logout" data-auth-logout hidden>退出</button>
+ </header>
  <main class="playlist-hub">
   <aside class="playlist-sidebar">
    <div class="playlist-profile-block"><label class="playlist-profile-label" for="playlistProfile">当前用户</label><select id="playlistProfile" class="playlist-profile"></select></div>
@@ -45,11 +49,14 @@
       <div><span id="playlistKind" class="playlist-kind">我的歌单</span><h1 id="playlistTitle">选择一个歌单</h1><p id="playlistSummary" class="muted">0 首歌曲</p></div>
       <div class="playlist-actions"><button id="playlistAddTrack" class="secondary" type="button" hidden>添加歌曲</button><button id="playlistManage" class="secondary" type="button" hidden>管理</button><button id="playlistRemove" class="danger" type="button" hidden>删除歌单</button><button id="playlistPlayAll" class="primary" type="button" disabled>▶ 播放全部</button></div>
      </header>
-     <div class="playlist-track-toolbar"><label for="playlistSearch">搜索歌曲</label><input id="playlistSearch" type="search" placeholder="歌名、歌手或专辑" autocomplete="off"></div>
      <div class="playlist-track-head"><span>#</span><span>歌曲</span><span>专辑</span><span>时长</span></div>
     </div>
     <div id="playlistTracks" class="playlist-tracks"></div>
     <div id="playlistEmpty" class="playlist-empty">还没有可显示的歌单</div>
+   </section>
+   <section id="playlistSearchView" class="playlist-search-view" hidden>
+    <header class="playlist-search-head"><div><span class="playlist-kind">全库搜索</span><h1 id="librarySearchTitle">搜索结果</h1><p id="librarySearchSummary" class="muted"></p></div><button id="librarySearchBack" class="secondary" type="button">返回歌单</button></header>
+    <div id="librarySearchResults" class="playlist-search-results"></div>
    </section>
    <section id="playlistToolView" hidden>
     <div class="playlist-tool-bar"><button id="playlistToolBack" class="secondary" type="button">← 返回歌单</button><h1 id="playlistToolTitle">创建与整理</h1></div>
@@ -58,10 +65,10 @@
   </section>
  </main>
  <dialog id="librarySearchDialog" class="playlist-search-dialog">
-  <form method="dialog" class="playlist-dialog-head"><h2>添加歌曲</h2><button type="submit" aria-label="关闭">×</button></form>
-  <div class="playlist-search-box"><input id="librarySearchInput" type="search" placeholder="搜索整套曲库" autocomplete="off"><button id="librarySearchButton" class="primary" type="button">搜索</button></div>
-  <label class="playlist-search-target">添加到<select id="librarySearchTarget"></select></label>
-  <div id="librarySearchResults" class="playlist-search-results"></div>
+  <form method="dialog" class="playlist-dialog-head"><h2>添加到歌单</h2><button type="submit" aria-label="关闭">×</button></form>
+  <div id="librarySearchSelected" class="playlist-search-selected"></div>
+  <label class="playlist-search-target">选择歌单<select id="librarySearchTarget"></select></label>
+  <div class="playlist-dialog-actions"><button id="librarySearchConfirm" class="primary" type="button">确认添加</button></div>
  </dialog>
  <footer id="playlistPlayer" class="playlist-player" hidden>
   <div id="playerFeedback" class="playlist-player-feedback" role="alert" hidden><span id="playerFeedbackMessage">这首歌暂时无法播放</span><button id="playerRetry" type="button">重试</button><button id="playerErrorNext" type="button">下一首</button></div>
