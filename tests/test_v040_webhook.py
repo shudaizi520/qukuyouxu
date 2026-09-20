@@ -226,6 +226,10 @@ class PlexWebhookV040Tests(unittest.TestCase):
         replay = apply_webhook_event(
             self.store, self.registry, payload("media.play", track="330"), now=200,
         )
+
+        pending_sessions = ScopedStore(self.store, "default").get("behavior_sessions")
+        self.assertEqual(1, active_session_count(pending_sessions, now=201))
+
         apply_webhook_event(
             self.store, self.registry,
             payload("media.scrobble", track="330", viewOffset=180000), now=300,

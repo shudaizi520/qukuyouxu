@@ -126,6 +126,9 @@ class PreferenceModelV120Tests(unittest.TestCase):
         self.assertEqual(2, user["discovery_valid"])
         self.assertEqual(1, user["discovery_completed"])
         self.assertEqual(1, user["discovery_early_skips"])
+        self.assertEqual(2, len(user["discovery_outcomes"]))
+        self.assertTrue(user["discovery_outcomes"][0]["completed"])
+        self.assertTrue(user["discovery_outcomes"][1]["early_skip"])
 
 
 if __name__ == "__main__":

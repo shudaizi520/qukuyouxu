@@ -114,10 +114,11 @@ def extensions_status(store):
         from .behavior_store import BehaviorRepository
         from .plex_webhook import load_behavior_snapshot
         profile = load_behavior_snapshot(store, now)
-        events = BehaviorRepository(base_store).list_events(profile_id, now)
+        event_count = BehaviorRepository(base_store).event_stats(profile_id, now)["count"]
     else:
         events = recent_behavior_events(store.get('behavior_events', []) or [], now)
         profile = behavior_profile(events, now)
+        event_count = len(events)
     behavior_status = store.get('behavior_status') or {}
     product = store.get('product_settings') or {}
     active_sessions = active_session_count(store.get('behavior_sessions', {}) or {})
@@ -125,7 +126,7 @@ def extensions_status(store):
     cooled = sum(1 for row in profile.values() if (row.get('cooldown_until') or 0) > now)
     behavior = {
         'enabled': product.get('behavior_enabled', True),
-        'event_count': len(events),
+        'event_count': event_count,
         'learned_tracks': len(profile),
         'preferred_tracks': preferred,
         'cooled_tracks': cooled,

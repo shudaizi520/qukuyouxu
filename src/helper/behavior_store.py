@@ -194,6 +194,21 @@ class BehaviorRepository:
             ).fetchall()
         return [_event_dict(row) for row in rows]
 
+    def event_stats(self, profile_id: str, now: float) -> dict:
+        """Return bounded counters without loading and decoding every event."""
+        profile_id = self._profile(profile_id)
+        cutoff = float(now) - EVENT_MAX_AGE
+        with self.store.lock, self.store._db() as db:
+            row = db.execute(
+                """SELECT COUNT(*), MAX(at) FROM behavior_event
+                   WHERE profile_id=? AND at>=? AND at<=?""",
+                (profile_id, cutoff, float(now)),
+            ).fetchone()
+        return {
+            "count": int((row or (0, None))[0] or 0),
+            "last_at": (row or (0, None))[1],
+        }
+
     def load_track_state(self, profile_id: str, track_id: str) -> dict:
         profile_id = self._profile(profile_id)
         with self.store.lock, self.store._db() as db:

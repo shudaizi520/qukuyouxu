@@ -91,12 +91,14 @@ def apply_evidence(track_state: dict, user_state: dict, evidence: dict,
     value = max(0.0, abs(_number((evidence or {}).get("value"))))
     track["last_event"] = now
 
-    if kind == "confirmed_skip":
-        user["valid_outcomes"] = int(user["valid_outcomes"]) + 1
-        user["skip_outcomes"] = int(user["skip_outcomes"]) + 1
+    if kind in ("confirmed_skip", "observed_skip"):
+        if kind == "confirmed_skip":
+            user["valid_outcomes"] = int(user["valid_outcomes"]) + 1
+            user["skip_outcomes"] = int(user["skip_outcomes"]) + 1
         day_key = int(now // DAY)
         already = _number(track.get("skip_day_amount")) if track.get("skip_day") == day_key else 0.0
-        amount = min(value * personal_skip_multiplier(user_state or {}), max(0.0, DAILY_SKIP_CAP - already))
+        multiplier = personal_skip_multiplier(user_state or {}) if kind == "confirmed_skip" else 1.0
+        amount = min(value * multiplier, max(0.0, DAILY_SKIP_CAP - already))
         track["skip_day"] = day_key
         track["skip_day_amount"] = already + amount
         track["skip_evidence"] += amount
@@ -134,6 +136,19 @@ def apply_evidence(track_state: dict, user_state: dict, evidence: dict,
             user["discovery_completed"] = int(_number(user.get("discovery_completed"))) + 1
         if kind == "confirmed_skip" and _number((evidence or {}).get("progress"), 1.0) < 0.20:
             user["discovery_early_skips"] = int(_number(user.get("discovery_early_skips"))) + 1
+        outcomes = [
+            dict(row) for row in (user.get("discovery_outcomes") or [])
+            if isinstance(row, dict)
+        ]
+        outcomes.append({
+            "at": _number((evidence or {}).get("at"), now),
+            "completed": kind in ("substantial_listen", "completed"),
+            "early_skip": (
+                kind == "confirmed_skip"
+                and _number((evidence or {}).get("progress"), 1.0) < 0.20
+            ),
+        })
+        user["discovery_outcomes"] = outcomes[-60:]
 
     user["updated_at"] = now
     track = _refresh_scores(track, now)

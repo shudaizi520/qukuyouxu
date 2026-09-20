@@ -121,6 +121,21 @@ class DailyMixV2Tests(unittest.TestCase):
         }))
         self.assertEqual(18, discovery_target({"discovery_valid": 29}))
 
+    def test_discovery_target_prefers_recent_outcomes_over_lifetime_totals(self):
+        from helper.daily_mix_v2 import discovery_target
+
+        historical_success_but_recent_skips = {
+            "discovery_valid": 500,
+            "discovery_completed": 450,
+            "discovery_early_skips": 10,
+            "discovery_outcomes": [
+                {"completed": False, "early_skip": True, "at": NOW + index}
+                for index in range(30)
+            ],
+        }
+
+        self.assertEqual(14, discovery_target(historical_success_but_recent_skips))
+
     def test_stable_repeat_is_fourteen_days_and_ordinary_repeat_is_twenty_one(self):
         from helper.daily_mix_v2 import select_daily_mix_v2
 

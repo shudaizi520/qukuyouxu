@@ -77,6 +77,32 @@ class WebhookIntegrationV120Tests(unittest.TestCase):
         self.assertEqual(200.0, row["duration"])
         self.assertEqual("confirmed_skip", row["kind"])
 
+    def test_missing_library_id_uses_the_uniquely_matched_profile_session(self):
+        from helper.plex_webhook import active_session_count, apply_webhook_event
+
+        self.registry.create_for_library(
+            "default", {"id": "16", "name": "Classical"}, profile_id="classical",
+        )
+        ScopedStore(self.store, "default").set("catalog", [
+            {"id": "1", "duration": 200}, {"id": "2", "duration": 200},
+        ])
+        ScopedStore(self.store, "classical").set("catalog", [
+            {"id": "9", "duration": 200},
+        ])
+
+        apply_webhook_event(self.store, self.registry, payload("media.play", "1"), now=0)
+        apply_webhook_event(
+            self.store, self.registry,
+            payload("media.stop", "1", library="", offset=20000), now=20,
+        )
+        sessions = ScopedStore(self.store, "default").get("behavior_sessions")
+        self.assertEqual(0, active_session_count(sessions, now=21))
+
+        apply_webhook_event(self.store, self.registry, payload("media.play", "2"), now=55)
+
+        self.assertEqual([], self.repo.list_events("default", 55))
+        self.assertEqual([], self.repo.list_events("classical", 55))
+
     def test_scrobble_and_rating_update_relational_aggregates(self):
         from helper.plex_webhook import apply_webhook_event
 
@@ -94,6 +120,18 @@ class WebhookIntegrationV120Tests(unittest.TestCase):
         self.assertEqual("recorded", avoid["status"])
         self.assertGreater(states["1"]["positive_evidence"], 0)
         self.assertTrue(states["2"]["hard_avoid"])
+
+    def test_clearing_a_plex_rating_is_neutral_not_a_hard_avoid(self):
+        from helper.plex_webhook import apply_webhook_event
+
+        result = apply_webhook_event(
+            self.store, self.registry,
+            payload("media.rate", "2", rating=0), now=110,
+        )
+
+        self.assertEqual("accepted", result["status"])
+        self.assertEqual([], self.repo.list_events("default", 110))
+        self.assertEqual({}, self.repo.load_track_state("default", "2"))
 
     def test_published_discovery_track_updates_discovery_baseline(self):
         from helper.plex_webhook import apply_webhook_event

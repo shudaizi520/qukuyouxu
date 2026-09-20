@@ -129,6 +129,26 @@ class BehaviorStoreV120Tests(unittest.TestCase):
         self.assertEqual(-1.0, rows["3"]["value"])
         self.assertTrue(self.store.get("profile:default:behavior_v2_migration")["complete"])
 
+        repo.rebuild_aggregates("default", NOW)
+        states = repo.load_track_states("default")
+        self.assertAlmostEqual(0.30, states["2"]["skip_evidence"], places=6)
+        self.assertTrue(states["3"]["hard_avoid"])
+
+    def test_event_stats_count_without_materializing_event_payloads(self):
+        from helper.behavior_store import BehaviorRepository
+
+        repo = BehaviorRepository(self.store)
+        repo.append_event("default", {
+            "event_key": "first", "track_id": "1", "kind": "completed",
+            "value": 1.0, "at": NOW - 10,
+        })
+        repo.append_event("default", {
+            "event_key": "second", "track_id": "2", "kind": "confirmed_skip",
+            "value": 0.45, "at": NOW,
+        })
+
+        self.assertEqual({"count": 2, "last_at": NOW}, repo.event_stats("default", NOW))
+
     def test_invalid_profile_id_is_rejected_before_sql(self):
         from helper.behavior_store import BehaviorRepository
 

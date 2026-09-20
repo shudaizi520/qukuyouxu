@@ -45,7 +45,20 @@ def active_session_count(sessions, now=None):
     now = time.time() if now is None else float(now)
     active = 0
     for row in (sessions or {}).values():
-        if not isinstance(row, dict) or row.get("terminal_event"):
+        if not isinstance(row, dict):
+            continue
+        pending_replay_at = _number(row.get("pending_replay_at"), None)
+        if pending_replay_at is not None:
+            duration = _number(row.get("duration_seconds") or row.get("duration"), 0) or 0
+            offset = _number(row.get("pending_replay_offset"), 0) or 0
+            ttl = (
+                max(PLAYBACK_END_GRACE, duration - min(offset, duration) + PLAYBACK_END_GRACE)
+                if duration > 0 else UNKNOWN_DURATION_PLAYING_TTL
+            )
+            if max(0.0, now - pending_replay_at) <= ttl:
+                active += 1
+            continue
+        if row.get("terminal_event"):
             continue
         if row.get("state") not in ("media.play", "media.resume"):
             continue
@@ -128,7 +141,7 @@ def parse_webhook_payload(payload: dict):
         rating = _number(metadata.get("userRating"), _number(payload.get("rating")))
         if rating is not None and rating >= 8:
             signal.update(value=1.0, kind="high_rating")
-        elif rating is not None and rating <= 4:
+        elif rating is not None and 0 < rating <= 4:
             signal.update(value=-1.0, kind="low_rating")
     elif event == "media.stop":
         duration = signal["duration_seconds"]
@@ -301,10 +314,21 @@ def webhook_health(base_store, profile_store, now=None):
     base_for_behavior = getattr(profile_store, "base", base_store)
     profile_id = str(getattr(profile_store, "profile_id", "") or "")
     if profile_id and hasattr(base_for_behavior, "_db"):
-        load_behavior_snapshot(profile_store, now)
-        events = BehaviorRepository(base_for_behavior).list_events(profile_id, now)
+        repo = BehaviorRepository(base_for_behavior)
+        migration = repo.migrate_profile(
+            profile_id,
+            list(profile_store.get("behavior_events", []) or []),
+            now,
+        )
+        if migration.get("needs_rebuild"):
+            repo.rebuild_aggregates(profile_id, now)
+        stats = repo.event_stats(profile_id, now)
     else:
         events = recent_behavior_events(profile_store.get("behavior_events", []) or [], now)
+        stats = {
+            "count": len(events),
+            "last_at": max((_number(row.get("at"), 0) or 0 for row in events), default=None),
+        }
     product = profile_store.get("product_settings", {}) or {}
     ingress = profile_receipts.get(profile_id) or latest
     matched_before = bool(
@@ -319,7 +343,7 @@ def webhook_health(base_store, profile_store, now=None):
         state = "disabled"
     elif not matched_before:
         state = "not_connected"
-    elif events:
+    elif stats["count"]:
         state = "learning"
     else:
         state = "connected_waiting"
@@ -328,12 +352,12 @@ def webhook_health(base_store, profile_store, now=None):
         "connected": matched,
         "global_connected": global_connected,
         "state": state,
-        "event_count": len(events),
+        "event_count": stats["count"],
         "last_received_at": ingress.get("received_at") if matched_before else None,
         "last_event": ingress.get("event", "") if matched_before else "",
         "last_status": ingress.get("status", ""),
         "last_reason": ingress.get("reason", ""),
-        "last_behavior_at": max((_number(row.get("at"), 0) or 0 for row in events), default=None),
+        "last_behavior_at": stats["last_at"],
         "global_last_received_at": global_ingress.get("received_at"),
         "global_last_event": global_ingress.get("event", ""),
         "endpoint_path": endpoint_path,
@@ -353,6 +377,14 @@ def apply_webhook_event(base_store, registry, payload, now=None):
     if len(matches) != 1:
         return _record_ingress(base_store, signal, {"status": "ignored", "reason": "identity_not_unique"}, now)
     profile_id = matches[0]
+    if not signal.get("library_id"):
+        # Profile matching may safely recover a missing Plex librarySectionID
+        # from unique catalog ownership. Use that resolved identity for the
+        # playback session too, otherwise play/stop events land in two sessions.
+        profile = registry.get(profile_id)
+        resolved_library = str((profile.get("library") or {}).get("id") or "")
+        if resolved_library:
+            signal = dict(signal, library_id=resolved_library)
     store = ScopedStore(base_store, profile_id)
     config = store.get("product_settings", {}) or {}
     if config.get("behavior_enabled", True) is False:
@@ -389,6 +421,7 @@ def apply_webhook_event(base_store, registry, payload, now=None):
         else:
             row = dict(previous)
             row.pop("pending_replay_at", None)
+            row.pop("pending_replay_offset", None)
             sessions[identity] = row
         previous = sessions.get(identity) or {}
     delivery_playback_id = previous.get("playback_id") or "direct:" + signal["track_id"]
@@ -405,6 +438,7 @@ def apply_webhook_event(base_store, registry, payload, now=None):
         ):
             previous = dict(previous)
             previous["pending_replay_at"] = now
+            previous["pending_replay_offset"] = signal.get("offset_seconds") or 0
             sessions[identity] = previous
             store.set("behavior_sessions", sessions)
         return _record_ingress(
@@ -462,7 +496,7 @@ def apply_webhook_event(base_store, registry, payload, now=None):
     for evidence in evidence_rows:
         recorded += int(repo.record_evidence(profile_id, evidence, now))
     repo.prune(profile_id, now)
-    event_count = len(repo.list_events(profile_id, now))
+    event_count = repo.event_stats(profile_id, now)["count"]
     store.set_many({
         "webhook_seen": seen,
         "behavior_sessions": sessions,

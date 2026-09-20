@@ -45,11 +45,24 @@ STABLE_REPEAT_DAYS = 14
 def discovery_target(user_state: dict | None) -> int:
     """Return the fresh-discovery share for a 50-track mix."""
     state = user_state or {}
-    valid = int(_number(state.get("discovery_valid")))
+    outcomes = [
+        row for row in (state.get("discovery_outcomes") or [])
+        if isinstance(row, dict)
+    ][-60:]
+    if outcomes:
+        if len(outcomes) < 30:
+            return 18
+        valid = len(outcomes)
+        completed_count = sum(bool(row.get("completed")) for row in outcomes)
+        early_skip_count = sum(bool(row.get("early_skip")) for row in outcomes)
+    else:
+        valid = int(_number(state.get("discovery_valid")))
+        completed_count = _number(state.get("discovery_completed"))
+        early_skip_count = _number(state.get("discovery_early_skips"))
     if valid < 30:
         return 18
-    completed = _number(state.get("discovery_completed")) / max(1, valid)
-    skipped = _number(state.get("discovery_early_skips")) / max(1, valid)
+    completed = completed_count / max(1, valid)
+    skipped = early_skip_count / max(1, valid)
     if completed >= 0.70 and skipped <= 0.20:
         return 24
     if completed <= 0.20 or skipped >= 0.50:
