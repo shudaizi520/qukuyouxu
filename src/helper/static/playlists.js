@@ -39,6 +39,7 @@ function profileLabel(row){
 function mediaUrl(type,track,context=current){
  const profile=context?.profileId||loadedProfileId||PCHAuth.profile();
  const query=profile?'?profile_id='+encoded(profile):'';
+ if(context?.kind==='library')return '/api/playlists/library/tracks/'+encoded(track.id)+'/'+type+query;
  return '/api/playlists/'+encoded(context?.kind)+'/'+encoded(context?.key)+'/tracks/'+encoded(track.id)+'/'+type+query;
 }
 

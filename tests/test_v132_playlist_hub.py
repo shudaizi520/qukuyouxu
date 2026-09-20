@@ -114,6 +114,13 @@ class _PlaylistPlex:
         self.last_audio = (str(track_id), range_header)
         return self.audio
 
+    def open_browser_audio(self, track_id, range_header=""):
+        return self.open_audio_part(track_id, range_header)
+
+    def open_artwork(self, path):
+        self.last_artwork = str(path)
+        return self.artwork
+
     def delete_playlist(self, playlist_id):
         self.deleted.append(str(playlist_id))
 
@@ -191,6 +198,7 @@ class PlaylistHubPlaybackTests(unittest.TestCase):
             "fingerprint": fingerprint(self.state),
         })
         self.plex = _PlaylistPlex(self.state)
+        self.plex.artwork = None
         self.engine = _PlaylistEngine(self.store, self.plex)
 
     def tearDown(self):
@@ -269,6 +277,41 @@ class PlaylistHubPlaybackTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "当前歌单"):
             stream_playlist_audio(self.engine, "daily", "daily", "999", "", "session")
+
+    def test_library_audio_allows_only_available_tracks_in_the_active_catalog(self):
+        import asyncio
+        from helper.playlist_hub import stream_library_audio
+        from tests.test_v130_external_audio import FakeAudioResponse, close_response
+
+        self.plex.audio = FakeAudioResponse(status=200, headers={
+            "Content-Type": "audio/mpeg", "Content-Length": "1024",
+        })
+        response = stream_library_audio(self.engine, "10", "", "session")
+        self.assertEqual(200, response.status_code)
+        self.assertEqual(("10", ""), self.plex.last_audio)
+        asyncio.run(close_response(response))
+        with self.assertRaisesRegex(ValueError, "当前曲库"):
+            stream_library_audio(self.engine, "999", "", "session-other")
+        catalog = self.store.get("catalog")
+        catalog[0]["available"] = False
+        self.store.set("catalog", catalog)
+        with self.assertRaisesRegex(ValueError, "当前曲库"):
+            stream_library_audio(self.engine, "10", "", "session-disabled")
+
+    def test_library_artwork_uses_the_validated_catalog_row(self):
+        from helper.playlist_hub import stream_library_artwork
+        from tests.test_v130_external_audio import FakeAudioResponse
+
+        self.plex.artwork = FakeAudioResponse(status=200, headers={
+            "Content-Type": "image/jpeg", "Content-Length": "4",
+        }, chunks=[b"jpeg"])
+        response = stream_library_artwork(self.engine, "10")
+        self.assertEqual("/library/metadata/10/thumb/1", self.plex.last_artwork)
+        self.assertEqual("image/jpeg", response.media_type)
+        with self.assertRaisesRegex(ValueError, "当前曲库"):
+            stream_library_artwork(self.engine, "999")
+        with self.assertRaisesRegex(ValueError, "没有可用封面"):
+            stream_library_artwork(self.engine, "20")
 
     def test_daily_delete_validates_ownership_and_never_deletes_music_files(self):
         from helper.playlist_hub import remove_playlist
@@ -416,6 +459,8 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn("playQueue", script)
         self.assertIn("startQueueTrack", script)
         self.assertIn("playContext", script)
+        self.assertIn("context?.kind==='library'", script)
+        self.assertIn("/api/playlists/library/tracks/", script)
         self.assertNotIn("if(stop)stopPlayback();current=item;const detail", script)
         self.assertIn("grid-template-columns:34px minmax(0,1fr) 58px 58px", styles)
 

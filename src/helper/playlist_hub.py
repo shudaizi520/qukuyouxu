@@ -342,12 +342,25 @@ def stream_playlist_audio(engine, kind, key, track_id, range_header, session_key
     )
 
 
-def stream_playlist_artwork(engine, kind, key, track_id):
-    detail = playlist_detail(engine, kind, key)
+def _library_track(store, track_id):
     track_id = str(track_id or "")
-    track = next((row for row in detail["tracks"] if row["id"] == track_id), None)
-    if not track:
-        raise ValueError("当前歌单中没有这首歌曲")
+    track = next((
+        row for row in (store.get("catalog", []) or [])
+        if isinstance(row, dict) and str(row.get("id") or "") == track_id
+    ), None)
+    if not track or not track.get("available", True):
+        raise ValueError("这首歌已不在当前曲库中，请先检查新增歌曲")
+    return track
+
+
+def stream_library_audio(engine, track_id, range_header, session_key):
+    track = _library_track(engine.store, track_id)
+    return stream_track_audio(
+        engine.store, engine.plex_factory, str(track["id"]), range_header, session_key,
+    )
+
+
+def _stream_artwork(engine, track):
     if not track.get("thumb"):
         raise ValueError("这首歌没有可用封面")
     upstream = engine.plex_factory(engine.store.get("settings")).open_artwork(track["thumb"])
@@ -379,6 +392,19 @@ def stream_playlist_artwork(engine, kind, key, track_id):
         headers={"Content-Length": str(size)} if size else {},
         background=BackgroundTask(upstream.close),
     )
+
+
+def stream_playlist_artwork(engine, kind, key, track_id):
+    detail = playlist_detail(engine, kind, key)
+    track_id = str(track_id or "")
+    track = next((row for row in detail["tracks"] if row["id"] == track_id), None)
+    if not track:
+        raise ValueError("当前歌单中没有这首歌曲")
+    return _stream_artwork(engine, track)
+
+
+def stream_library_artwork(engine, track_id):
+    return _stream_artwork(engine, _library_track(engine.store, track_id))
 
 
 def _remove_daily(engine, confirm_title, now=None):
@@ -463,6 +489,22 @@ def attach_playlist_hub_routes(app, store, runtime, profiles, body, ensure_idle)
     @app.get("/api/playlists/search")
     def playlist_search(q: str = "", limit: int = 40):
         return {"items": search_library(fixed_engine().store, q, limit)}
+
+    @app.get("/api/playlists/library/tracks/{track_id}/audio")
+    def library_audio(track_id: str, request: Request, profile_id: str = ""):
+        selected_profile = str(profile_id or store.profile_id)
+        with profiles.fixed_active(selected_profile, enabled_only=True):
+            target = runtime.engine(selected_profile)
+            return stream_library_audio(
+                target, track_id, str(request.headers.get("range") or ""),
+                str(request.cookies.get(COOKIE_NAME) or ""),
+            )
+
+    @app.get("/api/playlists/library/tracks/{track_id}/artwork")
+    def library_artwork(track_id: str, profile_id: str = ""):
+        selected_profile = str(profile_id or store.profile_id)
+        with profiles.fixed_active(selected_profile, enabled_only=True):
+            return stream_library_artwork(runtime.engine(selected_profile), track_id)
 
     @app.get("/api/playlists/{kind}/{key}")
     def playlist(kind: str, key: str):
