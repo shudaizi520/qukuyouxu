@@ -69,6 +69,13 @@ def ensure_behavior_schema(db) -> None:
     )
 
 
+def delete_profile_rows(db, profile_id: str) -> None:
+    """Delete one validated profile's V2 learning rows in the caller's transaction."""
+    profile_id = validate_profile_id(profile_id)
+    for table in ("behavior_event", "behavior_track_state", "behavior_user_state"):
+        db.execute(f"DELETE FROM {table} WHERE profile_id=?", (profile_id,))
+
+
 class BehaviorRepository:
     def __init__(self, base_store):
         self.store = getattr(base_store, "base", base_store)
@@ -230,8 +237,7 @@ class BehaviorRepository:
     def delete_profile(self, profile_id: str) -> None:
         profile_id = self._profile(profile_id)
         with self.store.lock, self.store._db() as db:
-            for table in ("behavior_event", "behavior_track_state", "behavior_user_state"):
-                db.execute(f"DELETE FROM {table} WHERE profile_id=?", (profile_id,))
+            delete_profile_rows(db, profile_id)
 
 
 def _optional_float(value):

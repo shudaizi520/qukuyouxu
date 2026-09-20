@@ -10,6 +10,7 @@ import uuid
 
 from .scoped_store import GLOBAL_KEYS, ScopedStore, validate_profile_id
 from .store import DEFAULT_SETTINGS
+from .behavior_store import delete_profile_rows
 
 
 REGISTRY_KEY = "plex_profiles_v1"
@@ -213,6 +214,7 @@ class ProfileRegistry:
                 "DELETE FROM state WHERE substr(k,1,?)=?",
                 (len(prefix), prefix),
             )
+            delete_profile_rows(db, profile_id)
             db.executemany(
                 "INSERT INTO state(k,v) VALUES (?,?) "
                 "ON CONFLICT(k) DO UPDATE SET v=excluded.v",
@@ -462,6 +464,7 @@ class ProfileRegistry:
         prefix = f"profile:{profile_id}:"
         with self.store.lock, self.store._db() as db:
             db.execute("DELETE FROM state WHERE substr(k,1,?)=?", (len(prefix), prefix))
+            delete_profile_rows(db, profile_id)
             del value["profiles"][profile_id]
             if value.get("active_profile_id") == profile_id:
                 value["active_profile_id"] = "default"
