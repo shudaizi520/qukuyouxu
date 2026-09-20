@@ -1,0 +1,5 @@
+#EXTM3U
+#EXTINF:180,歌手甲 - 普通歌曲
+/music/普通歌曲.flac
+#EXTINF:240,歌手乙 - 特别歌曲 (现场版)
+https://example.invalid/audio/ignored.mp3
