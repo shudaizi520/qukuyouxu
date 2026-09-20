@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width,initial-scale=1">
+ <meta name="color-scheme" content="light">
+ <title>曲库有序 · 我的歌单</title>
+ <link rel="stylesheet" href="/static/product.css?v=1.4.0">
+ <script defer src="/static/auth.js?v=1.4.0"></script>
+ <script defer src="/static/playlists.js?v=1.4.0"></script>
+</head>
+<body data-view="playlists" data-auth-state="checking">
+<div id="bootScreen" class="auth-boot"><div class="boot-mark">♫</div><strong>曲库有序</strong><span>正在进入你的音乐库…</span></div>
+<section id="authShell" class="auth-shell" hidden>
+ <div class="auth-card">
+  <div class="auth-brand"><span class="brand-mark">♫</span><div><strong>曲库有序</strong><small>本地 Plex 音乐助手</small></div></div>
+  <div id="loginPanel"><h1>登录</h1><form id="loginForm" class="auth-form"><label>用户名<input id="loginUser" autocomplete="username" value="admin" required></label><label>密码<input id="loginPassword" type="password" autocomplete="current-password" required></label><button class="primary" type="submit">登录</button></form></div>
+  <div id="setupPanel" hidden><h1>创建管理员账户</h1><form id="setupForm" class="auth-form"><label>用户名<input id="setupUser" autocomplete="username" value="admin" required></label><label>新密码<input id="setupPassword" type="password" autocomplete="new-password" minlength="8" required></label><label>确认密码<input id="setupConfirm" type="password" autocomplete="new-password" minlength="8" required></label><button class="primary" type="submit">建立账户并进入</button></form></div>
+  <p id="authMessage" class="auth-message" hidden></p>
+ </div>
+</section>
+<div id="workspace" hidden>
+ <header class="topbar"><a class="brand" href="/"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v1.4.0</small></span></a><nav><a class="active" href="/">我的歌单</a><a href="/status">运行状态</a><a href="/settings">设置</a></nav><button class="logout" data-auth-logout hidden>退出</button></header>
+ <main class="playlist-hub">
+  <aside class="playlist-sidebar">
+   <label class="playlist-profile-label" for="playlistProfile">当前用户</label>
+   <select id="playlistProfile" class="playlist-profile"></select>
+   <div class="playlist-side-heading"><h2>我的歌单</h2><span id="playlistCount">0</span></div>
+   <nav id="playlistList" class="playlist-side-list" aria-label="我的歌单"></nav>
+   <div class="playlist-side-heading playlist-tool-heading"><h2>创建与整理</h2></div>
+   <nav id="playlistTools" class="playlist-side-list" aria-label="创建与整理">
+    <button type="button" data-tool-url="/daily"><span class="playlist-side-icon">日</span><span>每日推荐</span></button>
+    <button type="button" data-tool-url="/mixes"><span class="playlist-side-icon">智</span><span>智能歌单</span></button>
+    <button type="button" data-tool-url="/external"><span class="playlist-side-icon">导</span><span>导入外部歌单</span></button>
+    <button type="button" data-tool-url="/library"><span class="playlist-side-icon">整</span><span>曲库整理</span></button>
+   </nav>
+  </aside>
+  <section class="playlist-main">
+   <div id="playlistNotice" class="notice" role="status" hidden></div>
+   <section id="playlistView">
+    <header class="playlist-hero">
+     <div><span id="playlistKind" class="playlist-kind">我的歌单</span><h1 id="playlistTitle">选择一个歌单</h1><p id="playlistSummary" class="muted">0 首歌曲</p></div>
+     <div class="playlist-actions"><button id="playlistAddTrack" class="secondary" type="button" hidden>添加歌曲</button><button id="playlistManage" class="secondary" type="button" hidden>管理</button><button id="playlistRemove" class="danger" type="button" hidden>删除歌单</button><button id="playlistPlayAll" class="primary" type="button" disabled>▶ 播放全部</button></div>
+    </header>
+    <div class="playlist-track-toolbar"><label for="playlistSearch">搜索歌曲</label><input id="playlistSearch" type="search" placeholder="歌名、歌手或专辑" autocomplete="off"></div>
+    <div class="playlist-track-head"><span>#</span><span>歌曲</span><span>专辑</span><span>时长</span></div>
+    <div id="playlistTracks" class="playlist-tracks"></div>
+    <div id="playlistEmpty" class="playlist-empty">还没有可显示的歌单</div>
+   </section>
+   <section id="playlistToolView" hidden>
+    <div class="playlist-tool-bar"><button id="playlistToolBack" class="secondary" type="button">← 返回歌单</button><h1 id="playlistToolTitle">创建与整理</h1></div>
+    <iframe id="playlistToolFrame" title="创建与整理" loading="eager"></iframe>
+   </section>
+  </section>
+ </main>
+ <dialog id="librarySearchDialog" class="playlist-search-dialog">
+  <form method="dialog" class="playlist-dialog-head"><h2>添加歌曲</h2><button type="submit" aria-label="关闭">×</button></form>
+  <div class="playlist-search-box"><input id="librarySearchInput" type="search" placeholder="搜索整套曲库" autocomplete="off"><button id="librarySearchButton" class="primary" type="button">搜索</button></div>
+  <label class="playlist-search-target">添加到<select id="librarySearchTarget"></select></label>
+  <div id="librarySearchResults" class="playlist-search-results"></div>
+ </dialog>
+ <footer id="playlistPlayer" class="playlist-player" hidden>
+  <div class="playlist-now"><div id="playerArtwork" class="playlist-artwork" aria-hidden="true">♫</div><div><strong id="playerTitle">未播放</strong><span id="playerArtist">请选择歌曲</span></div></div>
+  <div class="playlist-player-center"><div class="playlist-player-buttons"><button id="playerPrevious" type="button" aria-label="上一首">‹</button><button id="playerToggle" class="playlist-player-toggle" type="button" aria-label="播放或暂停">▶</button><button id="playerNext" type="button" aria-label="下一首">›</button></div><div class="playlist-progress"><span id="playerCurrent">0:00</span><input id="playerSeek" type="range" min="0" max="1000" value="0" aria-label="播放进度"><span id="playerDuration">0:00</span></div></div>
+  <div id="playerQueue" class="playlist-player-queue">0 / 0</div>
+  <audio id="playerAudio" preload="metadata"></audio>
+ </footer>
+</div>
+</body>
+</html>

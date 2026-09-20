@@ -29,6 +29,7 @@ from .profile_runtime import ActiveEngineProxy, ProfileRuntime, current_qq_statu
 from .smart_mix_web import attach_smart_mix_routes
 from .automation import attach_automation_routes
 from .external_web import attach_external_routes
+from .playlist_hub import attach_playlist_hub_routes
 STATIC = Path(__file__).with_name('static')
 
 def _origin(value):
@@ -130,9 +131,11 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
             return JSONResponse(payload, status_code=400)
         r.headers['Cache-Control'] = 'no-store'
         r.headers['X-Content-Type-Options'] = 'nosniff'
-        r.headers['X-Frame-Options'] = 'DENY'
+        embedded = req.query_params.get('embedded') == '1' and path in ('/daily', '/mixes', '/external', '/library')
+        r.headers['X-Frame-Options'] = 'SAMEORIGIN' if embedded else 'DENY'
         r.headers['Referrer-Policy'] = 'no-referrer'
-        r.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+        frame_ancestors = "'self'" if embedded else "'none'"
+        r.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors " + frame_ancestors
         return r
 
     @app.exception_handler(ValueError)
@@ -253,6 +256,10 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
 
     @app.get('/')
     def index():
+        return HTMLResponse(render_versioned_html((STATIC / 'playlists.html').read_text(encoding='utf-8'), __version__))
+
+    @app.get('/daily')
+    def daily_page():
         return HTMLResponse(render_versioned_html((STATIC / 'daily.html').read_text(encoding='utf-8'), __version__))
 
     @app.get('/library')
@@ -288,7 +295,7 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
 
     @app.get('/static/{name}')
     def static(name):
-        if name not in ('home.js', 'home.css', 'theme_home.js', 'product.css', 'daily.js', 'refined.js', 'status.js', 'settings.js', 'auth.js', 'mixes.js', 'external.js'):
+        if name not in ('home.js', 'home.css', 'theme_home.js', 'product.css', 'daily.js', 'refined.js', 'status.js', 'settings.js', 'auth.js', 'mixes.js', 'external.js', 'playlists.js'):
             return Response(status_code=404)
         return FileResponse(STATIC / name, media_type='text/javascript' if name.endswith('.js') else 'text/css')
 
@@ -524,6 +531,7 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
     attach_profile_routes(app, base_store, profiles, body, ensure_idle, engine=engine)
     attach_automation_routes(app, base_store, profiles, runtime, body)
     attach_external_routes(app, store, engine, runtime, profiles, body, ensure_idle)
+    attach_playlist_hub_routes(app, store, runtime, profiles, body, ensure_idle)
     attach_webhook_route(app, base_store, profiles)
     attach_smart_mix_routes(app, store, engine, runtime, profiles, body, ensure_idle)
     attach_routes(app, store, engine, body, ensure_idle)
