@@ -117,7 +117,7 @@ def stream_track_audio(store, plex_factory, track_id, range_header, session_key)
     try:
         plex = plex_factory(settings)
         try:
-            upstream = plex.open_audio_part(track_id, range_header)
+            upstream = plex.open_browser_audio(track_id, range_header)
         except requests.RequestException:
             raise PlexError('Plex音频连接失败，请稍后重试') from None
         if upstream.status_code not in (200, 206):
