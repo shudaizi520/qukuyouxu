@@ -66,6 +66,11 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
   try{result=audio.play();}catch(error){handleFailure(generation,error);return Promise.resolve();}
   return result?.catch(error=>handleFailure(generation,error))||Promise.resolve();
  }
+ function retryNow(){
+  if(!activeSource)return;
+  clearTimeout(retryTimer);recoveryPending=false;retryCount=1;clearFeedback();
+  audio.load();attemptPlay(playbackGeneration);
+ }
  function startQueueTrack(index,autoplay=true){
   const track=queue[index];if(!track||!context)return;
   const generation=++playbackGeneration;clearTimeout(retryTimer);retryCount=0;recoveryPending=false;resettingSource=false;
@@ -104,7 +109,7 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
  function mount(){
   byId(document,'playerToggle').onclick=()=>{if(audio.paused)attemptPlay();else audio.pause();};
   byId(document,'playerPrevious').onclick=playPrevious;byId(document,'playerNext').onclick=playNext;
-  byId(document,'playerRetry').onclick=()=>{clearFeedback();retryCount=0;handleFailure(playbackGeneration,new Error('manual retry'));};
+  byId(document,'playerRetry').onclick=retryNow;
   byId(document,'playerErrorNext').onclick=()=>{clearFeedback();playNext();};
   byId(document,'playerSeek').oninput=()=>{if(Number.isFinite(audio.duration)&&audio.duration>0)audio.currentTime=audio.duration*Number(byId(document,'playerSeek').value)/1000;};
   byId(document,'playerVolume').oninput=()=>{audio.volume=Number(byId(document,'playerVolume').value);audio.muted=false;byId(document,'playerMute').textContent=audio.volume?'音量':'静音';};

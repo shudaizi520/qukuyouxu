@@ -578,6 +578,10 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn("setTimeout", player_script)
         self.assertIn("NotAllowedError", player_script)
         self.assertIn("playerRetry", player_script)
+        self.assertIn("function retryNow()", player_script)
+        retry_handler = player_script.split("byId(document,'playerRetry').onclick", 1)[1].split(";", 1)[0]
+        self.assertIn("retryNow", retry_handler)
+        self.assertNotIn("handleFailure", retry_handler)
         self.assertIn("playerVolume", player_script)
         self.assertIn("'playlist-player.js'", web)
         player_styles = styles.split(".playlist-player{", 1)[1].split(".playlist-search-dialog", 1)[0]
