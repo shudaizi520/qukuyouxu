@@ -237,7 +237,11 @@ class DailyMixin:
             raise SafetyError('Plex身份已变化')
         fresh = {t['id']: track_fingerprint(t) for t in p.tracks(cfg['section'])}
         ids = [x['id'] for x in plan['items']]
-        if not ids or any((fresh.get(k) != plan['track_fingerprints'].get(k) for k in ids)):
+        planned_ids = list(ids)
+        from .playlist_hub import apply_manual_edits
+        ids = apply_manual_edits(self.store, 'daily', 'daily', ids)
+        if (not ids or any(k not in fresh for k in ids)
+                or any((fresh.get(k) != plan['track_fingerprints'].get(k) for k in planned_ids))):
             raise SafetyError('候选歌曲在预览后变化/不可用，未写入；请重新预览')
         before = plan['before']
         managed = self.store.get('daily_managed')
@@ -265,10 +269,14 @@ class DailyMixin:
                 raise SafetyError('每日歌单写入回读不符，停止自动维护')
             snap.update(status='applied', after=after)
             self._save_snapshot(snap)
-            record = {'id': after['id'], 'title': after['title'], 'fingerprint': fingerprint(after), 'snapshot_id': snap['id'], 'machine': plan['machine'], 'scope': plan['scope'], 'date': plan['date'], 'published_at': now}
+            record = {'id': after['id'], 'title': after['title'], 'fingerprint': fingerprint(after), 'snapshot_id': snap['id'], 'machine': plan['machine'], 'scope': plan['scope'], 'date': plan['date'], 'published_at': now, 'count': len(after.get('items', []))}
             history = self.store.get('daily_history', [])
-            history.append({'date': plan['date'], 'created_at': now, 'ids': ids, 'song_keys': [x['song_key'] for x in plan['items']], 'plan_id': plan_id})
+            history.append({'date': plan['date'], 'created_at': now, 'ids': ids, 'song_keys': [x.get('song_key') for x in plan['items'] if x.get('song_key')], 'plan_id': plan_id})
             plan.update(applied=True, result={'written': len(ids), 'playlist_id': after['id'], 'date': plan['date']})
+            if ids != planned_ids:
+                by_id = {str(row.get('id')): row for row in self.store.get('catalog', []) or []}
+                original = {str(row.get('id')): row for row in plan.get('items', []) or []}
+                plan['items'] = [dict(original.get(track_id) or by_id.get(track_id) or {'id': track_id}) for track_id in ids]
             published = published_daily_view(plan, after, now)
             self.store.set_many({'daily_managed': record, 'daily_history': history[-90:], 'daily_plan': plan, 'daily_published_view': published, 'daily_auto_suspension': None})
             self.store.log('每日推荐已发布：' + str(len(ids)) + '首；歌单ID保留用于后续更新')

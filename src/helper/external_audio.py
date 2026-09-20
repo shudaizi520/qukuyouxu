@@ -81,14 +81,13 @@ def _matched_track(repository, profile_id, source_id, track_key, candidate_id=''
     raise ValueError('这首歌还没有可靠匹配，不能试听')
 
 
-def stream_local_audio(store, plex_factory, source_id, track_key, range_header, session_key, *, candidate_id=''):
+def stream_track_audio(store, plex_factory, track_id, range_header, session_key):
+    """Stream one catalog track after the caller has established its playlist scope."""
     profile_id = str(getattr(store, 'profile_id', 'default') or 'default')
-    track_key = str(track_key or '')
-    if not track_key or len(track_key) > 300:
+    track_id = str(track_id or '')
+    if not track_id.isdigit():
         raise ValueError('当前歌单中没有这首可试听歌曲')
     range_header = validate_audio_range(range_header)
-    repository = ExternalRepository(store)
-    track_id = _matched_track(repository, profile_id, str(source_id), track_key, candidate_id)
     catalog = {
         str(row.get('id')): row for row in (store.get('catalog', []) or [])
         if isinstance(row, dict) and row.get('id') is not None
@@ -144,3 +143,13 @@ def stream_local_audio(store, plex_factory, source_id, track_key, range_header, 
     except Exception:
         cleanup()
         raise
+
+
+def stream_local_audio(store, plex_factory, source_id, track_key, range_header, session_key, *, candidate_id=''):
+    profile_id = str(getattr(store, 'profile_id', 'default') or 'default')
+    track_key = str(track_key or '')
+    if not track_key or len(track_key) > 300:
+        raise ValueError('当前歌单中没有这首可试听歌曲')
+    repository = ExternalRepository(store)
+    track_id = _matched_track(repository, profile_id, str(source_id), track_key, candidate_id)
+    return stream_track_audio(store, plex_factory, track_id, range_header, session_key)

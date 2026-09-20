@@ -256,8 +256,12 @@ def publish_smart_mix(engine, plan_id, now=None):
         if plex.identity()["machine"] != plan.get("machine") or plan.get("scope") != engine.daily_scope():
             raise SafetyError("Plex 身份或资料库已变化，停止写入")
         ids = [str(row["id"]) for row in plan.get("items", [])]
+        planned_ids = list(ids)
+        from .playlist_hub import apply_manual_edits
+        ids = apply_manual_edits(engine.store, "smart", plan["kind"], ids)
         fresh = {str(row["id"]): track_fingerprint(row) for row in plex.tracks(cfg["section"])}
-        if not ids or any(fresh.get(tid) != plan.get("track_fingerprints", {}).get(tid) for tid in ids):
+        if (not ids or any(tid not in fresh for tid in ids)
+                or any(fresh.get(tid) != plan.get("track_fingerprints", {}).get(tid) for tid in planned_ids)):
             raise SafetyError("候选歌曲在预览后变化，请重新生成")
 
         kind = plan["kind"]
@@ -303,6 +307,7 @@ def publish_smart_mix(engine, plan_id, now=None):
                 "id": after["id"], "title": after["title"], "fingerprint": fingerprint(after),
                 "snapshot_id": snapshot["id"], "machine": plan["machine"], "scope": plan["scope"],
                 "updated_at": now, "options": dict(plan.get("options") or {}),
+                "count": len(after.get("items", [])),
             }
             plan.update(applied=True, result={"written": len(ids), "playlist_id": after["id"]})
             plans = _plan_map(engine.store)

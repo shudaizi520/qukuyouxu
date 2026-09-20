@@ -93,6 +93,7 @@ def _managed_record(state, source, marker, order_attention=False):
         "revision": str(source.get("revision") or ""),
         "marker": marker,
         "order_attention": bool(order_attention),
+        "count": len(state.get("items") or []),
     }
 
 

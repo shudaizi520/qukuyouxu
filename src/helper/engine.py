@@ -171,6 +171,8 @@ class Engine(RenamingMixin, DailyMixin):
                 else:
                     row['candidate_details']=[catalog.by_id[k] for k in r['candidates'] if k in catalog.by_id]
                     unmatched.append(row)
+            from .playlist_hub import apply_manual_edits
+            desired=apply_manual_edits(self.store,'category',cid,desired);matches=set(desired)
             current=None;action='create';add=desired[:]
             if cid in managed:
                 try:
@@ -249,7 +251,7 @@ class Engine(RenamingMixin, DailyMixin):
                     raise SafetyError('写入后回读与预期不一致，不标记成功，也不自动重试')
                 snap.update(status='applied',after=after)
                 self._save_snapshot(snap)
-                managed[cid]={'id':after['id'],'fingerprint':fingerprint(after),'snapshot_id':snap['id'],'title':after['title']}
+                managed[cid]={'id':after['id'],'fingerprint':fingerprint(after),'snapshot_id':snap['id'],'title':after['title'],'count':len(after.get('items',[]))}
                 self.store.set('managed',managed);src['approved']=True;result['written']+=1
             except Exception as exc:
                 snap.update(status='uncertain',error=safe_error(exc));self._save_snapshot(snap)

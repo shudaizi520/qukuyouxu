@@ -117,6 +117,10 @@ class ExternalPlaylistService:
                 seen.add(track_id)
         if not desired:
             return {"status": "no_matches", "playlist_id": managed["id"]}
+        from .playlist_hub import apply_manual_edits
+        desired = apply_manual_edits(self.store, "external", source["id"], desired)
+        if not desired:
+            return {"status": "no_matches", "playlist_id": managed["id"]}
         sync_source = {**source, "title": managed["title"]}
         after, revised = create_or_reconcile_external_playlist(
             plex, self.store.get("installation_id"), sync_source, managed, desired
@@ -214,6 +218,10 @@ class ExternalPlaylistService:
                 seen.add(track_id)
         if not desired:
             raise _safety("没有可靠匹配的本地歌曲，不能创建 Plex 歌单")
+        from .playlist_hub import apply_manual_edits
+        desired = apply_manual_edits(self.store, "external", source["id"], desired)
+        if not desired:
+            raise _safety("个人调整后没有可写入的歌曲")
         managed = self.repository.get_managed(self.profile_id, source["id"])
         after, record = create_or_reconcile_external_playlist(
             plex, self.store.get("installation_id"), {**source, "title": title}, managed, desired

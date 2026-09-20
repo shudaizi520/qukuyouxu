@@ -204,6 +204,7 @@ def parse_plex_track(e):
     available=bool(parts) and any(p.get('exists','1')!='0' and p.get('accessible','1')!='0' for p in parts)
     return {'id':str(a['ratingKey']),'title':a.get('title',''),'artist':a.get('originalTitle') or a.get('grandparentTitle',''),
         'album':a.get('parentTitle',''),'duration':float(a.get('duration') or 0)/1000,'guid':a.get('guid',''),
+        'thumb':a.get('thumb',''),
         'available':available,'paths':[p.get('file','') for p in parts],
         'user_rating':_optional_number(a.get('userRating'),10),
         'view_count':_optional_number(a.get('viewCount'),10000000,True),
@@ -315,6 +316,23 @@ class PlexClient:
             raise PlexError(f'Plex音频返回HTTP {response.status_code}')
         return response
 
+    def open_artwork(self, artwork_path):
+        artwork_path = str(artwork_path or '')
+        if (not re.fullmatch(r'/library/metadata/\d+/(?:thumb|art)/\d+', artwork_path)
+                or artwork_path.startswith('//')):
+            raise PlexError('Plex封面路径无效')
+        try:
+            response = self.session.request(
+                'GET', self.base + artwork_path, timeout=(5, 20),
+                allow_redirects=False, stream=True,
+            )
+        except requests.RequestException:
+            raise PlexError('Plex封面连接失败，请稍后重试') from None
+        if response.status_code != 200:
+            response.close()
+            raise PlexError(f'Plex封面返回HTTP {response.status_code}')
+        return response
+
     def playlists(self):
         return [dict(e.attrib) for e in self._page('/playlists','Playlist',{'playlistType':'audio'})]
 
@@ -325,8 +343,19 @@ class PlexClient:
         e=roots[0]
         if e.get('smart')=='1' or e.get('playlistType')!='audio':raise PlexError('不是普通音乐歌单')
         arr=self._page(f'/playlists/{pid}/items','Track')
+        def item(x):
+            try:
+                duration = max(0, int(x.get('duration') or 0) // 1000)
+            except (TypeError, ValueError):
+                duration = 0
+            return {
+                'id': str(x.get('ratingKey')), 'item_id': str(x.get('playlistItemID')),
+                'title': x.get('title', ''), 'artist': x.get('grandparentTitle', ''),
+                'album': x.get('parentTitle', ''), 'duration': duration,
+                'thumb': x.get('thumb', ''),
+            }
         return {'id':str(pid),'title':e.get('title',''),'summary':e.get('summary',''),
-                'items':[{'id':str(x.get('ratingKey')),'item_id':str(x.get('playlistItemID'))} for x in arr]}
+                'items':[item(x) for x in arr]}
 
     def read_playlist_until(self,pid,predicate,attempts=8,delay=0.25):
         """Retry only Plex reads after a write; never repeats the mutation."""
