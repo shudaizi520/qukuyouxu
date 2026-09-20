@@ -76,7 +76,10 @@ export function createLibrarySearch({
   }finally{button.disabled=false;}
  }
 
- function reset(){requestGeneration+=1;results=[];pendingTrack=null;byId(document,'librarySearchInput').value='';}
+ function reset(){
+  requestGeneration+=1;results=[];pendingTrack=null;byId(document,'librarySearchInput').value='';
+  const dialog=byId(document,'librarySearchDialog');if(dialog.open)dialog.close();
+ }
  function focus(){byId(document,'librarySearchInput').focus();byId(document,'librarySearchInput').select();}
  function mount(){
   byId(document,'librarySearchForm').onsubmit=event=>{event.preventDefault();run(byId(document,'librarySearchInput').value).catch(error=>notify(error.message||'搜索失败',true));};

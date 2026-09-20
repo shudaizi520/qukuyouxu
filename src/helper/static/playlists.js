@@ -79,6 +79,7 @@ function renderPlaylistList(){
 function setPlaylistLoading(value){
  playlistLoading=!!value;
  $('playlistView').classList.toggle('is-loading',value);$('playlistView').setAttribute('aria-busy',String(value));
+ $('playlistTracks').inert=playlistLoading;
  $('playlistAddTrack').disabled=playlistLoading;$('playlistManage').disabled=playlistLoading;$('playlistRemove').disabled=playlistLoading;
  $('playlistPlayAll').disabled=playlistLoading||!tracks.length;
 }
@@ -90,7 +91,7 @@ async function openPlaylist(item){
  const requestId=++playlistRequest;
  librarySearch.reset();
  if(!item.playlist_id){
-  workspace.openPage(item.manage_url,item.title,{type:'tool',navigation:{type:'playlist',kind:item.kind,key:item.key}});return;
+  setPlaylistLoading(false);workspace.openPage(item.manage_url,item.title,{type:'tool',navigation:{type:'playlist',kind:item.kind,key:item.key}});return;
  }
  notify('');setPlaylistLoading(true);workspace.show({type:'playlist',kind:item.kind,key:item.key,panel:'playlist'});
  try{
@@ -163,7 +164,7 @@ function syncPlaylistCount(kind,key,count){
  if(item&&Number.isFinite(Number(count))){item.count=Math.max(0,Number(count));renderPlaylistList();}
 }
 function restorePlaylistView(){
- librarySearch.reset();
+ librarySearch.reset();setSidebarOpen(false);++playlistRequest;setPlaylistLoading(false);
  if(current){workspace.show({type:'playlist',kind:current.kind,key:current.key,panel:'playlist'});return;}
  const first=playlists.find(row=>row.playlist_id)||playlists[0];if(first)action(()=>openPlaylist(first));
 }
@@ -180,10 +181,14 @@ function setSidebarOpen(value){
  $('playlistSidebarToggle').setAttribute('aria-expanded',String(open));
  $('playlistSidebarToggle').setAttribute('aria-label',open?'关闭歌单导航':'打开歌单导航');
 }
+function openSearchWorkspace(query){
+ setSidebarOpen(false);++playlistRequest;setPlaylistLoading(false);
+ workspace.show({type:'search',query,panel:'search'});
+}
 
 const librarySearch=createLibrarySearch({
  document,requestJson:json,getProfileId:()=>loadedProfileId,getPlaylists:()=>playlists,getCurrentPlaylist:()=>current,
- onPlayQueue:playlistPlayer.startQueue,onSearchStart:query=>workspace.show({type:'search',query,panel:'search'}),onBack:restorePlaylistView,notify,
+ onPlayQueue:playlistPlayer.startQueue,onSearchStart:openSearchWorkspace,onBack:restorePlaylistView,notify,
  onPlaylistChanged:async(kind,key,count)=>{syncPlaylistCount(kind,key,count);if(current?.kind===kind&&current?.key===key)await openPlaylist(current);},
 });
 

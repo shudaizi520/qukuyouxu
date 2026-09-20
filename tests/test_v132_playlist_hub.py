@@ -373,6 +373,14 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn("profileId!==getProfileId()", search)
         self.assertIn("'playlist-workspace.js'", web)
         self.assertIn("'playlist-search.js'", web)
+        self.assertIn("function openSearchWorkspace(query)", script)
+        open_search = script.split("function openSearchWorkspace", 1)[1].split(
+            "const librarySearch", 1
+        )[0]
+        self.assertIn("++playlistRequest", open_search)
+        self.assertIn("setPlaylistLoading(false)", open_search)
+        self.assertIn("panel:'search'", open_search)
+        self.assertIn("onSearchStart:openSearchWorkspace", script)
 
         navigation = workspace.split("function renderNavigation", 1)[1].split(
             "function show", 1
@@ -528,6 +536,7 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn("(isPlaying?' playing':'')", render_tracks)
         unbuilt = script.split("if(!item.playlist_id)", 1)[1].split("return;", 1)[0]
         self.assertIn("navigation:{type:'playlist',kind:item.kind,key:item.key}", unbuilt)
+        self.assertIn("setPlaylistLoading(false)", unbuilt)
         self.assertNotIn("current=null", unbuilt)
         open_workspace = script.split("function openWorkspacePage", 1)[1].split(
             "function openTool", 1
@@ -596,6 +605,15 @@ class PlaylistHubPageTests(unittest.TestCase):
         open_workspace = script.split("function openWorkspacePage", 1)[1].split("function openTool", 1)[0]
         self.assertNotIn("stopPlayback", open_workspace)
 
+    def test_returning_to_current_playlist_cancels_an_inflight_selection(self):
+        script = (STATIC / "playlists.js").read_text(encoding="utf-8")
+        restore = script.split("function restorePlaylistView", 1)[1].split(
+            "function openWorkspacePage", 1
+        )[0]
+        self.assertIn("++playlistRequest", restore)
+        self.assertIn("setPlaylistLoading(false)", restore)
+        self.assertIn("setSidebarOpen(false)", restore)
+
     def test_playlist_loading_locks_actions_until_the_selected_detail_arrives(self):
         script = (STATIC / "playlists.js").read_text(encoding="utf-8")
         loading = script.split("function setPlaylistLoading", 1)[1].split(
@@ -606,6 +624,7 @@ class PlaylistHubPageTests(unittest.TestCase):
         ):
             self.assertIn(element_id, loading)
         self.assertIn(".disabled", loading)
+        self.assertIn("$('playlistTracks').inert=playlistLoading", loading)
         open_playlist = script.split("async function openPlaylist", 1)[1].split(
             "async function openFirstAvailable", 1
         )[0]
@@ -617,6 +636,8 @@ class PlaylistHubPageTests(unittest.TestCase):
 
     def test_logout_stops_player_and_invalidates_account_requests(self):
         script = (STATIC / "playlists.js").read_text(encoding="utf-8")
+        auth = (STATIC / "auth.js").read_text(encoding="utf-8")
+        search = (STATIC / "playlist-search.js").read_text(encoding="utf-8")
         self.assertIn("function resetSession()", script)
         reset = script.split("function resetSession()", 1)[1].split(
             "async function switchProfile", 1
@@ -626,6 +647,12 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn("loadedProfileId=''", reset)
         self.assertIn("++profileRequest", reset)
         self.assertIn("window.addEventListener('pch-auth-logout',resetSession)", script)
+        self.assertIn("function announceLogout()", auth)
+        self.assertGreaterEqual(auth.count("announceLogout();"), 2)
+        search_reset = search.split("function reset()", 1)[1].split(
+            "function focus", 1
+        )[0]
+        self.assertIn("if(dialog.open)dialog.close()", search_reset)
 
     def test_manual_edits_update_sidebar_counts_for_current_or_other_playlist(self):
         script = (STATIC / "playlists.js").read_text(encoding="utf-8")
