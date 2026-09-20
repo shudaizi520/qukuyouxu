@@ -26,8 +26,9 @@ def _source_summary(data, last_run=None):
     return summary
 
 
-def _public_track(row):
-    return {
+def _public_track(row, catalog=None):
+    candidate_ids = list(row.get("candidate_ids") or [])[:3]
+    public = {
         "source_track_key": row.get("source_track_key"),
         "position": row.get("position"),
         "title": row.get("title"),
@@ -38,10 +39,20 @@ def _public_track(row):
         "source_url": row.get("source_url"),
         "status": row.get("status"),
         "plex_track_id": row.get("plex_track_id"),
-        "candidate_ids": list(row.get("candidate_ids") or [])[:3],
+        "candidate_ids": candidate_ids,
         "reason": row.get("reason"),
         "manual": bool(row.get("manual")),
     }
+    catalog = catalog or {}
+    public["candidates"] = [
+        {
+            "id": track_id, "title": catalog[track_id].get("title"),
+            "artist": catalog[track_id].get("artist"), "album": catalog[track_id].get("album"),
+            "duration": catalog[track_id].get("duration"),
+        }
+        for track_id in candidate_ids if track_id in catalog
+    ]
+    return public
 
 
 def attach_external_routes(app, store, engine, runtime, profiles, body, ensure_idle):
@@ -74,7 +85,14 @@ def attach_external_routes(app, store, engine, runtime, profiles, body, ensure_i
             raise ValueError("分页参数无效")
         current = service()
         data = current.public_source(source_id)
-        rows = [_public_track(row) for row in data["tracks"] if not status or row.get("status") == status]
+        catalog = {
+            str(row.get("id")): row for row in (current.store.get("catalog", []) or [])
+            if isinstance(row, dict) and row.get("id") is not None
+        }
+        rows = [
+            _public_track(row, catalog) for row in data["tracks"]
+            if not status or row.get("status") == status
+        ]
         start = (page - 1) * limit
         return {
             **public_summary(current, data), "tracks": rows[start:start + limit],

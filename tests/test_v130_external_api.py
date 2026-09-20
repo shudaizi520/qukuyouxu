@@ -68,6 +68,11 @@ class ExternalApiV130Tests(unittest.TestCase):
         settings = default.get("settings")
         settings.update(plex_url="http://plex", plex_token="secret-token", section="11")
         default.set("settings", settings)
+        default.set("catalog", [
+            {"id": "40", "title": "同名歌", "artist": "歌手丁", "album": "版本 A", "available": True, "paths": ["/private/a.flac"]},
+            {"id": "41", "title": "同名歌", "artist": "歌手丁", "album": "版本 B", "available": True, "paths": ["/private/b.flac"]},
+            {"id": "42", "title": "同名歌", "artist": "另一位", "album": "", "available": True, "paths": []},
+        ])
         repository = ExternalRepository(default)
         self.source = repository.upsert_source("default", snapshot(), 2_000_000_000)
         repository.replace_matches("default", self.source["id"], [
@@ -119,6 +124,8 @@ class ExternalApiV130Tests(unittest.TestCase):
         self.assertEqual(200, status)
         self.assertEqual(1, detail["total"])
         self.assertEqual(3, len(detail["tracks"][0]["candidate_ids"]))
+        self.assertEqual("版本 A", detail["tracks"][0]["candidates"][0]["album"])
+        self.assertNotIn("paths", detail["tracks"][0]["candidates"][0])
         rendered = json.dumps(detail, ensure_ascii=False)
         self.assertNotIn("secret-token", rendered)
         self.assertNotIn("QKYX:external", rendered)

@@ -267,6 +267,10 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
     def mixes_page():
         return HTMLResponse(render_versioned_html((STATIC / 'mixes.html').read_text(encoding='utf-8'), __version__))
 
+    @app.get('/external')
+    def external_page():
+        return HTMLResponse(render_versioned_html((STATIC / 'external.html').read_text(encoding='utf-8'), __version__))
+
     @app.get('/settings')
     def settings_page():
         return HTMLResponse(render_versioned_html((STATIC / 'settings.html').read_text(encoding='utf-8'), __version__))
@@ -284,7 +288,7 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
 
     @app.get('/static/{name}')
     def static(name):
-        if name not in ('home.js', 'home.css', 'theme_home.js', 'product.css', 'daily.js', 'refined.js', 'status.js', 'settings.js', 'auth.js', 'mixes.js'):
+        if name not in ('home.js', 'home.css', 'theme_home.js', 'product.css', 'daily.js', 'refined.js', 'status.js', 'settings.js', 'auth.js', 'mixes.js', 'external.js'):
             return Response(status_code=404)
         return FileResponse(STATIC / name, media_type='text/javascript' if name.endswith('.js') else 'text/css')
 
