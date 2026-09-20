@@ -89,6 +89,26 @@ class BehaviorStoreV120Tests(unittest.TestCase):
         self.assertEqual({"valid_outcomes": 4}, repo.load_user_state("default"))
         self.assertEqual({}, repo.load_user_state("friend"))
 
+    def test_record_evidence_updates_event_and_aggregates_exactly_once(self):
+        from helper.behavior_store import BehaviorRepository
+
+        repo = BehaviorRepository(self.store)
+        row = {
+            "event_key": "atomic-one",
+            "track_id": "9",
+            "kind": "completed",
+            "value": 1.0,
+            "at": NOW,
+        }
+
+        self.assertTrue(repo.record_evidence("default", row, NOW))
+        self.assertFalse(repo.record_evidence("default", row, NOW))
+
+        state = repo.load_track_state("default", "9")
+        user = repo.load_user_state("default")
+        self.assertEqual(1.0, state["positive_evidence"])
+        self.assertEqual(1, user["valid_outcomes"])
+
     def test_legacy_migration_is_idempotent_and_conservative(self):
         from helper.behavior_store import BehaviorRepository
 

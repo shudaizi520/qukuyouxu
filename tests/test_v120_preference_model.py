@@ -108,6 +108,25 @@ class PreferenceModelV120Tests(unittest.TestCase):
         self.assertEqual(0.0, state["confidence"])
         self.assertEqual(0.0, state["cooldown_until"])
 
+    def test_discovery_outcomes_update_the_adaptive_quota_baseline(self):
+        from helper.preference_model import apply_evidence
+
+        user = {}
+        _, user = apply_evidence(
+            {}, user,
+            {"kind": "completed", "value": 1, "discovery": True},
+            NOW,
+        )
+        _, user = apply_evidence(
+            {}, user,
+            {"kind": "confirmed_skip", "value": 0.45, "progress": 0.10, "discovery": True},
+            NOW + 1,
+        )
+
+        self.assertEqual(2, user["discovery_valid"])
+        self.assertEqual(1, user["discovery_completed"])
+        self.assertEqual(1, user["discovery_early_skips"])
+
 
 if __name__ == "__main__":
     unittest.main()

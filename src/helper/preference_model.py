@@ -126,6 +126,15 @@ def apply_evidence(track_state: dict, user_state: dict, evidence: dict,
         track["hard_avoid"] = True
         track["skip_evidence"] = max(3.0, track["skip_evidence"])
 
+    if (evidence or {}).get("discovery") and kind in (
+        "confirmed_skip", "late_exit", "substantial_listen", "completed",
+    ):
+        user["discovery_valid"] = int(_number(user.get("discovery_valid"))) + 1
+        if kind in ("substantial_listen", "completed"):
+            user["discovery_completed"] = int(_number(user.get("discovery_completed"))) + 1
+        if kind == "confirmed_skip" and _number((evidence or {}).get("progress"), 1.0) < 0.20:
+            user["discovery_early_skips"] = int(_number(user.get("discovery_early_skips"))) + 1
+
     user["updated_at"] = now
     track = _refresh_scores(track, now)
     return track, user

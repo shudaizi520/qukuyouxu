@@ -14,7 +14,7 @@ from starlette.responses import JSONResponse
 from .behavior import MAX_EVENT_AGE, MAX_EVENTS, recent_behavior_events
 from .behavior_store import BehaviorRepository
 from .playback_learning import advance_playback
-from .preference_model import apply_evidence, materialize_track_state
+from .preference_model import materialize_track_state
 from .scoped_store import ScopedStore
 
 
@@ -209,16 +209,8 @@ def load_behavior_snapshot(store, now=None):
         list(store.get("behavior_events", []) or []),
         now,
     )
-    if migration.get("inserted"):
-        user = repo.load_user_state(profile_id)
-        states = repo.load_track_states(profile_id)
-        for evidence in reversed(repo.list_events(profile_id, now)):
-            track_id = str(evidence.get("track_id") or "")
-            state, user = apply_evidence(states.get(track_id, {}), user, evidence, evidence.get("at") or now)
-            states[track_id] = state
-        for track_id, state in states.items():
-            repo.save_track_state(profile_id, track_id, state)
-        repo.save_user_state(profile_id, user)
+    if migration.get("needs_rebuild"):
+        repo.rebuild_aggregates(profile_id, now)
     snapshot = {}
     for track_id, saved in repo.load_track_states(profile_id).items():
         state = materialize_track_state(saved, now)
@@ -441,6 +433,19 @@ def apply_webhook_event(base_store, registry, payload, now=None):
     else:
         sessions, evidence_rows = advance_playback(sessions, signal, now, duration)
 
+    published = store.get("daily_published_view", {}) or {}
+    published_at = _number(published.get("published_at"), 0) or 0
+    discovery_ids = {
+        str(row.get("id") or "")
+        for row in published.get("items", []) or []
+        if isinstance(row, dict)
+        and row.get("bucket") in ("新鲜发现", "跨口味探索")
+    }
+    if now >= published_at:
+        for evidence in evidence_rows:
+            if str(evidence.get("track_id") or "") in discovery_ids:
+                evidence["discovery"] = True
+
     resulting = sessions.get(identity) or {}
     resulting_playback_id = resulting.get("playback_id")
     if resulting_playback_id:
@@ -455,14 +460,7 @@ def apply_webhook_event(base_store, registry, payload, now=None):
     repo = BehaviorRepository(base_store)
     recorded = 0
     for evidence in evidence_rows:
-        if not repo.append_event(profile_id, evidence):
-            continue
-        track = repo.load_track_state(profile_id, evidence["track_id"])
-        user = repo.load_user_state(profile_id)
-        track, user = apply_evidence(track, user, evidence, now)
-        repo.save_track_state(profile_id, evidence["track_id"], track)
-        repo.save_user_state(profile_id, user)
-        recorded += 1
+        recorded += int(repo.record_evidence(profile_id, evidence, now))
     repo.prune(profile_id, now)
     event_count = len(repo.list_events(profile_id, now))
     store.set_many({

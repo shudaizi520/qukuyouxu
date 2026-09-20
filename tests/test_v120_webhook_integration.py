@@ -95,6 +95,23 @@ class WebhookIntegrationV120Tests(unittest.TestCase):
         self.assertGreater(states["1"]["positive_evidence"], 0)
         self.assertTrue(states["2"]["hard_avoid"])
 
+    def test_published_discovery_track_updates_discovery_baseline(self):
+        from helper.plex_webhook import apply_webhook_event
+
+        ScopedStore(self.store, "default").set("daily_published_view", {
+            "published_at": 90,
+            "items": [{"id": "1", "bucket": "新鲜发现"}],
+        })
+
+        apply_webhook_event(
+            self.store, self.registry,
+            payload("media.scrobble", offset=190000), now=100,
+        )
+
+        user = self.repo.load_user_state("default")
+        self.assertEqual(1, user["discovery_valid"])
+        self.assertEqual(1, user["discovery_completed"])
+
     def test_load_snapshot_migrates_legacy_once_and_keeps_profiles_isolated(self):
         from helper.plex_webhook import load_behavior_snapshot
 
@@ -106,6 +123,51 @@ class WebhookIntegrationV120Tests(unittest.TestCase):
         self.assertIn("7", first)
         self.assertEqual(first, second)
         self.assertEqual([], self.repo.list_events("friend", 100))
+
+    def test_migration_rebuild_does_not_double_count_existing_v2_evidence(self):
+        from helper.plex_webhook import load_behavior_snapshot
+
+        owner = ScopedStore(self.store, "default")
+        owner.set("behavior_events", [
+            {"track_id": "7", "kind": "completed", "value": 1, "at": 90},
+        ])
+        current = {
+            "event_key": "already-v2",
+            "track_id": "8",
+            "kind": "completed",
+            "value": 1,
+            "at": 100,
+        }
+        self.repo.record_evidence("default", current, 100)
+
+        snapshot = load_behavior_snapshot(owner, 100)
+
+        self.assertAlmostEqual(1.0, snapshot["7"]["positive_evidence"], places=6)
+        self.assertEqual(1.0, snapshot["8"]["positive_evidence"])
+        self.assertEqual(2, self.repo.load_user_state("default")["valid_outcomes"])
+
+    def test_incomplete_migration_marker_is_rebuilt_on_next_read(self):
+        from helper.plex_webhook import load_behavior_snapshot
+
+        owner = ScopedStore(self.store, "default")
+        self.repo.append_event("default", {
+            "event_key": "migrated-before-restart",
+            "track_id": "7",
+            "kind": "completed",
+            "value": 1,
+            "at": 100,
+        })
+        self.store.set("profile:default:behavior_v2_migration", {
+            "complete": True,
+            "aggregates_complete": False,
+            "at": 100,
+        })
+
+        snapshot = load_behavior_snapshot(owner, 100)
+
+        self.assertEqual(1.0, snapshot["7"]["positive_evidence"])
+        marker = self.store.get("profile:default:behavior_v2_migration")
+        self.assertTrue(marker["aggregates_complete"])
 
 
 if __name__ == "__main__":

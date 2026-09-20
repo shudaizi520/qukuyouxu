@@ -51,6 +51,23 @@ class RollingDailyPolicyTests(unittest.TestCase):
             rolling_preserve_ids(before, [track(i) for i in range(1, 8)], [], NOW - 100),
         )
 
+    def test_unplayed_member_is_replaced_after_two_consecutive_daily_lists(self):
+        from helper.daily import rolling_preserve_ids
+
+        before = {"items": [{"id": "1"}, {"id": "2"}]}
+        history = [
+            {"ids": ["1"], "created_at": NOW - 2 * DAY},
+            {"ids": ["1", "2"], "created_at": NOW - DAY},
+        ]
+
+        self.assertEqual(
+            ["2"],
+            rolling_preserve_ids(
+                before, [track(1), track(2)], [], NOW - DAY,
+                history=history,
+            ),
+        )
+
     def test_recent_seeds_follow_last_twenty_active_plays_not_seven_calendar_days(self):
         from helper.daily_mix_v035 import recent_positive_play_times
 

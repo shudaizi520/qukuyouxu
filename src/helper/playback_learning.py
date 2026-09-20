@@ -59,17 +59,26 @@ def _new_session(identity: str, signal: dict, now: float, catalog_duration: floa
 def _advance_time(session: dict, signal: dict, now: float, catalog_duration: float) -> dict:
     row = dict(session)
     last_at = _number(row.get("last_at"), now)
+    elapsed = max(0.0, float(now) - last_at)
+    offset_provided = signal.get("offset_seconds") not in (None, "")
+    previous_offset = _number(row.get("last_offset"))
+    next_offset = _number(signal.get("offset_seconds"), previous_offset)
     if row.get("state") in _ACTIVE_EVENTS:
-        elapsed = max(0.0, float(now) - last_at)
+        effective = elapsed
+        offset_delta = next_offset - previous_offset
+        # Prefer a forward position delta when it fits the elapsed wall time.
+        # Larger jumps are seeks; zero/backward deltas fall back to active time.
+        if offset_provided and 0 < offset_delta <= elapsed + 15.0:
+            effective = offset_delta
         # A Webhook that arrives many hours late must not manufacture a listen.
-        row["active_seconds"] = _number(row.get("active_seconds")) + min(elapsed, 6 * 3600)
+        row["active_seconds"] = _number(row.get("active_seconds")) + min(effective, 6 * 3600)
     duration = _number(signal.get("duration_seconds")) or _number(row.get("duration")) or _number(catalog_duration)
     if duration:
         row["duration"] = duration
         row["duration_seconds"] = duration
     row["last_at"] = float(now)
     row["updated_at"] = float(now)
-    row["last_offset"] = _number(signal.get("offset_seconds"), row.get("last_offset") or 0)
+    row["last_offset"] = next_offset
     row["offset_seconds"] = row["last_offset"]
     return row
 

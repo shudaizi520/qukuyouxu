@@ -90,6 +90,18 @@ class PlaybackLearningV120Tests(unittest.TestCase):
         self.assertEqual("confirmed_skip", rows[0]["kind"])
         self.assertLess(rows[0]["progress"], 0.20)
 
+    def test_trustworthy_position_delta_wins_over_webhook_delivery_delay(self):
+        from helper.playback_learning import advance_playback
+
+        sessions, _ = advance_playback({}, signal("media.play", offset=0), 0, 240)
+        sessions, _ = advance_playback(
+            sessions, signal("media.stop", offset=30), 50, 240,
+        )
+        _, rows = advance_playback(sessions, signal("media.play", "2"), 55, 180)
+
+        self.assertEqual(0.45, rows[0]["value"])
+        self.assertAlmostEqual(0.125, rows[0]["progress"])
+
     def test_scrobble_emits_one_completion_and_delayed_stop_emits_nothing(self):
         from helper.playback_learning import advance_playback
 

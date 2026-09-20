@@ -27,7 +27,8 @@ def active_daily_blocks(plan):
     return [reason for reason in (plan.get('blocked') or []) if reason != OBSOLETE_SAME_NAME_BLOCK]
 
 
-def rolling_preserve_ids(before, tracks, behavior_events, published_at):
+def rolling_preserve_ids(before, tracks, behavior_events, published_at, history=None,
+                         max_consecutive=2):
     """Keep current playlist members that have no play/skip signal after publish."""
     if not before:
         return []
@@ -44,7 +45,14 @@ def rolling_preserve_ids(before, tracks, behavior_events, published_at):
     result = []
     for item in before.get('items', []):
         track_id = str(item.get('id') or '')
-        if track_id and track_id not in listened and track_id not in result:
+        consecutive = 0
+        for row in reversed(history or []):
+            if track_id in {str(value) for value in row.get('ids', []) or []}:
+                consecutive += 1
+            else:
+                break
+        if (track_id and track_id not in listened and track_id not in result
+                and consecutive < max(1, int(max_consecutive))):
             result.append(track_id)
     return result
 
@@ -176,7 +184,8 @@ class DailyMixin:
                 [number_time(row.get('created_at')) for row in self.store.get('daily_history', [])] or [0]
             )
         preserve_ids = [] if force_full else rolling_preserve_ids(
-            before, audience['tracks'], audience['events'], published_at
+            before, audience['tracks'], audience['events'], published_at,
+            history=self.store.get('daily_history', []),
         )
         result = recommend_rotating(
             self, audience['tracks'], audience['features'], self.store.get('feedback', {}),

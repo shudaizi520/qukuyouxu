@@ -116,6 +116,52 @@ class BehaviorRepository:
             )
             return result.rowcount == 1
 
+    def record_evidence(self, profile_id: str, event: dict, now: float) -> bool:
+        """Append and reduce one event atomically so concurrent Webhooks cannot lose updates."""
+        from .preference_model import apply_evidence
+
+        profile_id = self._profile(profile_id)
+        values = self._event_values(event)
+        if not values[0] or not values[1] or not values[2]:
+            raise ValueError("播放行为缺少事件、歌曲或类型标识")
+        track_id = values[1]
+        with self.store.lock, self.store._db() as db:
+            result = db.execute(
+                """INSERT OR IGNORE INTO behavior_event (
+                    profile_id, event_key, track_id, kind, value, at,
+                    progress, duration, player_id, playback_id, payload
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (profile_id, *values),
+            )
+            if result.rowcount != 1:
+                return False
+            track_row = db.execute(
+                "SELECT state FROM behavior_track_state WHERE profile_id=? AND track_id=?",
+                (profile_id, track_id),
+            ).fetchone()
+            user_row = db.execute(
+                "SELECT state FROM behavior_user_state WHERE profile_id=?",
+                (profile_id,),
+            ).fetchone()
+            track, user = apply_evidence(
+                json.loads(track_row[0]) if track_row else {},
+                json.loads(user_row[0]) if user_row else {},
+                event,
+                float(now),
+            )
+            db.execute(
+                """INSERT INTO behavior_track_state(profile_id, track_id, state)
+                   VALUES (?, ?, ?)
+                   ON CONFLICT(profile_id, track_id) DO UPDATE SET state=excluded.state""",
+                (profile_id, track_id, _json(track)),
+            )
+            db.execute(
+                """INSERT INTO behavior_user_state(profile_id, state) VALUES (?, ?)
+                   ON CONFLICT(profile_id) DO UPDATE SET state=excluded.state""",
+                (profile_id, _json(user)),
+            )
+            return True
+
     def prune(self, profile_id: str, now: float) -> None:
         profile_id = self._profile(profile_id)
         cutoff = float(now) - EVENT_MAX_AGE
@@ -200,8 +246,13 @@ class BehaviorRepository:
         inserted = 0
         with self.store.lock, self.store._db() as db:
             marker = db.execute("SELECT v FROM state WHERE k=?", (marker_key,)).fetchone()
-            if marker and (json.loads(marker[0]) or {}).get("complete"):
-                return {"inserted": 0, "already_complete": True}
+            marker_value = (json.loads(marker[0]) or {}) if marker else {}
+            if marker_value.get("complete"):
+                return {
+                    "inserted": 0,
+                    "already_complete": True,
+                    "needs_rebuild": not marker_value.get("aggregates_complete", False),
+                }
             for index, original in enumerate(legacy_events or []):
                 event = dict(original or {})
                 track_id = str(event.get("track_id") or event.get("rating_key") or "")
@@ -230,9 +281,70 @@ class BehaviorRepository:
                 inserted += max(0, result.rowcount)
             db.execute(
                 "INSERT INTO state(k,v) VALUES (?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v",
-                (marker_key, _json({"complete": True, "at": float(now), "inserted": inserted})),
+                (marker_key, _json({
+                    "complete": True,
+                    "aggregates_complete": False,
+                    "at": float(now),
+                    "inserted": inserted,
+                })),
             )
-        return {"inserted": inserted, "already_complete": False}
+        return {"inserted": inserted, "already_complete": False, "needs_rebuild": True}
+
+    def rebuild_aggregates(self, profile_id: str, now: float) -> None:
+        """Rebuild one profile after migration and mark it complete atomically."""
+        from .preference_model import apply_evidence
+
+        profile_id = self._profile(profile_id)
+        marker_key = f"profile:{profile_id}:behavior_v2_migration"
+        with self.store.lock, self.store._db() as db:
+            existing_rows = db.execute(
+                "SELECT track_id, state FROM behavior_track_state WHERE profile_id=?",
+                (profile_id,),
+            ).fetchall()
+            existing_states = {
+                track_id: json.loads(state) for track_id, state in existing_rows
+            }
+            rows = db.execute(
+                """SELECT event_key, track_id, kind, value, at, progress,
+                          duration, player_id, playback_id, payload
+                   FROM behavior_event
+                   WHERE profile_id=? AND at<=?
+                   ORDER BY at ASC, id ASC""",
+                (profile_id, float(now)),
+            ).fetchall()
+            states: dict[str, dict] = {}
+            user: dict = {}
+            for row in rows:
+                evidence = _event_dict(row)
+                track_id = evidence["track_id"]
+                track, user = apply_evidence(
+                    states.get(track_id, {}), user, evidence,
+                    float(evidence.get("at") or now),
+                )
+                states[track_id] = track
+            # Aggregates can outlive their 180-day raw events. Preserve only
+            # tracks that have no retained event to rebuild from; retained
+            # events remain the source of truth for every overlapping track.
+            for track_id, state in existing_states.items():
+                states.setdefault(track_id, state)
+            db.execute("DELETE FROM behavior_track_state WHERE profile_id=?", (profile_id,))
+            db.execute("DELETE FROM behavior_user_state WHERE profile_id=?", (profile_id,))
+            db.executemany(
+                "INSERT INTO behavior_track_state(profile_id, track_id, state) VALUES (?, ?, ?)",
+                ((profile_id, track_id, _json(state)) for track_id, state in states.items()),
+            )
+            if user:
+                db.execute(
+                    "INSERT INTO behavior_user_state(profile_id, state) VALUES (?, ?)",
+                    (profile_id, _json(user)),
+                )
+            marker_row = db.execute("SELECT v FROM state WHERE k=?", (marker_key,)).fetchone()
+            marker = (json.loads(marker_row[0]) or {}) if marker_row else {}
+            marker.update(complete=True, aggregates_complete=True, aggregates_at=float(now))
+            db.execute(
+                "INSERT INTO state(k,v) VALUES (?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v",
+                (marker_key, _json(marker)),
+            )
 
     def delete_profile(self, profile_id: str) -> None:
         profile_id = self._profile(profile_id)
