@@ -121,15 +121,16 @@ function auditionButton(track,candidate='',label='试听'){
  button.onclick=()=>playTrack(track,candidate,button,progress);control.append(button,progress);return control;
 }
 function stopAudition(){
- const player=$('auditionPlayer');player.pause();player.removeAttribute('src');player.load();if(previewButton)previewButton.textContent='试听';if(previewProgress)previewProgress.textContent='0:00';previewButton=null;previewProgress=null;previewKey='';
+ const player=$('auditionPlayer');player.pause();player.removeAttribute('src');player.load();if(previewButton)previewButton.textContent='试听';if(previewProgress){previewProgress.textContent='0:00';previewProgress.classList.remove('is-error');}previewButton=null;previewProgress=null;previewKey='';
 }
+function showPreviewError(){if(previewButton)previewButton.textContent='重试';if(previewProgress){previewProgress.textContent='无法播放';previewProgress.classList.add('is-error');}}
 function playTrack(track,candidate='',button,progress){
  const key=String(track.source_track_key||'')+'\0'+String(candidate||''),player=$('auditionPlayer');
- if(previewKey===key&&player.src){if(player.paused)player.play().catch(()=>notify('浏览器暂时无法播放这个音频格式，可以换一首试听。',true));else player.pause();return;}
+ if(previewKey===key&&player.src){if(player.paused)player.play().catch(showPreviewError);else player.pause();return;}
  stopAudition();previewButton=button;previewProgress=progress;previewKey=key;
  const params=new URLSearchParams();const profile=PCHAuth.profile();if(profile)params.set('profile_id',profile);if(candidate)params.set('candidate',String(candidate));
  player.src='/api/external/sources/'+encodeURIComponent(current.id)+'/tracks/'+encodeURIComponent(track.source_track_key)+'/audio?'+params.toString();
- player.play().catch(()=>notify('浏览器暂时无法播放这个音频格式，可以换一首试听。',true));
+ player.play().catch(showPreviewError);
 }
 function audioTime(value){const seconds=Math.max(0,Math.floor(Number(value)||0));return Math.floor(seconds/60)+':'+String(seconds%60).padStart(2,'0');}
 function renderSearchActions(actions,track){
@@ -210,7 +211,9 @@ $('downloadImage').onclick=()=>action(async()=>{await downloadLongImages();notif
 $('downloadText').onclick=event=>{event.preventDefault();action(()=>downloadExport('text'));};
 $('downloadCsv').onclick=event=>{event.preventDefault();action(()=>downloadExport('csv'));};
 $('copyShareLink').onclick=()=>action(async()=>{const url=new URL(location.href);url.searchParams.set('source',current.id);url.searchParams.set('tab','missing');await copyText(url.toString());notify('查看链接已复制；打开后仍需登录本应用。');});
-const player=$('auditionPlayer');player.addEventListener('playing',()=>{const button=previewButton;if(button)button.textContent='暂停';});player.addEventListener('pause',()=>{if(previewButton&&previewKey)previewButton.textContent='继续';});player.addEventListener('timeupdate',()=>{if(previewProgress)previewProgress.textContent=audioTime(player.currentTime)+(Number.isFinite(player.duration)?' / '+audioTime(player.duration):'');});player.addEventListener('ended',()=>{if(previewButton)previewButton.textContent='重播';if(previewProgress&&Number.isFinite(player.duration))previewProgress.textContent=audioTime(player.duration)+' / '+audioTime(player.duration);});player.addEventListener('error',()=>{if(previewButton)previewButton.textContent='重试';});
+const player=$('auditionPlayer');player.addEventListener('playing',()=>{const button=previewButton;if(button)button.textContent='暂停';if(previewProgress)previewProgress.classList.remove('is-error');});player.addEventListener('pause',()=>{if(previewButton&&previewKey)previewButton.textContent='继续';});player.addEventListener('timeupdate',()=>{if(previewProgress)previewProgress.textContent=audioTime(player.currentTime)+(Number.isFinite(player.duration)?' / '+audioTime(player.duration):'');});player.addEventListener('ended',()=>{if(previewButton)previewButton.textContent='重播';if(previewProgress&&Number.isFinite(player.duration))previewProgress.textContent=audioTime(player.duration)+' / '+audioTime(player.duration);});player.addEventListener('error',showPreviewError);
+function reportEmbeddedHeight(){if(window.self===window.top)return;requestAnimationFrame(()=>{const workspace=$('workspace');if(!workspace||workspace.hidden)return;const height=Math.ceil(workspace.getBoundingClientRect().height+24);parent.postMessage({type:'pch-tool-height',height},location.origin);});}
+if(window.self!==window.top&&window.ResizeObserver){const observer=new ResizeObserver(reportEmbeddedHeight);observer.observe(document.documentElement);observer.observe($('workspace'));window.addEventListener('load',reportEmbeddedHeight);}
 window.addEventListener('pch-profile-change',()=>action(async()=>{current=null;page=1;await loadSources();}));
 async function boot(){
  const requested=new URLSearchParams(location.search).get('tab');if(['matched','review','missing'].includes(requested))activeStatus=requested;

@@ -425,6 +425,22 @@ class ExternalPlaylistPreviewUiTests(unittest.TestCase):
         self.assertNotIn("publishExplanation", page)
         self.assertNotIn("这只是查看链接", page)
 
+    def test_embedded_external_workspace_is_compact_and_has_no_nested_scroll(self):
+        page = (STATIC / "external.html").read_text(encoding="utf-8")
+        script = (STATIC / "external.js").read_text(encoding="utf-8")
+        hub_script = (STATIC / "playlists.js").read_text(encoding="utf-8")
+        styles = (STATIC / "product.css").read_text(encoding="utf-8")
+        self.assertIn("external-page-title", page)
+        self.assertIn("external-source-strip", page)
+        self.assertIn("function showPreviewError", script)
+        self.assertIn("ResizeObserver", script)
+        self.assertIn("pch-tool-height", script)
+        self.assertIn("pch-tool-height", hub_script)
+        self.assertNotIn("player.play().catch(()=>notify('浏览器暂时无法播放", script)
+        self.assertIn(".pch-embedded body[data-view=external] .external-shell", styles)
+        self.assertIn(".external-source-list{display:flex", styles)
+        self.assertIn("scrolling", hub_script)
+
 
 if __name__ == "__main__":
     unittest.main()

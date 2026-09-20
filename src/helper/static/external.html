@@ -23,10 +23,10 @@
  <header class="topbar"><a class="brand" href="/"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v1.4.1</small></span></a><nav><a href="/">我的歌单</a><a href="/status">运行状态</a><a href="/settings">设置</a></nav><button class="logout" data-auth-logout hidden>退出</button></header>
  <main class="wrap external-shell">
   <div id="notice" class="notice" role="status" hidden></div>
-  <section class="hero"><div><h1>外部歌单</h1></div></section>
+  <section class="hero external-page-title"><div><h1>外部歌单</h1><p>导入公开歌单，与自己的 Plex 曲库快速核对。</p></div></section>
 
   <section id="importCard" class="card external-import-card">
-   <div class="panel-title"><h2>导入歌单</h2></div>
+   <div class="panel-title"><h2>导入歌单</h2><span class="external-import-hint">QQ 音乐、网易云音乐或本地歌单文件</span></div>
    <form id="importForm" class="external-import-form">
     <label class="field external-url-field" for="sourceUrl"><span>公开歌单链接</span><input id="sourceUrl" type="url" inputmode="url" autocomplete="off" placeholder="粘贴 QQ 音乐或网易云音乐公开歌单链接"></label>
     <button id="importSource" class="primary" type="submit">导入并分析</button>
@@ -36,13 +36,13 @@
   </section>
 
   <section id="sourceWorkspace" class="external-workspace" hidden>
-   <aside class="card external-source-panel" aria-label="已导入歌单">
+   <aside class="external-source-panel external-source-strip" aria-label="已导入歌单">
     <div class="panel-title"><h2>已导入</h2><button id="reloadSources" class="secondary compact-button" type="button">刷新</button></div>
     <div id="sourceList" class="external-source-list"></div>
    </aside>
 
    <div class="external-detail-stack">
-    <section id="detailCard" class="card">
+    <section id="detailCard" class="card external-detail-card">
      <div class="external-detail-head"><div><span id="sourceProvider" class="eyebrow"></span><h2 id="sourceTitle">歌单</h2><span id="sourceState" class="external-state"></span></div><div class="actions"><button id="refreshSource" class="secondary" type="button">重新读取</button><button id="removeSource" class="danger" type="button">移除</button></div></div>
      <div class="external-counts" aria-label="匹配结果">
       <button class="external-count-tab active" type="button" data-match-status="matched"><span>已匹配</span><strong id="matchedCount">0</strong></button>
