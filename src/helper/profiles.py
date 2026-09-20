@@ -11,7 +11,7 @@ import uuid
 from .scoped_store import GLOBAL_KEYS, ScopedStore, validate_profile_id
 from .store import DEFAULT_SETTINGS
 from .behavior_store import delete_profile_rows
-from .external_store import delete_external_profile_rows
+from .external_store import ExternalRepository, delete_external_profile_rows
 
 
 REGISTRY_KEY = "plex_profiles_v1"
@@ -461,7 +461,8 @@ class ProfileRegistry:
         if profile_id not in value["profiles"]:
             raise ValueError("Plex 档案不存在")
         scoped = ScopedStore(self.store, profile_id)
-        if scoped.get("managed", {}) or scoped.get("daily_managed"):
+        if (scoped.get("managed", {}) or scoped.get("daily_managed")
+                or ExternalRepository(self.store).has_managed(profile_id)):
             raise ValueError("该档案仍有托管歌单，不能删除")
         prefix = f"profile:{profile_id}:"
         with self.store.lock, self.store._db() as db:

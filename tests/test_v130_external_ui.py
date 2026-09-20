@@ -64,8 +64,8 @@ class ExternalPlaylistUiV130Tests(unittest.TestCase):
         self.assertIn("render_versioned_html((STATIC / 'external.html')", source)
         self.assertIn("'external.js'", source)
         page = (STATIC / "external.html").read_text(encoding="utf-8")
-        self.assertEqual(1, page.count('id="version">v1.2.1</small>'))
-        self.assertIn('/static/external.js?v=1.2.1', page)
+        self.assertEqual(1, page.count('id="version">v1.3.0</small>'))
+        self.assertIn('/static/external.js?v=1.3.0', page)
 
 
 if __name__ == "__main__":
