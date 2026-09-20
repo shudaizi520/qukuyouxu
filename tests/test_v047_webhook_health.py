@@ -69,16 +69,15 @@ class WebhookHealthV047Tests(unittest.TestCase):
         self.assertEqual("media.play", health["last_event"])
         self.assertEqual(0, health["event_count"])
 
-    def test_old_success_requires_new_playback_verification(self):
-        from helper.plex_webhook import WEBHOOK_CONNECTION_TTL, apply_webhook_event, webhook_health
+    def test_confirmed_webhook_stays_connected_during_a_long_listening_gap(self):
+        from helper.plex_webhook import apply_webhook_event, webhook_health
 
         apply_webhook_event(self.base, self.registry, payload("media.play"), now=100)
-        health = webhook_health(
-            self.base, self.profile, now=100 + WEBHOOK_CONNECTION_TTL + 1
-        )
+        health = webhook_health(self.base, self.profile, now=100 + 30 * 24 * 3600)
 
-        self.assertEqual("verification_needed", health["state"])
-        self.assertFalse(health["connected"])
+        self.assertEqual("connected_waiting", health["state"])
+        self.assertTrue(health["connected"])
+        self.assertTrue(health["global_connected"])
         self.assertEqual(100, health["last_received_at"])
 
     def test_disabled_profile_delivery_still_proves_global_webhook_connection(self):

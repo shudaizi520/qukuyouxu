@@ -23,7 +23,6 @@ ACTIVE_SESSION_TTL = 6 * 3600
 TERMINAL_SESSION_TTL = 3600
 UNKNOWN_DURATION_PLAYING_TTL = 5 * 60
 PLAYBACK_END_GRACE = 30
-WEBHOOK_CONNECTION_TTL = 6 * 3600
 MAX_BEHAVIOR_SESSIONS = 256
 SUPPORTED_EVENTS = frozenset({
     "media.play", "media.pause", "media.resume", "media.stop", "media.scrobble", "media.rate"
@@ -227,7 +226,7 @@ def webhook_endpoint_path(base_store, now=None):
 
 
 def webhook_health(base_store, profile_store, now=None):
-    """Describe connection only when the current secret received an event."""
+    """Keep a current-secret Webhook verified until that secret is replaced."""
     now = time.time() if now is None else float(now)
     endpoint_path = webhook_endpoint_path(base_store, now=now)
     secret_created_at = _number(base_store.get(WEBHOOK_SECRET_CREATED_KEY), None)
@@ -252,11 +251,12 @@ def webhook_health(base_store, profile_store, now=None):
         key=lambda row: _number(row.get("received_at"), 0) or 0,
         default={},
     )
-    global_connected = bool(
-        global_ingress
-        and now - (_number(global_ingress.get("received_at"), 0) or 0)
-        <= WEBHOOK_CONNECTION_TTL
-    )
+    # A quiet Plex server is not a disconnected Plex server. Webhooks do not
+    # have a heartbeat, so elapsed time since the last delivery cannot prove a
+    # failure. Secret creation time is the durable validation boundary: after
+    # an event reaches the current endpoint, it remains verified until that
+    # endpoint's secret is replaced.
+    global_connected = bool(global_ingress)
     events = recent_behavior_events(profile_store.get("behavior_events", []) or [], now)
     product = profile_store.get("product_settings", {}) or {}
     profile_id = str(getattr(profile_store, "profile_id", "") or "")
@@ -267,18 +267,12 @@ def webhook_health(base_store, profile_store, now=None):
         and ingress.get("profile_id") == profile_id
         and ingress.get("status") in ("accepted", "recorded", "duplicate")
     )
-    matched = bool(
-        matched_before
-        and now - (_number(ingress.get("received_at"), 0) or 0)
-        <= WEBHOOK_CONNECTION_TTL
-    )
+    matched = matched_before
     enabled = product.get("behavior_enabled", True) is not False
     if not enabled:
         state = "disabled"
     elif not matched_before:
         state = "not_connected"
-    elif not matched:
-        state = "verification_needed"
     elif events:
         state = "learning"
     else:
