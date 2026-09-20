@@ -286,6 +286,17 @@ class PlexClient:
         return {'id':str(pid),'title':e.get('title',''),'summary':e.get('summary',''),
                 'items':[{'id':str(x.get('ratingKey')),'item_id':str(x.get('playlistItemID'))} for x in arr]}
 
+    def read_playlist_until(self,pid,predicate,attempts=8,delay=0.25):
+        """Retry only Plex reads after a write; never repeats the mutation."""
+        if isinstance(attempts,bool) or not isinstance(attempts,int) or not 1<=attempts<=20:
+            raise ValueError('回读次数无效')
+        last=None
+        for attempt in range(attempts):
+            last=self.playlist_state(pid)
+            if predicate(last):return last
+            if attempt+1<attempts:time.sleep(delay*(attempt+1))
+        return last
+
     def _uri(self,ids):
         if not ids or any(not str(x).isdigit() for x in ids):raise PlexError('空曲目或非法曲目ID')
         if not self.machine:self.identity()
