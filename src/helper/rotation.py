@@ -1,7 +1,7 @@
-"""v0.3.5 preview rotation; Plex publication safeguards remain authoritative."""
+"""Daily Mix V2 adapter; Plex publication safeguards remain authoritative."""
 import time
 from .recommend import recommend
-from .daily_mix_v035 import POLICY_VERSION, recommend_rotating_v035, save_v035_plan
+from .daily_mix_v2 import POLICY_VERSION, recommend_rotating_v2, save_v2_plan
 from . import daily as _daily
 
 # The v0.3.4 preview signature did not identify its algorithm.  Keep the old
@@ -16,21 +16,37 @@ if not hasattr(_daily.DailyMixin, '_v034_daily_signature'):
         from .engine import digest
         product = self.store.get('product_settings', {}) or {}
         account_id, _username = profile_behavior_identity(self.store)
+        v2_behavior = {}
+        base_store = getattr(self.store, 'base', self.store)
+        profile_id = str(getattr(self.store, 'profile_id', '') or '')
+        if profile_id and hasattr(base_store, '_db'):
+            try:
+                from .behavior_store import BehaviorRepository
+                repository = BehaviorRepository(base_store)
+                v2_behavior = {
+                    'tracks': repository.load_track_states(profile_id),
+                    'user': repository.load_user_state(profile_id),
+                }
+            except (KeyError, ValueError):
+                v2_behavior = {}
         return digest({
             'base': self._v034_daily_signature(),
             'policy': POLICY_VERSION,
             'history_account': account_id,
             'behavior_enabled': product.get('behavior_enabled', True) is not False,
-            'behavior': digest(self.store.get('behavior_events',[]) or []),
+            'behavior': digest({
+                'legacy': self.store.get('behavior_events',[]) or [],
+                'v2': v2_behavior,
+            }),
         })
 
     _daily.DailyMixin.daily_signature = _daily_signature_v035
 
 def recommend_rotating(engine,*args,**kwargs):
-    return recommend_rotating_v035(engine,recommend,*args,**kwargs)
+    return recommend_rotating_v2(engine,recommend,*args,**kwargs)
 
 def save_rotating_plan(engine,values):
-    return save_v035_plan(engine,values)
+    return save_v2_plan(engine,values)
 
 def reconciliation_state(engine):
     from .engine import SafetyError, fingerprint, state_ids

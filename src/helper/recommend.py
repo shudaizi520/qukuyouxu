@@ -33,10 +33,11 @@ def diagnostic_display(stats):
             'selected': int(number(stats.get('selected'))),
         },
         'buckets': {
-            'stable': int(number(buckets.get('稳定喜好'))),
+            'stable': int(number(buckets.get('稳定偏好', buckets.get('稳定喜好')))),
             'recent': int(number(buckets.get('近期口味'))),
             'rediscovery': int(number(buckets.get('久未重听'))),
-            'exploration': int(number(buckets.get('曲库探索'))),
+            'exploration': int(number(buckets.get('曲库探索')) + number(buckets.get('新鲜发现'))
+                               + number(buckets.get('跨口味探索')) + number(buckets.get('恢复观察'))),
         },
         'exclusions': {
             'manual': int(number(stats.get('excluded_never_recommend'))),

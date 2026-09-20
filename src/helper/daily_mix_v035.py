@@ -801,13 +801,16 @@ def attach_policy_routes(app, store, engine, body, ensure_idle):
 
     @app.get("/api/daily/policy")
     def policy_settings():
+        # The settings route is shared by the rollback policy and the active
+        # adapter. Resolve the active version lazily to avoid an import cycle.
+        from .rotation import POLICY_VERSION as active_policy_version
         saved = store.get("daily_settings", {}) or {}
         values = {key: saved.get(key, POLICY[key]) for key in (
             "size", "rediscovery_days", "artist_cap", "favorite_percent"
         )}
         values["daily_avoid_days"] = POLICY["daily_avoid_days"]
         return values | {
-            "hour": saved.get("hour", 6), "algorithm_version": POLICY_VERSION,
+            "hour": saved.get("hour", 6), "algorithm_version": active_policy_version,
             "recent_mode": "activity", "recent_seed_limit": POLICY["recent_seed_limit"],
             "recent_max_days": POLICY["recent_max_days"],
         }
