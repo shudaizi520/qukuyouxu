@@ -8,15 +8,15 @@ sys.path.insert(0, str(ROOT / "src"))
 
 
 class ReleaseVersionTests(unittest.TestCase):
-    def test_application_and_static_pages_use_release_1_4_3(self):
+    def test_application_and_static_pages_use_release_1_4_4(self):
         from helper import __version__
 
-        self.assertEqual("1.4.3", __version__)
+        self.assertEqual("1.4.4", __version__)
         for name in ("playlists.html", "daily.html", "home.html", "mixes.html", "external.html", "settings.html", "status.html"):
             with self.subTest(name=name):
                 html = (ROOT / "src/helper/static" / name).read_text(encoding="utf-8")
-                self.assertIn("?v=1.4.3", html)
-                self.assertIn(">v1.4.3<", html)
+                self.assertIn("?v=1.4.4", html)
+                self.assertIn(">v1.4.4<", html)
 
     def test_release_notes_describe_external_playlist_workflow_and_limits(self):
         changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
@@ -24,6 +24,7 @@ class ReleaseVersionTests(unittest.TestCase):
 
         self.assertIn("## 1.4.2 - 2026-09-20", changelog)
         self.assertIn("## 1.4.3 - 2026-09-20", changelog)
+        self.assertIn("## 1.4.4 - 2026-09-20", changelog)
         self.assertIn("全库搜索", changelog)
         self.assertIn("自动重试", changelog)
         self.assertIn("20,000", changelog)
@@ -40,7 +41,7 @@ class ReleaseVersionTests(unittest.TestCase):
     def test_accepts_exact_v_prefixed_application_version(self):
         from tools.check_release_version import check_release_version
 
-        self.assertEqual("1.4.3", check_release_version("v1.4.3", "1.4.3"))
+        self.assertEqual("1.4.4", check_release_version("v1.4.4", "1.4.4"))
 
     def test_rejects_mismatched_or_malformed_tags(self):
         from tools.check_release_version import check_release_version

@@ -4,9 +4,9 @@
  <meta charset="utf-8">
  <meta name="viewport" content="width=device-width,initial-scale=1">
  <title>曲库有序 · 我的歌单</title>
- <link rel="stylesheet" href="/static/product.css?v=1.4.3">
- <script defer src="/static/auth.js?v=1.4.3"></script>
- <script type="module" src="/static/playlists.js?v=1.4.3"></script>
+ <link rel="stylesheet" href="/static/product.css?v=1.4.4">
+ <script defer src="/static/auth.js?v=1.4.4"></script>
+ <script type="module" src="/static/playlists.js?v=1.4.4"></script>
 </head>
 <body data-view="playlists" data-auth-state="checking">
 <div id="bootScreen" class="auth-boot"><div class="boot-mark">♫</div><strong>曲库有序</strong><span>正在进入你的音乐库…</span></div>
@@ -21,7 +21,7 @@
 <div id="workspace" hidden>
  <header class="topbar">
   <button id="playlistSidebarToggle" class="playlist-sidebar-toggle" type="button" aria-label="打开歌单导航" aria-controls="playlistSidebar" aria-expanded="false">☰</button>
-  <button class="brand" id="workspaceHome" type="button"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v1.4.3</small></span></button>
+  <button class="brand" id="workspaceHome" type="button"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v1.4.4</small></span></button>
   <form id="librarySearchForm" class="playlist-global-search" role="search"><span aria-hidden="true">⌕</span><input id="librarySearchInput" type="search" placeholder="搜索全库歌曲、歌手或专辑" autocomplete="off"><button type="submit">搜索</button></form>
   <nav><button type="button" data-workspace-url="/status">运行状态</button><button type="button" data-workspace-url="/settings">设置</button></nav><button class="logout" data-auth-logout hidden>退出</button>
  </header>
@@ -50,7 +50,7 @@
       <div><span id="playlistKind" class="playlist-kind">我的歌单</span><h1 id="playlistTitle">选择一个歌单</h1><p id="playlistSummary" class="muted">0 首歌曲</p></div>
       <div class="playlist-actions"><button id="playlistAddTrack" class="secondary" type="button" hidden>添加歌曲</button><button id="playlistManage" class="secondary" type="button" hidden>管理</button><button id="playlistRemove" class="danger" type="button" hidden>删除歌单</button><button id="playlistPlayAll" class="primary" type="button" disabled>▶ 播放全部</button></div>
      </header>
-     <div class="playlist-track-head"><span>#</span><span>歌曲</span><span>专辑</span><span>时长</span></div>
+     <div class="playlist-track-head"><span>#</span><span>歌曲</span><span>歌手</span><span>专辑</span><span>时长</span><span aria-hidden="true"></span></div>
     </div>
     <div class="playlist-track-scroll">
      <div id="playlistTracks" class="playlist-tracks"></div>
@@ -73,11 +73,14 @@
   <label class="playlist-search-target">选择歌单<select id="librarySearchTarget"></select></label>
   <div class="playlist-dialog-actions"><button id="librarySearchConfirm" class="primary" type="button">确认添加</button></div>
  </dialog>
- <footer id="playlistPlayer" class="playlist-player">
-  <div id="playerFeedback" class="playlist-player-feedback" role="alert" hidden><span id="playerFeedbackMessage">这首歌暂时无法播放</span><button id="playerRetry" type="button">重试</button><button id="playerErrorNext" type="button">下一首</button></div>
-  <div class="playlist-now"><div id="playerArtwork" class="playlist-artwork" aria-hidden="true">♫</div><div><strong id="playerTitle">未播放</strong><span id="playerArtist">请选择歌曲</span></div></div>
-  <div class="playlist-player-center"><div class="playlist-player-buttons"><button id="playerPrevious" type="button" aria-label="上一首">‹</button><button id="playerToggle" class="playlist-player-toggle" type="button" aria-label="播放或暂停">▶</button><button id="playerNext" type="button" aria-label="下一首">›</button></div><div class="playlist-progress"><span id="playerCurrent">0:00</span><input id="playerSeek" type="range" min="0" max="1000" value="0" aria-label="播放进度"><span id="playerDuration">0:00</span></div></div>
-  <div class="playlist-player-tools"><span id="playerQueue" class="playlist-player-queue">0 / 0</span><button id="playerMute" type="button" aria-label="静音">音量</button><input id="playerVolume" type="range" min="0" max="1" step="0.05" value="1" aria-label="音量"></div>
+ <footer id="playlistPlayer" class="playlist-player" data-playing="false" data-muted="false">
+  <div id="playlistProgressRail" class="playlist-progress-rail"><input id="playerSeek" type="range" min="0" max="1000" value="0" aria-label="播放进度"></div>
+  <div class="playlist-player-body">
+   <div id="playerFeedback" class="playlist-player-feedback" role="alert" hidden><span id="playerFeedbackMessage">这首歌暂时无法播放</span><button id="playerRetry" type="button">重试</button><button id="playerErrorNext" type="button">下一首</button></div>
+   <div class="playlist-now"><div id="playerArtwork" class="playlist-artwork" aria-hidden="true">♫</div><div><strong id="playerTitle">未播放</strong><span id="playerArtist">请选择歌曲</span></div></div>
+   <div class="playlist-player-center"><span id="playerQueue" class="playlist-player-queue">0 / 0</span><div class="playlist-player-buttons"><button id="playerPrevious" type="button" aria-label="上一首"><svg class="player-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M6 5v14M18 6l-9 6 9 6z"/></svg></button><button id="playerToggle" class="playlist-player-toggle" type="button" aria-label="播放" data-state="paused"><svg class="player-icon player-icon-play" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg><svg class="player-icon player-icon-pause" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M7 5h4v14H7zM14 5h4v14h-4z"/></svg></button><button id="playerNext" type="button" aria-label="下一首"><svg class="player-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M18 5v14M6 6l9 6-9 6z"/></svg></button></div></div>
+   <div class="playlist-player-tools"><span class="playlist-player-time"><span id="playerCurrent">0:00</span><span aria-hidden="true">/</span><span id="playerDuration">0:00</span></span><div class="playlist-volume-control"><button id="playerMute" type="button" aria-label="静音"><svg class="player-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9H4zM16 9c1 .8 1.5 1.8 1.5 3S17 14.2 16 15"/></svg></button><div class="playlist-volume-panel"><input id="playerVolume" type="range" min="0" max="1" step="0.05" value="1" aria-label="音量"></div></div></div>
+  </div>
   <audio id="playerAudio" preload="none"></audio>
  </footer>
 </div>

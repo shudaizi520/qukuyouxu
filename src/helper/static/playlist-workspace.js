@@ -4,12 +4,9 @@ function normalizedPath(value){
 
 export function createPlaylistWorkspace({document}){
  let current={type:'playlist',kind:'',key:'',panel:'playlist'};
- const panels={
-  playlist:document.getElementById('playlistView'),
-  search:document.getElementById('playlistSearchView'),
-  tool:document.getElementById('playlistToolView'),
-  system:document.getElementById('playlistToolView'),
- };
+ const playlistView=document.getElementById('playlistView');
+ const playlistSearchView=document.getElementById('playlistSearchView');
+ const playlistToolView=document.getElementById('playlistToolView');
 
  function matches(button,view){
   if(button.dataset.kind){
@@ -32,9 +29,9 @@ export function createPlaylistWorkspace({document}){
 
  function show(next){
   current={panel:next.type,...next};
-  Object.entries(panels).forEach(([name,node])=>{
-   if(node)node.hidden=name!==current.panel&&!(node===panels.tool&&current.panel==='system');
-  });
+  playlistView.hidden=current.panel!=='playlist';
+  playlistSearchView.hidden=current.panel!=='search';
+  playlistToolView.hidden=!['tool','system'].includes(current.panel);
   renderNavigation();
  }
 

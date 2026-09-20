@@ -3,6 +3,10 @@ const byId=(document,id)=>document.getElementById(id);
 export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange=()=>{}}){
  const audio=byId(document,'playerAudio');
  const artwork=byId(document,'playerArtwork');
+ const player=byId(document,'playlistPlayer');
+ const playerToggle=byId(document,'playerToggle');
+ const playerMute=byId(document,'playerMute');
+ const playerVolume=byId(document,'playerVolume');
  let queue=[];
  let context=null;
  let queueIndex=-1;
@@ -13,6 +17,7 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
  let recoveryPending=false;
  let resettingSource=false;
  let retryTimer=0;
+ let lastAudibleVolume=audio.volume||1;
 
  function sameContext(candidate){
   return !!candidate&&!!context&&candidate.kind===context.kind&&candidate.key===context.key&&candidate.profileId===context.profileId;
@@ -24,6 +29,18 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
  function clearFeedback(){
   byId(document,'playerFeedback').hidden=true;
   byId(document,'playerFeedbackMessage').textContent='';
+ }
+ function setPlaying(value){
+  player.dataset.playing=String(value);
+  if(value)playerToggle.dataset.state='playing';
+  else playerToggle.dataset.state='paused';
+  playerToggle.setAttribute('aria-label',value?'暂停':'播放');
+ }
+ function setMuted(value){
+  player.dataset.muted=String(value);playerMute.setAttribute('aria-label',value?'取消静音':'静音');
+ }
+ function syncVolumeState(){
+  const muted=audio.muted||audio.volume===0;setMuted(muted);
  }
  function showFeedback(message=''){
   const title=byId(document,'playerTitle').textContent||'这首歌';
@@ -105,7 +122,7 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
   playbackGeneration+=1;clearTimeout(retryTimer);audio.onerror=null;audio.pause();audio.removeAttribute('src');audio.load();
   queue=[];context=null;queueIndex=-1;activeTrackId='';activeSource='';retryCount=0;recoveryPending=false;resettingSource=false;
   clearFeedback();updateArtwork(null);byId(document,'playerTitle').textContent='未播放';byId(document,'playerArtist').textContent='请选择歌曲';byId(document,'playerQueue').textContent='0 / 0';
-  byId(document,'playerCurrent').textContent='0:00';byId(document,'playerDuration').textContent='0:00';byId(document,'playerSeek').value='0';byId(document,'playerToggle').textContent='▶';onStateChange();
+  byId(document,'playerCurrent').textContent='0:00';byId(document,'playerDuration').textContent='0:00';byId(document,'playerSeek').value='0';setPlaying(false);onStateChange();
  }
  function playPreview(track){
   if(!track?.source)return;
@@ -117,12 +134,13 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
   byId(document,'playerRetry').onclick=retryNow;
   byId(document,'playerErrorNext').onclick=()=>{clearFeedback();playNext();};
   byId(document,'playerSeek').oninput=()=>{if(Number.isFinite(audio.duration)&&audio.duration>0)audio.currentTime=audio.duration*Number(byId(document,'playerSeek').value)/1000;};
-  byId(document,'playerVolume').oninput=()=>{audio.volume=Number(byId(document,'playerVolume').value);audio.muted=false;byId(document,'playerMute').textContent=audio.volume?'音量':'静音';};
-  byId(document,'playerMute').onclick=()=>{audio.muted=!audio.muted;byId(document,'playerMute').textContent=audio.muted?'取消静音':'音量';};
+  playerVolume.oninput=()=>{audio.volume=Number(playerVolume.value);if(audio.volume>0)lastAudibleVolume=audio.volume;audio.muted=audio.volume===0;syncVolumeState();};
+  playerMute.onclick=()=>{if(audio.muted||audio.volume===0){if(audio.volume===0){audio.volume=lastAudibleVolume;playerVolume.value=String(lastAudibleVolume);}audio.muted=false;}else audio.muted=true;syncVolumeState();};
+  syncVolumeState();
   audio.addEventListener('ended',playNext);
   audio.addEventListener('timeupdate',()=>{const duration=Number.isFinite(audio.duration)?audio.duration:0;byId(document,'playerCurrent').textContent=formatTime(audio.currentTime);byId(document,'playerDuration').textContent=formatTime(duration);byId(document,'playerSeek').value=duration?String(Math.round(audio.currentTime/duration*1000)):'0';});
-  audio.addEventListener('playing',()=>{clearFeedback();byId(document,'playerToggle').textContent='❚❚';onStateChange();});
-  audio.addEventListener('pause',()=>{byId(document,'playerToggle').textContent='▶';onStateChange();});
+  audio.addEventListener('playing',()=>{clearFeedback();setPlaying(true);onStateChange();});
+  audio.addEventListener('pause',()=>{setPlaying(false);onStateChange();});
  }
 
  return {

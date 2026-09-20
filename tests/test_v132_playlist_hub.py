@@ -346,6 +346,150 @@ class PlaylistHubPlaybackTests(unittest.TestCase):
 
 
 class PlaylistHubPageTests(unittest.TestCase):
+    def test_workspace_shows_each_real_panel_once_for_tool_and_system_pages(self):
+        workspace = (STATIC / "playlist-workspace.js").read_text(encoding="utf-8")
+
+        self.assertNotIn("const panels=", workspace)
+        show = workspace.split("function show(next)", 1)[1].split(
+            "function openPage", 1
+        )[0]
+        self.assertIn("playlistView.hidden=current.panel!=='playlist'", show)
+        self.assertIn("playlistSearchView.hidden=current.panel!=='search'", show)
+        self.assertIn(
+            "playlistToolView.hidden=!['tool','system'].includes(current.panel)",
+            show,
+        )
+
+    def test_playlist_sidebar_navigation_never_adds_button_pending_content(self):
+        script = (STATIC / "playlists.js").read_text(encoding="utf-8")
+        styles = (STATIC / "product.css").read_text(encoding="utf-8")
+
+        navigate = script.split("async function navigate(fn)", 1)[1].split(
+            "async function json", 1
+        )[0]
+        self.assertNotIn("PCHUI.run", navigate)
+        playlist_list = script.split("function renderPlaylistList()", 1)[1].split(
+            "function setPlaylistLoading", 1
+        )[0]
+        click_handler = playlist_list.split("button.onclick=", 1)[1].split(
+            ";box.append(button)", 1
+        )[0]
+        self.assertIn("navigate(()=>openPlaylist(item))", click_handler)
+        self.assertNotIn("action(", click_handler)
+        loading = script.split("async function openPlaylist", 1)[1].split(
+            "async function openFirstAvailable", 1
+        )[0]
+        self.assertIn("setPlaylistLoading(true)", loading)
+        self.assertIn("setPlaylistLoading(false)", loading)
+        self.assertIn(
+            ".playlist-side-list button.pch-pending::before{content:none}",
+            styles,
+        )
+
+    def test_player_uses_a_top_progress_rail_and_svg_control_icons(self):
+        page = (STATIC / "playlists.html").read_text(encoding="utf-8")
+        player_script = (STATIC / "playlist-player.js").read_text(encoding="utf-8")
+        player = page.split('<footer id="playlistPlayer"', 1)[1].split(
+            "</footer>", 1
+        )[0]
+
+        self.assertLess(
+            player.index('id="playlistProgressRail"'),
+            player.index('class="playlist-player-body"'),
+        )
+        for control_id in ("playerPrevious", "playerToggle", "playerNext", "playerMute"):
+            control = player.split(f'id="{control_id}"', 1)[1].split("</button>", 1)[0]
+            self.assertIn("<svg", control, control_id)
+        for glyph in ("‹", "›", "▶", "❚❚"):
+            self.assertNotIn(glyph, player)
+            self.assertNotIn(f"textContent='{glyph}'", player_script)
+        self.assertIn("playerToggle.dataset.state='playing'", player_script)
+        self.assertIn("playerToggle.dataset.state='paused'", player_script)
+
+    def test_volume_panel_opens_for_pointer_hover_and_keyboard_focus(self):
+        styles = (STATIC / "product.css").read_text(encoding="utf-8")
+
+        self.assertIn(
+            ".playlist-volume-control:hover .playlist-volume-panel,"
+            ".playlist-volume-control:focus-within .playlist-volume-panel",
+            styles,
+        )
+        bridge = styles.split(".playlist-volume-panel::after{", 1)[1].split(
+            "}", 1
+        )[0]
+        self.assertIn('content:""', bridge)
+        self.assertIn("position:absolute", bridge)
+        self.assertIn("top:100%", bridge)
+        self.assertIn("right:0", bridge)
+        self.assertIn("width:100%", bridge)
+        self.assertIn("height:9px", bridge)
+
+    def test_player_ranges_reset_the_global_text_input_box_model(self):
+        styles = (STATIC / "product.css").read_text(encoding="utf-8")
+
+        selector = (
+            ".playlist-player .playlist-progress-rail input[type=range],"
+            ".playlist-player .playlist-volume-panel input[type=range]{"
+        )
+        reset = styles.split(selector, 1)[1].split("}", 1)[0]
+        for declaration in (
+            "min-height:0",
+            "padding:0",
+            "border:0",
+            "background:transparent",
+            "box-shadow:none",
+        ):
+            self.assertIn(declaration, reset)
+
+    def test_zero_volume_mute_click_restores_the_last_audible_volume(self):
+        player = (STATIC / "playlist-player.js").read_text(encoding="utf-8")
+
+        self.assertIn("let lastAudibleVolume=audio.volume||1", player)
+        volume_input = player.split("playerVolume.oninput=", 1)[1].split(";\n", 1)[0]
+        self.assertIn("if(audio.volume>0)lastAudibleVolume=audio.volume", volume_input)
+        self.assertIn("audio.muted=audio.volume===0", volume_input)
+        self.assertIn("syncVolumeState()", volume_input)
+        mute_click = player.split("playerMute.onclick=", 1)[1].split(";\n", 1)[0]
+        self.assertIn("if(audio.muted||audio.volume===0)", mute_click)
+        self.assertIn("audio.volume=lastAudibleVolume", mute_click)
+        self.assertIn("playerVolume.value=String(lastAudibleVolume)", mute_click)
+        self.assertIn("audio.muted=false", mute_click)
+        self.assertIn("else audio.muted=true", mute_click)
+        self.assertIn("syncVolumeState()", mute_click)
+        sync = player.split("function syncVolumeState()", 1)[1].split(
+            "function showFeedback", 1
+        )[0]
+        self.assertIn("const muted=audio.muted||audio.volume===0", sync)
+        self.assertIn("setMuted(muted)", sync)
+
+    def test_track_header_and_rows_keep_song_artist_and_album_in_separate_columns(self):
+        page = (STATIC / "playlists.html").read_text(encoding="utf-8")
+        script = (STATIC / "playlists.js").read_text(encoding="utf-8")
+
+        header = page.split('class="playlist-track-head"', 1)[1].split("</div>", 1)[0]
+        labels = ["歌曲", "歌手", "专辑", "时长"]
+        positions = [header.index(f">{label}<") for label in labels]
+        self.assertEqual(sorted(positions), positions)
+        render_tracks = script.split("function renderTracks()", 1)[1].split(
+            "const playlistPlayer", 1
+        )[0]
+        self.assertIn("artist.className='playlist-track-artist'", render_tracks)
+        append = render_tracks.split("row.append(", 1)[1].split(")", 1)[0]
+        self.assertEqual("number,identity,artist,album,duration,remove", append)
+
+    def test_track_columns_compact_before_the_sidebar_can_clip_the_action_column(self):
+        styles = (STATIC / "product.css").read_text(encoding="utf-8")
+
+        compact = styles.split("@media(max-width:1020px){", 1)[1].split(
+            "\n}", 1
+        )[0]
+        self.assertIn(
+            "grid-template-columns:34px minmax(0,1fr) minmax(100px,.7fr) 58px 58px",
+            compact,
+        )
+        self.assertIn(".playlist-track-head span:nth-child(4)", compact)
+        self.assertIn(".playlist-track-album{display:none}", compact)
+
     def test_home_uses_one_workspace_state_for_global_search_and_navigation(self):
         page = (STATIC / "playlists.html").read_text(encoding="utf-8")
         script = (STATIC / "playlists.js").read_text(encoding="utf-8")
@@ -475,7 +619,10 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn("context?.kind==='library'", script)
         self.assertIn("/api/playlists/library/tracks/", script)
         self.assertNotIn("if(stop)stopPlayback();current=item;const detail", script)
-        self.assertIn("grid-template-columns:34px minmax(0,1fr) 58px 58px", styles)
+        self.assertIn(
+            "grid-template-columns:34px minmax(0,1fr) minmax(100px,.7fr) 58px 58px",
+            styles,
+        )
 
     def test_playlist_home_has_one_daily_entry_and_a_stable_sticky_shell(self):
         page = (STATIC / "playlists.html").read_text(encoding="utf-8")

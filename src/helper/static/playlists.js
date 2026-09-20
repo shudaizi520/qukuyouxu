@@ -25,6 +25,10 @@ async function action(fn){
  try{return await (window.PCHUI?PCHUI.run(fn):fn());}
  catch(error){notify(error.message||'操作失败',true);}
 }
+async function navigate(fn){
+ try{return await fn();}
+ catch(error){notify(error.message||'操作失败',true);}
+}
 async function json(path,method='GET',body){return (await PCHAuth.request(path,method,body)).json();}
 function encoded(value){return encodeURIComponent(String(value||''));}
 function formatTime(value){const seconds=Math.max(0,Math.floor(Number(value)||0));return Math.floor(seconds/60)+':'+String(seconds%60).padStart(2,'0');}
@@ -50,13 +54,13 @@ function renderTracks(){
   row.onclick=()=>playlistPlayer.playAt(tracks,original,playlistContext());row.onkeydown=event=>{if(event.target===row&&(event.key==='Enter'||event.key===' ')){event.preventDefault();playlistPlayer.playAt(tracks,original,playlistContext());}};
   const number=document.createElement('span');number.className='playlist-track-number';number.textContent=isPlaying&&!playlistPlayer.paused()?'❚❚':String(original+1);
   const identity=document.createElement('span');identity.className='playlist-track-identity';
-  const title=document.createElement('strong');title.textContent=track.title||'未知歌曲';
-  const artist=document.createElement('small');artist.textContent=track.artist||'未知歌手';identity.append(title,artist);
+  const title=document.createElement('strong');title.textContent=track.title||'未知歌曲';identity.append(title);
+  const artist=document.createElement('span');artist.className='playlist-track-artist';artist.textContent=track.artist||'未知歌手';
   const album=document.createElement('span');album.className='playlist-track-album';album.textContent=track.album||'—';
   const duration=document.createElement('span');duration.className='playlist-track-duration';duration.textContent=formatTime(track.duration);
   const remove=document.createElement('button');remove.type='button';remove.className='playlist-track-remove';remove.textContent='移除';remove.setAttribute('aria-label','从歌单移除 '+(track.title||'歌曲'));
   remove.onclick=event=>{event.stopPropagation();action(()=>removeTrack(track));};
-  row.append(number,identity,album,duration,remove);box.append(row);
+  row.append(number,identity,artist,album,duration,remove);box.append(row);
  });
 }
 
@@ -70,7 +74,7 @@ function renderPlaylistList(){
   const icon=document.createElement('span');icon.className='playlist-side-icon';icon.textContent=item.kind==='daily'?'日':item.kind==='smart'?'智':item.kind==='external'?'外':'类';
   const text=document.createElement('span'),title=document.createElement('strong'),count=document.createElement('small');
   title.textContent=item.title;count.textContent=item.playlist_id?(item.count??'—')+' 首':'尚未创建';text.append(title,count);button.append(icon,text);
-  button.onclick=()=>{setSidebarOpen(false);action(()=>openPlaylist(item));};box.append(button);
+  button.onclick=()=>{setSidebarOpen(false);navigate(()=>openPlaylist(item));};box.append(button);
  }
  if(!playlists.length){const empty=document.createElement('span');empty.className='playlist-side-empty';empty.textContent='还没有歌单';box.append(empty);}
  workspace.renderNavigation();
