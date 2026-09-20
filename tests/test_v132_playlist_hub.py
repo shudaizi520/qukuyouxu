@@ -596,6 +596,81 @@ class PlaylistHubPageTests(unittest.TestCase):
         open_workspace = script.split("function openWorkspacePage", 1)[1].split("function openTool", 1)[0]
         self.assertNotIn("stopPlayback", open_workspace)
 
+    def test_playlist_loading_locks_actions_until_the_selected_detail_arrives(self):
+        script = (STATIC / "playlists.js").read_text(encoding="utf-8")
+        loading = script.split("function setPlaylistLoading", 1)[1].split(
+            "async function openPlaylist", 1
+        )[0]
+        for element_id in (
+            "playlistAddTrack", "playlistManage", "playlistRemove", "playlistPlayAll",
+        ):
+            self.assertIn(element_id, loading)
+        self.assertIn(".disabled", loading)
+        open_playlist = script.split("async function openPlaylist", 1)[1].split(
+            "async function openFirstAvailable", 1
+        )[0]
+        self.assertIn("return false", open_playlist)
+        self.assertIn("return true", open_playlist)
+        self.assertIn("catch(error)", open_playlist)
+        self.assertIn("requestId!==playlistRequest", open_playlist)
+        self.assertIn("restoreCurrentPlaylistSelection()", open_playlist)
+
+    def test_logout_stops_player_and_invalidates_account_requests(self):
+        script = (STATIC / "playlists.js").read_text(encoding="utf-8")
+        self.assertIn("function resetSession()", script)
+        reset = script.split("function resetSession()", 1)[1].split(
+            "async function switchProfile", 1
+        )[0]
+        self.assertIn("playlistPlayer.stop()", reset)
+        self.assertIn("librarySearch.reset()", reset)
+        self.assertIn("loadedProfileId=''", reset)
+        self.assertIn("++profileRequest", reset)
+        self.assertIn("window.addEventListener('pch-auth-logout',resetSession)", script)
+
+    def test_manual_edits_update_sidebar_counts_for_current_or_other_playlist(self):
+        script = (STATIC / "playlists.js").read_text(encoding="utf-8")
+        search = (STATIC / "playlist-search.js").read_text(encoding="utf-8")
+        self.assertIn("function syncPlaylistCount(kind,key,count)", script)
+        sync = script.split("function syncPlaylistCount", 1)[1].split(
+            "function restorePlaylistView", 1
+        )[0]
+        self.assertIn("item.count", sync)
+        self.assertIn("renderPlaylistList()", sync)
+        self.assertIn("const result=await requestJson", search)
+        self.assertIn("onPlaylistChanged(kind,key,result.count)", search)
+        self.assertIn("syncPlaylistCount(selected.kind,selected.key,result.count)", script)
+
+    def test_failed_automatic_open_cannot_override_later_manual_navigation(self):
+        script = (STATIC / "playlists.js").read_text(encoding="utf-8")
+        open_playlist = script.split("async function openPlaylist", 1)[1].split(
+            "async function openFirstAvailable", 1
+        )[0]
+        self.assertIn("catch(error)", open_playlist)
+        self.assertIn("if(requestId!==playlistRequest)return false", open_playlist)
+        fallback = script.split("async function openFirstAvailable", 1)[1].split(
+            "async function loadPlaylists", 1
+        )[0]
+        self.assertIn("const opened=await openPlaylist", fallback)
+        self.assertIn("if(!opened)return lastError", fallback)
+
+    def test_small_screen_sidebar_is_a_closed_drawer_with_one_toggle(self):
+        page = (STATIC / "playlists.html").read_text(encoding="utf-8")
+        script = (STATIC / "playlists.js").read_text(encoding="utf-8")
+        styles = (STATIC / "product.css").read_text(encoding="utf-8")
+        self.assertEqual(1, page.count('id="playlistSidebarToggle"'))
+        self.assertEqual(1, page.count('id="playlistSidebarBackdrop"'))
+        self.assertIn('id="playlistSidebar"', page)
+        self.assertIn("function setSidebarOpen(value)", script)
+        self.assertIn("playlist-sidebar-open", script)
+        self.assertIn("compactSidebar.matches", script)
+        self.assertIn("sidebar.inert=compact&&!open", script)
+        self.assertIn("backdrop.hidden=!open", script)
+        self.assertIn("compactSidebar.addEventListener('change'", script)
+        mobile = styles.split("@media(max-width:620px){", 1)[1].split("\n}", 1)[0]
+        self.assertIn("grid-template-columns:minmax(0,1fr)", mobile)
+        self.assertIn("transform:translateX(-100%)", mobile)
+        self.assertIn(".playlist-sidebar-open .playlist-sidebar", mobile)
+
 
 class ExternalPlaylistPreviewUiTests(unittest.TestCase):
     def test_audio_player_is_hidden_and_playback_controls_stay_in_the_track_row(self):

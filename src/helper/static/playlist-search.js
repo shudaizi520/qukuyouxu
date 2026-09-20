@@ -68,11 +68,11 @@ export function createLibrarySearch({
   if(!kind||!key)throw Error('请选择目标歌单');
   button.disabled=true;
   try{
-   await requestJson('/api/playlists/tracks/edit','POST',{kind,key,track_id:String(pendingTrack.id),operation:'add',confirm:true});
+   const result=await requestJson('/api/playlists/tracks/edit','POST',{kind,key,track_id:String(pendingTrack.id),operation:'add',confirm:true});
    notify('已加入歌单');
    byId(document,'librarySearchDialog').close();
    pendingTrack=null;
-   await onPlaylistChanged(kind,key);
+   await onPlaylistChanged(kind,key,result.count);
   }finally{button.disabled=false;}
  }
 

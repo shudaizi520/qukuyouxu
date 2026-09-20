@@ -20,12 +20,14 @@
 </section>
 <div id="workspace" hidden>
  <header class="topbar">
+  <button id="playlistSidebarToggle" class="playlist-sidebar-toggle" type="button" aria-label="打开歌单导航" aria-controls="playlistSidebar" aria-expanded="false">☰</button>
   <button class="brand" id="workspaceHome" type="button"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v1.4.3</small></span></button>
   <form id="librarySearchForm" class="playlist-global-search" role="search"><span aria-hidden="true">⌕</span><input id="librarySearchInput" type="search" placeholder="搜索全库歌曲、歌手或专辑" autocomplete="off"><button type="submit">搜索</button></form>
   <nav><button type="button" data-workspace-url="/status">运行状态</button><button type="button" data-workspace-url="/settings">设置</button></nav><button class="logout" data-auth-logout hidden>退出</button>
  </header>
  <main class="playlist-hub">
-  <aside class="playlist-sidebar">
+  <button id="playlistSidebarBackdrop" class="playlist-sidebar-backdrop" type="button" aria-label="关闭歌单导航" hidden></button>
+  <aside id="playlistSidebar" class="playlist-sidebar">
    <div class="playlist-profile-block"><label class="playlist-profile-label" for="playlistProfile">当前用户</label><select id="playlistProfile" class="playlist-profile"></select></div>
    <div class="playlist-list-scroll">
     <div class="playlist-side-heading"><h2>我的歌单</h2><span id="playlistCount">0</span></div>
