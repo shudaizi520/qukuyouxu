@@ -301,7 +301,7 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn('id="playerSeek"', page)
         self.assertIn('id="playerArtwork"', page)
         self.assertIn('id="playlistTools"', page)
-        self.assertIn('data-tool-url="/daily"', page)
+        self.assertNotIn('data-tool-url="/daily"', page)
         self.assertIn('data-tool-url="/mixes"', page)
         self.assertIn('data-tool-url="/external"', page)
         self.assertIn('data-tool-url="/library"', page)
@@ -350,18 +350,32 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn("playerArtwork", script)
         self.assertIn("/api/playlists/search", script)
         self.assertIn("/tracks/edit", script)
-        self.assertIn("keepPlayingTrack", script)
-        self.assertIn("tracks.findIndex", script)
+        self.assertIn("playQueue", script)
+        self.assertIn("startQueueTrack", script)
+        self.assertIn("playContext", script)
         self.assertNotIn("if(stop)stopPlayback();current=item;const detail", script)
         self.assertIn("grid-template-columns:34px minmax(0,1fr) 58px 58px", styles)
 
-    def test_initial_load_renders_the_sidebar_even_when_one_playlist_cannot_open(self):
+    def test_playlist_home_has_one_daily_entry_and_a_stable_sticky_shell(self):
+        page = (STATIC / "playlists.html").read_text(encoding="utf-8")
         script = (STATIC / "playlists.js").read_text(encoding="utf-8")
-        self.assertIn("renderPlaylistList();", script)
-        self.assertIn("for(const candidate of candidates)", script)
+        styles = (STATIC / "product.css").read_text(encoding="utf-8")
+        self.assertNotIn('data-tool-url="/daily"', page)
+        self.assertIn('id="playlistStickyHead"', page)
+        self.assertIn(".playlist-sticky-head{position:sticky", styles)
+        self.assertIn(".playlist-sidebar{position:fixed", styles)
+        self.assertIn(".playlist-list-scroll{", styles)
+
+    def test_initial_load_is_lazy_and_profile_events_reload_loaded_data(self):
+        script = (STATIC / "playlists.js").read_text(encoding="utf-8")
+        self.assertIn("loadedProfileId", script)
+        self.assertIn("async function switchProfile", script)
+        self.assertNotIn("for(const candidate of candidates)", script)
+        self.assertNotIn("else await json('/api/playlists/'", script)
         self.assertIn("unavailablePlaylists", script)
-        self.assertIn("opened=false", script)
-        self.assertIn("else await json('/api/playlists/'", script)
+        open_playlist = script.split("async function openPlaylist", 1)[1].split("function renderTracks", 1)[0]
+        self.assertNotIn("stopPlayback()", open_playlist)
+        self.assertIn("setPlaylistLoading", open_playlist)
 
 
 class ExternalPlaylistPreviewUiTests(unittest.TestCase):

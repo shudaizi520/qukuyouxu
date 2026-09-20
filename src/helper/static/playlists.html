@@ -23,27 +23,31 @@
  <header class="topbar"><a class="brand" href="/"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v1.4.1</small></span></a><nav><a class="active" href="/">我的歌单</a><a href="/status">运行状态</a><a href="/settings">设置</a></nav><button class="logout" data-auth-logout hidden>退出</button></header>
  <main class="playlist-hub">
   <aside class="playlist-sidebar">
-   <label class="playlist-profile-label" for="playlistProfile">当前用户</label>
-   <select id="playlistProfile" class="playlist-profile"></select>
-   <div class="playlist-side-heading"><h2>我的歌单</h2><span id="playlistCount">0</span></div>
-   <nav id="playlistList" class="playlist-side-list" aria-label="我的歌单"></nav>
-   <div class="playlist-side-heading playlist-tool-heading"><h2>创建与整理</h2></div>
-   <nav id="playlistTools" class="playlist-side-list" aria-label="创建与整理">
-    <button type="button" data-tool-url="/daily"><span class="playlist-side-icon">日</span><span>每日推荐</span></button>
-    <button type="button" data-tool-url="/mixes"><span class="playlist-side-icon">智</span><span>智能歌单</span></button>
+   <div class="playlist-profile-block"><label class="playlist-profile-label" for="playlistProfile">当前用户</label><select id="playlistProfile" class="playlist-profile"></select></div>
+   <div class="playlist-list-scroll">
+    <div class="playlist-side-heading"><h2>我的歌单</h2><span id="playlistCount">0</span></div>
+    <nav id="playlistList" class="playlist-side-list" aria-label="我的歌单"></nav>
+   </div>
+   <div class="playlist-tool-dock">
+    <div class="playlist-side-heading playlist-tool-heading"><h2>创建与整理</h2></div>
+    <nav id="playlistTools" class="playlist-side-list" aria-label="创建与整理">
+    <button type="button" data-tool-url="/mixes"><span class="playlist-side-icon">智</span><span>新建智能歌单</span></button>
     <button type="button" data-tool-url="/external"><span class="playlist-side-icon">导</span><span>导入外部歌单</span></button>
     <button type="button" data-tool-url="/library"><span class="playlist-side-icon">整</span><span>曲库整理</span></button>
-   </nav>
+    </nav>
+   </div>
   </aside>
   <section class="playlist-main">
    <div id="playlistNotice" class="notice" role="status" hidden></div>
    <section id="playlistView">
-    <header class="playlist-hero">
-     <div><span id="playlistKind" class="playlist-kind">我的歌单</span><h1 id="playlistTitle">选择一个歌单</h1><p id="playlistSummary" class="muted">0 首歌曲</p></div>
-     <div class="playlist-actions"><button id="playlistAddTrack" class="secondary" type="button" hidden>添加歌曲</button><button id="playlistManage" class="secondary" type="button" hidden>管理</button><button id="playlistRemove" class="danger" type="button" hidden>删除歌单</button><button id="playlistPlayAll" class="primary" type="button" disabled>▶ 播放全部</button></div>
-    </header>
-    <div class="playlist-track-toolbar"><label for="playlistSearch">搜索歌曲</label><input id="playlistSearch" type="search" placeholder="歌名、歌手或专辑" autocomplete="off"></div>
-    <div class="playlist-track-head"><span>#</span><span>歌曲</span><span>专辑</span><span>时长</span></div>
+    <div id="playlistStickyHead" class="playlist-sticky-head">
+     <header class="playlist-hero">
+      <div><span id="playlistKind" class="playlist-kind">我的歌单</span><h1 id="playlistTitle">选择一个歌单</h1><p id="playlistSummary" class="muted">0 首歌曲</p></div>
+      <div class="playlist-actions"><button id="playlistAddTrack" class="secondary" type="button" hidden>添加歌曲</button><button id="playlistManage" class="secondary" type="button" hidden>管理</button><button id="playlistRemove" class="danger" type="button" hidden>删除歌单</button><button id="playlistPlayAll" class="primary" type="button" disabled>▶ 播放全部</button></div>
+     </header>
+     <div class="playlist-track-toolbar"><label for="playlistSearch">搜索歌曲</label><input id="playlistSearch" type="search" placeholder="歌名、歌手或专辑" autocomplete="off"></div>
+     <div class="playlist-track-head"><span>#</span><span>歌曲</span><span>专辑</span><span>时长</span></div>
+    </div>
     <div id="playlistTracks" class="playlist-tracks"></div>
     <div id="playlistEmpty" class="playlist-empty">还没有可显示的歌单</div>
    </section>
