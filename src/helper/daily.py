@@ -8,6 +8,7 @@ from .behavior import behavior_profile
 from .behavior_store import BehaviorRepository
 from .plex_webhook import load_behavior_snapshot
 from .playlist_sync import has_exact_members, sync_owned_items
+from .playlist_ownership import legacy_pch_marker, replace_marker
 from .audience import filter_childrens_context
 DAILY_CID = 'daily'
 CST = timezone(timedelta(hours=8))
@@ -148,13 +149,23 @@ class DailyMixin:
                 before = p.playlist_state(managed['id'])
                 if before.get('title') != target_title:
                     raise SafetyError('每日歌单名称已变化，请改回“每日推荐”后重试')
+                marker = self.marker(DAILY_CID)
+                if marker not in before.get('summary', ''):
+                    legacy = legacy_pch_marker(before.get('summary', ''), DAILY_CID)
+                    if not legacy or fingerprint(before) != managed.get('fingerprint'):
+                        raise SafetyError('每日歌单管理标记缺失或内容已变化')
             except Exception as exc:
                 blocked.append(safe_error(exc))
         else:
             same_name = next((row for row in p.playlists() if row.get('title') == target_title), None)
             same_name_id = str((same_name or {}).get('id') or (same_name or {}).get('ratingKey') or '')
             if same_name_id:
-                before = p.playlist_state(same_name_id)
+                candidate = p.playlist_state(same_name_id)
+                if (self.marker(DAILY_CID) in candidate.get('summary', '')
+                        or legacy_pch_marker(candidate.get('summary', ''), DAILY_CID)):
+                    before = candidate
+                else:
+                    blocked.append('存在同名但无法验证归属的“每日推荐”，不会接管或覆盖')
         seed_ids = []
         generated = {x['id'] for x in self.store.get('managed').values()}
         if managed:
@@ -249,13 +260,37 @@ class DailyMixin:
             current = p.playlist_state(before['id'])
             if fingerprint(current) != fingerprint(before):
                 raise SafetyError('每日歌单在预览后被修改，不覆盖')
+            marker = self.marker(DAILY_CID)
+            if marker not in current.get('summary', ''):
+                if managed:
+                    from .playlist_hub import _ensure_playlist_ownership
+                    current, managed = _ensure_playlist_ownership(
+                        self, 'daily', DAILY_CID, managed, current, marker, p,
+                    )
+                else:
+                    legacy = legacy_pch_marker(current.get('summary', ''), DAILY_CID)
+                    if not legacy:
+                        raise SafetyError('每日歌单管理标记缺失，不会接管或覆盖')
+                    p.update_playlist_summary(
+                        current['id'], replace_marker(current.get('summary', ''), legacy, marker),
+                    )
+                    migrated = p.read_playlist_until(
+                        current['id'], lambda row: marker in row.get('summary', ''),
+                    )
+                    if (migrated.get('id') != current.get('id')
+                            or migrated.get('title') != current.get('title')
+                            or state_ids(migrated) != state_ids(current)
+                            or marker not in migrated.get('summary', '')):
+                        raise SafetyError('旧版每日歌单管理标记迁移失败，停止写入')
+                    current = migrated
+                before = current
         elif managed:
             raise SafetyError('每日歌单状态变化，请重新生成')
         else:
             same_name = next((row for row in p.playlists() if row.get('title') == daily_target_title(self)), None)
             same_name_id = str((same_name or {}).get('id') or (same_name or {}).get('ratingKey') or '')
             if same_name_id:
-                before = p.playlist_state(same_name_id)
+                raise SafetyError('预览后出现无法验证归属的同名每日推荐，不会接管或覆盖')
         snap = {'id': uuid.uuid4().hex, 'kind': 'daily', 'category_id': DAILY_CID, 'title': daily_target_title(self), 'created_at': now, 'status': 'prepared', 'before': before, 'after': None, 'add': ids, 'marker': self.marker(DAILY_CID), 'plan_id': plan_id, 'machine': plan['machine'], 'scope': plan['scope'], 'before_daily_record': managed, 'before_published_view': self.store.get('daily_published_view')}
         self._save_snapshot(snap)
         try:
@@ -265,11 +300,12 @@ class DailyMixin:
                 after = p.create(daily_target_title(self), ids, self.marker(DAILY_CID), description='仅播放本地音乐；每日推荐会按已确认设置更新成员，其他歌单不受影响。')
             actual_ids = state_ids(after)
             if (after['title'] != daily_target_title(self) or len(actual_ids) != len(ids)
-                    or set(actual_ids) != set(ids)):
+                    or set(actual_ids) != set(ids)
+                    or self.marker(DAILY_CID) not in after.get('summary', '')):
                 raise SafetyError('每日歌单写入回读不符，停止自动维护')
             snap.update(status='applied', after=after)
             self._save_snapshot(snap)
-            record = {'id': after['id'], 'title': after['title'], 'fingerprint': fingerprint(after), 'snapshot_id': snap['id'], 'machine': plan['machine'], 'scope': plan['scope'], 'date': plan['date'], 'published_at': now, 'count': len(after.get('items', []))}
+            record = {'id': after['id'], 'title': after['title'], 'fingerprint': fingerprint(after), 'snapshot_id': snap['id'], 'machine': plan['machine'], 'scope': plan['scope'], 'date': plan['date'], 'published_at': now, 'count': len(after.get('items', [])), 'marker': self.marker(DAILY_CID)}
             history = self.store.get('daily_history', [])
             history.append({'date': plan['date'], 'created_at': now, 'ids': ids, 'song_keys': [x.get('song_key') for x in plan['items'] if x.get('song_key')], 'plan_id': plan_id})
             plan.update(applied=True, result={'written': len(ids), 'playlist_id': after['id'], 'date': plan['date']})

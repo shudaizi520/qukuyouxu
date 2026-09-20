@@ -86,6 +86,7 @@ class _PlaylistPlex:
         self.state = state
         self.audio = audio
         self.deleted = []
+        self.summary_updates = []
 
     def identity(self):
         return {"machine": "machine-a"}
@@ -101,6 +102,10 @@ class _PlaylistPlex:
 
     def delete_playlist(self, playlist_id):
         self.deleted.append(str(playlist_id))
+
+    def update_playlist_summary(self, playlist_id, summary):
+        self.summary_updates.append((str(playlist_id), str(summary)))
+        self.state["summary"] = str(summary)
 
     def append(self, playlist_id, ids):
         for track_id in ids:
@@ -186,6 +191,64 @@ class PlaylistHubPlaybackTests(unittest.TestCase):
         self.assertEqual(["第一首", "第二首"], [row["title"] for row in result["tracks"]])
         self.assertEqual([180, 200], [row["duration"] for row in result["tracks"]])
         self.assertEqual("/library/metadata/10/thumb/1", result["tracks"][0]["thumb"])
+
+    def test_detail_migrates_an_unchanged_legacy_daily_marker_after_restore(self):
+        from helper.engine import fingerprint
+        from helper.playlist_hub import playlist_detail
+
+        self.state["summary"] = "[PCH:11111111111111111111111111111111:daily]\n旧说明"
+        record = dict(self.store.get("daily_managed"))
+        record["fingerprint"] = fingerprint(self.state)
+        self.store.set("daily_managed", record)
+
+        result = playlist_detail(self.engine, "daily", "daily")
+
+        self.assertEqual(2, result["count"])
+        self.assertIn("[owned:daily]", self.state["summary"])
+        self.assertEqual("旧说明", self.state["summary"].split("\n", 1)[1])
+        self.assertEqual(fingerprint(self.state), self.store.get("daily_managed")["fingerprint"])
+        self.assertEqual(1, len(self.plex.summary_updates))
+
+    def test_detail_never_adopts_an_unmarked_same_name_playlist(self):
+        from helper.engine import fingerprint
+        from helper.playlist_hub import playlist_detail
+
+        self.state["summary"] = "用户自己创建的歌单"
+        record = dict(self.store.get("daily_managed"))
+        record["fingerprint"] = fingerprint(self.state)
+        self.store.set("daily_managed", record)
+
+        with self.assertRaisesRegex(Exception, "管理标记"):
+            playlist_detail(self.engine, "daily", "daily")
+
+    def test_detail_migrates_an_unchanged_legacy_external_marker_after_restore(self):
+        from helper.engine import fingerprint
+        from helper.external_playlist_sync import external_marker
+        from helper.external_store import ExternalRepository
+        from helper.playlist_hub import playlist_detail
+
+        repository = ExternalRepository(self.store)
+        source = repository.upsert_source("default", {
+            "provider": "qq", "external_id": "100", "url": "https://y.qq.com/100",
+            "title": "外部热门", "revision": "r1", "tracks": [
+                {"source_track_key": "a", "position": 0, "title": "第一首", "artists": ["甲"]},
+            ],
+        }, 4_000)
+        self.state.update({
+            "title": "外部热门",
+            "summary": "[QKYX:external:old-install:" + source["id"] + "]\n旧说明",
+        })
+        repository.save_managed("default", source["id"], {
+            "id": "900", "title": "外部热门", "fingerprint": fingerprint(self.state),
+            "marker": "[QKYX:external:old-install:" + source["id"] + "]",
+        })
+
+        result = playlist_detail(self.engine, "external", source["id"])
+
+        expected = external_marker(self.store.get("installation_id"), source["id"])
+        self.assertEqual("外部热门", result["title"])
+        self.assertIn(expected, self.state["summary"])
+        self.assertEqual(fingerprint(self.state), repository.get_managed("default", source["id"])["fingerprint"])
 
     def test_audio_rejects_tracks_outside_the_selected_owned_playlist(self):
         from helper.playlist_hub import stream_playlist_audio
@@ -291,6 +354,14 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn("tracks.findIndex", script)
         self.assertNotIn("if(stop)stopPlayback();current=item;const detail", script)
         self.assertIn("grid-template-columns:34px minmax(0,1fr) 58px 58px", styles)
+
+    def test_initial_load_renders_the_sidebar_even_when_one_playlist_cannot_open(self):
+        script = (STATIC / "playlists.js").read_text(encoding="utf-8")
+        self.assertIn("renderPlaylistList();", script)
+        self.assertIn("for(const candidate of candidates)", script)
+        self.assertIn("unavailablePlaylists", script)
+        self.assertIn("opened=false", script)
+        self.assertIn("else await json('/api/playlists/'", script)
 
 
 class ExternalPlaylistPreviewUiTests(unittest.TestCase):

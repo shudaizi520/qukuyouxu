@@ -10,6 +10,7 @@ let tracks=[];
 let filtered=[];
 let queueIndex=-1;
 let playingTrackId='';
+let unavailablePlaylists=new Set();
 
 function notify(message,error=false){const node=$('playlistNotice');node.hidden=!message;node.textContent=message||'';node.className='notice'+(error?' error':'');}
 async function json(path,method='GET',body){return (await PCHAuth.request(path,method,body)).json();}
@@ -29,7 +30,7 @@ async function loadProfiles(){
 function renderPlaylistList(){
  const box=$('playlistList');box.replaceChildren();$('playlistCount').textContent=String(playlists.length);
  for(const item of playlists){
-  const button=document.createElement('button');button.type='button';button.className=item.kind===current?.kind&&item.key===current?.key?'active':'';
+  const button=document.createElement('button');button.type='button';button.className=item.kind===current?.kind&&item.key===current?.key?'active':'';if(unavailablePlaylists.has(item.kind+'\t'+item.key))button.classList.add('unavailable');
   const icon=document.createElement('span');icon.className='playlist-side-icon';icon.textContent=item.kind==='daily'?'日':item.kind==='smart'?'智':item.kind==='external'?'外':'类';
   const text=document.createElement('span'),title=document.createElement('strong'),count=document.createElement('small');title.textContent=item.title;count.textContent=(item.count??'—')+' 首';text.append(title,count);button.append(icon,text);button.onclick=()=>action(()=>openPlaylist(item));box.append(button);
  }
@@ -38,8 +39,11 @@ function renderPlaylistList(){
 async function loadPlaylists(preferred){
  const data=await json('/api/playlists');playlists=Array.isArray(data.items)?data.items:[];
  const selected=preferred&&playlists.find(row=>row.kind===preferred.kind&&row.key===preferred.key);
- const first=selected||playlists[0];
- if(first)await openPlaylist(first,false);else{current=null;tracks=[];filtered=[];renderPlaylistList();renderTracks();}
+ const candidates=selected?[selected,...playlists.filter(row=>row!==selected)]:playlists.slice();unavailablePlaylists=new Set();renderPlaylistList();
+ let lastError=null,opened=false;
+ for(const candidate of candidates){try{if(!opened){await openPlaylist(candidate,false);opened=true;}else await json('/api/playlists/'+encoded(candidate.kind)+'/'+encoded(candidate.key));}catch(error){lastError=error;unavailablePlaylists.add(candidate.kind+'\t'+candidate.key);renderPlaylistList();}}
+ if(opened){if(lastError)notify('部分旧歌单需要核对，已先打开可用歌单。',true);return;}
+ current=null;tracks=[];filtered=[];renderPlaylistList();renderTracks();if(lastError)throw lastError;
 }
 async function openPlaylist(item,stop=true){
  const keepPlayingTrack=!stop&&current?.kind===item.kind&&current?.key===item.key&&player.src?playingTrackId:'';

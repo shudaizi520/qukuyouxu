@@ -398,6 +398,13 @@ class PlexClient:
             raise PlexError('歌单标题无效')
         self._xml(f'/playlists/{pid}','PUT',{'title':title})
 
+    def update_playlist_summary(self,pid,summary):
+        """Update only playlist metadata; membership and artwork are untouched."""
+        if not str(pid).isdigit():raise PlexError('歌单ID异常')
+        if not isinstance(summary,str) or not summary.strip() or len(summary)>2000:
+            raise PlexError('歌单摘要无效')
+        self._xml(f'/playlists/{pid}','PUT',{'summary':summary})
+
     def move_item(self,pid,item_id,after=None):
         if any(not str(x).isdigit() for x in (pid,item_id)) or after is not None and not str(after).isdigit():
             raise PlexError('歌单条目ID异常')

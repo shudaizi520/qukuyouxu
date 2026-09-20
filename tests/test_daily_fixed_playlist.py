@@ -14,14 +14,18 @@ from helper.store import Store
 
 
 class _DailyPlex:
-    def __init__(self, existing=True):
+    def __init__(self, existing=True, owned=True):
         self.playlists_by_id = {}
         self.create_calls = 0
+        self.summary_updates = []
         if existing:
             self.playlists_by_id["900"] = {
                 "id": "900",
                 "title": "每日推荐",
-                "summary": "用户原有歌单",
+                "summary": (
+                    "[PCH:11111111111111111111111111111111:daily]\n旧版本每日推荐"
+                    if owned else "用户原有歌单"
+                ),
                 "items": [
                     {"id": "4", "item_id": "4004"},
                     {"id": "5", "item_id": "4005"},
@@ -52,6 +56,12 @@ class _DailyPlex:
     def playlist_state(self, playlist_id):
         return copy.deepcopy(self.playlists_by_id[str(playlist_id)])
 
+    def read_playlist_until(self, playlist_id, predicate, attempts=8, delay=0.25):
+        state = self.playlist_state(playlist_id)
+        if not predicate(state):
+            raise AssertionError("playlist state did not satisfy predicate")
+        return state
+
     def create(self, title, ids, marker, description=None):
         self.create_calls += 1
         state = {
@@ -76,6 +86,10 @@ class _DailyPlex:
         state = self.playlists_by_id[str(playlist_id)]
         removed = set(map(str, item_ids))
         state["items"] = [row for row in state["items"] if row["item_id"] not in removed]
+
+    def update_playlist_summary(self, playlist_id, summary):
+        self.summary_updates.append((str(playlist_id), str(summary)))
+        self.playlists_by_id[str(playlist_id)]["summary"] = str(summary)
 
     def move_item(self, playlist_id, item_id, after=None):
         state = self.playlists_by_id[str(playlist_id)]
@@ -167,7 +181,7 @@ class DailyFixedPlaylistTests(unittest.TestCase):
         store.set("settings", settings)
         return store, LibraryEngine(store, plex_factory=lambda _settings: plex)
 
-    def test_preview_uses_existing_same_name_playlist_without_blocking(self):
+    def test_preview_uses_existing_legacy_owned_playlist_without_blocking(self):
         plex = _DailyPlex(existing=True)
         _store, engine = self.make_engine(plex)
 
@@ -176,6 +190,16 @@ class DailyFixedPlaylistTests(unittest.TestCase):
 
         self.assertEqual([], plan["blocked"])
         self.assertEqual("900", plan["before"]["id"])
+
+    def test_preview_blocks_an_unmarked_same_name_playlist(self):
+        plex = _DailyPlex(existing=True, owned=False)
+        _store, engine = self.make_engine(plex)
+
+        with patch("helper.daily.recommend_rotating", side_effect=_recommendation):
+            plan = engine.preview_daily(now=1_800_000_000)
+
+        self.assertTrue(any("同名" in message for message in plan["blocked"]))
+        self.assertIsNone(plan["before"])
 
     def test_publish_replaces_existing_same_name_playlist_in_place(self):
         plex = _DailyPlex(existing=True)
@@ -189,6 +213,8 @@ class DailyFixedPlaylistTests(unittest.TestCase):
         self.assertEqual(0, plex.create_calls)
         self.assertEqual(["1", "2"], [row["id"] for row in plex.playlist_state("900")["items"]])
         self.assertEqual("900", store.get("daily_managed")["id"])
+        self.assertIn(engine.marker("daily"), plex.playlist_state("900")["summary"])
+        self.assertEqual(1, len(plex.summary_updates))
 
     def test_successful_manual_publish_clears_recovery_suspension(self):
         plex = _DailyPlex(existing=True)

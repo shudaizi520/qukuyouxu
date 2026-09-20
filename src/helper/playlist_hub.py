@@ -12,7 +12,9 @@ from starlette.responses import StreamingResponse
 from .auth import COOKIE_NAME
 from .engine import SafetyError, fingerprint
 from .external_audio import stream_track_audio
+from .external_playlist_sync import external_marker
 from .external_store import ExternalRepository
+from .playlist_ownership import legacy_external_marker, legacy_pch_marker, replace_marker
 
 
 KIND_LABELS = {
@@ -127,7 +129,7 @@ def _playlist_record(engine, kind, key):
     elif kind == "external":
         profile_id = str(getattr(store, "profile_id", "default") or "default")
         record = ExternalRepository(store).get_managed(profile_id, key)
-        marker = str((record or {}).get("marker") or "")
+        marker = external_marker(store.get("installation_id"), key)
     else:
         raise ValueError("歌单类型无效")
     if not isinstance(record, dict) or not record.get("id") or not record.get("title"):
@@ -179,6 +181,49 @@ def _save_playlist_record(engine, kind, key, record):
         raise ValueError("歌单类型无效")
 
 
+def _pch_category_id(kind, key):
+    if kind == "daily":
+        return "daily"
+    if kind == "smart":
+        return "smart:" + str(key)
+    if kind == "category":
+        return str(key)
+    return ""
+
+
+def _ensure_playlist_ownership(engine, kind, key, record, state, marker, plex):
+    """Validate ownership and safely restamp an unchanged pre-restore marker."""
+    summary = str(state.get("summary") or "")
+    if marker and marker in summary:
+        return state, record
+    category_id = _pch_category_id(kind, key)
+    historical = (
+        legacy_external_marker(summary, key)
+        if kind == "external"
+        else legacy_pch_marker(summary, category_id)
+    )
+    if (not marker or not historical or not record.get("fingerprint")
+            or fingerprint(state) != record.get("fingerprint")):
+        raise SafetyError("助手管理标记缺失，不能读取这个歌单")
+    previous_ids = [str(row.get("id")) for row in state.get("items", [])]
+    plex.update_playlist_summary(record["id"], replace_marker(summary, historical, marker))
+    migrated = plex.read_playlist_until(
+        record["id"], lambda row: marker in str(row.get("summary") or ""),
+    )
+    if (str(migrated.get("id")) != str(state.get("id"))
+            or str(migrated.get("title")) != str(state.get("title"))
+            or [str(row.get("id")) for row in migrated.get("items", [])] != previous_ids
+            or marker not in str(migrated.get("summary") or "")):
+        raise SafetyError("旧管理标记迁移后回读不一致，停止操作")
+    revised = {
+        **record, "fingerprint": fingerprint(migrated),
+        "marker": marker, "count": len(migrated.get("items", [])),
+    }
+    _save_playlist_record(engine, kind, key, revised)
+    engine.store.log("已安全迁移旧版歌单管理标记：" + str(migrated.get("title") or record.get("title")))
+    return migrated, revised
+
+
 def edit_playlist_track(engine, kind, key, track_id, operation):
     kind, key, track_id = str(kind or ""), _safe_key(key), str(track_id or "")
     if operation not in ("add", "remove") or not track_id.isdigit():
@@ -192,8 +237,9 @@ def edit_playlist_track(engine, kind, key, track_id, operation):
     record, marker = _playlist_record(engine, kind, key)
     plex = engine.plex_factory(engine.store.get("settings"))
     before = plex.playlist_state(record["id"])
-    if marker and marker not in str(before.get("summary") or ""):
-        raise SafetyError("助手管理标记缺失，拒绝修改")
+    before, record = _ensure_playlist_ownership(
+        engine, kind, key, record, before, marker, plex,
+    )
     if record.get("fingerprint") and fingerprint(before) != record.get("fingerprint"):
         raise SafetyError("歌单已在 Plex 中被修改，请刷新后再操作")
     matching = [row for row in before.get("items", []) if str(row.get("id")) == track_id]
@@ -254,8 +300,9 @@ def playlist_detail(engine, kind, key):
         raise SafetyError("Plex 歌单标识已经变化")
     if str(state.get("title") or "") != str(record.get("title") or ""):
         raise SafetyError("Plex 歌单名称已经变化，请先核对")
-    if marker and marker not in str(state.get("summary") or ""):
-        raise SafetyError("助手管理标记缺失，不能读取这个歌单")
+    state, record = _ensure_playlist_ownership(
+        engine, str(kind), str(key), record, state, marker, plex,
+    )
     catalog = {
         str(row.get("id")): row for row in (engine.store.get("catalog", []) or [])
         if isinstance(row, dict) and row.get("id") is not None
@@ -343,13 +390,14 @@ def _remove_daily(engine, confirm_title, now=None):
     plex = engine.plex_factory(store.get("settings"))
     identity = plex.identity()
     current = plex.playlist_state(record["id"])
+    current, record = _ensure_playlist_ownership(
+        engine, "daily", "daily", record, current, engine.marker("daily"), plex,
+    )
     title = str(current.get("title") or "")
     if str(confirm_title or "") != title:
         raise SafetyError("歌单名称已经变化，请刷新后重试")
     if record.get("scope") != engine.daily_scope() or record.get("machine") != identity.get("machine"):
         raise SafetyError("账户、服务器或音乐库已经变化，拒绝删除")
-    if engine.marker("daily") not in str(current.get("summary") or ""):
-        raise SafetyError("助手管理标记缺失，拒绝删除")
     if fingerprint(current) != record.get("fingerprint"):
         raise SafetyError("每日推荐已被手工修改，拒绝删除")
     snapshot = {
