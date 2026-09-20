@@ -396,6 +396,16 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn("let profileRequest=0", script)
         self.assertIn("requestId!==profileRequest", script)
         self.assertIn("++playlistRequest", script)
+        switch_profile = script.split("async function switchProfile", 1)[1].split(
+            "$('playlistProfile').onchange", 1
+        )[0]
+        self.assertIn("setPlaylistLoading(false)", switch_profile)
+        self.assertIn("resetPlaylistView()", switch_profile)
+        reset_view = script.split("function resetPlaylistView", 1)[1].split(
+            "async function switchProfile", 1
+        )[0]
+        self.assertIn("playlistToolFrame", reset_view)
+        self.assertIn("正在载入歌单", reset_view)
 
     def test_playlist_deletion_only_stops_audio_from_that_playlist(self):
         script = (STATIC / "playlists.js").read_text(encoding="utf-8")
@@ -408,6 +418,21 @@ class PlaylistHubPageTests(unittest.TestCase):
         )[0]
         self.assertIn("playingFrom(selected)", remove_track)
         self.assertIn("playingFrom(selected)", remove_playlist)
+
+    def test_playing_highlight_and_unbuilt_daily_keep_unambiguous_context(self):
+        script = (STATIC / "playlists.js").read_text(encoding="utf-8")
+        render_tracks = script.split("function renderTracks", 1)[1].split(
+            "function updateArtwork", 1
+        )[0]
+        self.assertIn("(isPlaying?' playing':'')", render_tracks)
+        unbuilt = script.split("if(!item.playlist_id)", 1)[1].split("return;", 1)[0]
+        self.assertIn("pendingPlaylist=item", unbuilt)
+        self.assertNotIn("current=null", unbuilt)
+        open_tool = script.split("function openTool", 1)[1].split(
+            "function fillSearchTargets", 1
+        )[0]
+        self.assertIn("++playlistRequest", open_tool)
+        self.assertIn("setPlaylistLoading(false)", open_tool)
 
     def test_sticky_header_stays_below_navigation_and_loading_is_visible(self):
         styles = (STATIC / "product.css").read_text(encoding="utf-8")
