@@ -13,7 +13,10 @@ class Store:
     def __init__(self,root):
         self.root=Path(root);self.root.mkdir(parents=True,exist_ok=True)
         self.path=self.root/'helper.sqlite3';self.lock=threading.RLock()
-        with self._db() as db:db.execute('CREATE TABLE IF NOT EXISTS state (k TEXT PRIMARY KEY, v TEXT NOT NULL)')
+        with self._db() as db:
+            db.execute('CREATE TABLE IF NOT EXISTS state (k TEXT PRIMARY KEY, v TEXT NOT NULL)')
+            from .behavior_store import ensure_behavior_schema
+            ensure_behavior_schema(db)
         os.chmod(self.path,0o600)
         if not self.get('installation_id'):self.set('installation_id',uuid.uuid4().hex)
         if self.get('settings') is None:self.set('settings',dict(DEFAULT_SETTINGS))
