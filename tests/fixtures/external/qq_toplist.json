@@ -1,0 +1,8 @@
+{
+  "title": "热歌榜",
+  "totalNum": 2,
+  "songInfoList": [
+    {"mid": "top-1", "title": "榜单歌曲甲", "singer": [{"name": "歌手甲"}], "album": {"name": "榜单专辑"}, "interval": 200},
+    {"mid": "top-2", "title": "榜单歌曲乙", "singer": [{"name": "歌手乙"}, {"name": "歌手丙"}], "album": {"name": "榜单专辑"}, "interval": 210}
+  ]
+}

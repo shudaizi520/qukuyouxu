@@ -1,0 +1,8 @@
+{
+  "title": "百万收藏",
+  "url": "https://y.qq.com/n/ryqq/playlist/123",
+  "tracks": [
+    {"id": "qq-1", "title": "歌曲甲", "artist": "歌手甲、歌手乙", "album": "专辑甲", "duration": 181},
+    {"id": "qq-2", "title": "歌曲乙 (现场版)", "artist": "歌手丙", "album": "专辑乙", "duration": 242}
+  ]
+}

@@ -348,3 +348,35 @@ class SafeSourceHttp:
         finally:
             if response is not None:
                 response.close()
+
+
+def refresh_needs_confirmation(old_count: int, new_count: int) -> bool:
+    if any(isinstance(value, bool) or not isinstance(value, int) or value < 0 for value in (old_count, new_count)):
+        raise ValueError("歌曲数量无效")
+    if new_count == 0:
+        return True
+    removed = max(0, old_count - new_count)
+    return removed > min(20, old_count * 0.20)
+
+
+class ExternalProviderRegistry:
+    def __init__(self, qq_source, netease_source):
+        from .external_netease import NetEasePublicPlaylistSource
+        from .external_qq import QQPublicPlaylistSource
+
+        self.sources = {
+            "qq": qq_source if isinstance(qq_source, QQPublicPlaylistSource) else QQPublicPlaylistSource(qq_source),
+            "netease": (
+                netease_source if isinstance(netease_source, NetEasePublicPlaylistSource)
+                else NetEasePublicPlaylistSource(netease_source)
+            ),
+        }
+
+    def fetch(self, recognized: dict) -> dict:
+        if not isinstance(recognized, dict):
+            raise ExternalSourceError("外部歌单来源无效")
+        provider = str(recognized.get("provider") or "")
+        source = self.sources.get(provider)
+        if source is None:
+            raise ExternalSourceError("这个来源不能在线刷新")
+        return source.fetch(recognized)
