@@ -101,6 +101,7 @@ class PlaybackLearningV120Tests(unittest.TestCase):
         self.assertEqual(("completed", 1.0), (first[0]["kind"], first[0]["value"]))
         self.assertEqual([], duplicate)
         self.assertEqual([], delayed)
+        self.assertEqual("media.play", next(iter(sessions.values()))["state"])
 
     def test_new_track_while_old_track_is_active_confirms_transition(self):
         from helper.playback_learning import advance_playback

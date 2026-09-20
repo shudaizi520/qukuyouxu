@@ -39,7 +39,11 @@ class PlexWebhookV040Tests(unittest.TestCase):
         self.temp.cleanup()
 
     def events(self, profile="default"):
+        from helper.behavior_store import BehaviorRepository
         from helper.scoped_store import ScopedStore
+        rows = BehaviorRepository(self.store).list_events(profile, 10_000_000)
+        if rows:
+            return list(reversed(rows))
         return ScopedStore(self.store, profile).get("behavior_events", [])
 
     def test_scrobble_and_rating_create_profile_scoped_signals(self):
@@ -55,28 +59,52 @@ class PlexWebhookV040Tests(unittest.TestCase):
         self.assertEqual([1.0, -1.0], [row["value"] for row in self.events()])
         self.assertEqual(["completed", "low_rating"], [row["kind"] for row in self.events()])
 
-    def test_stop_is_soft_evidence_and_late_skip_remains_positive(self):
+    def test_confirmed_transitions_distinguish_skip_fatigue_and_completion(self):
         from helper.plex_webhook import apply_webhook_event
 
         apply_webhook_event(
             self.store, self.registry,
-            payload("media.stop", track="123", viewOffset=20000), now=100,
+            payload("media.play", track="123", player="early"), now=0,
         )
         apply_webhook_event(
             self.store, self.registry,
-            payload("media.stop", track="124", viewOffset=100000), now=120,
+            payload("media.stop", track="123", player="early", viewOffset=20000), now=20,
         )
         apply_webhook_event(
             self.store, self.registry,
-            payload("media.stop", track="125", viewOffset=170000), now=140,
+            payload("media.play", track="900", player="early"), now=25,
+        )
+        apply_webhook_event(
+            self.store, self.registry,
+            payload("media.play", track="124", player="middle"), now=100,
+        )
+        apply_webhook_event(
+            self.store, self.registry,
+            payload("media.stop", track="124", player="middle", viewOffset=120000), now=220,
+        )
+        apply_webhook_event(
+            self.store, self.registry,
+            payload("media.play", track="901", player="middle"), now=225,
+        )
+        apply_webhook_event(
+            self.store, self.registry,
+            payload("media.play", track="125", player="late"), now=300,
+        )
+        apply_webhook_event(
+            self.store, self.registry,
+            payload("media.stop", track="125", player="late", viewOffset=170000), now=470,
+        )
+        apply_webhook_event(
+            self.store, self.registry,
+            payload("media.play", track="902", player="late"), now=475,
         )
         events = self.events()
         self.assertEqual(
-            ["observed_skip", "observed_skip", "substantial_listen"],
+            ["confirmed_skip", "late_exit", "substantial_listen"],
             [row["kind"] for row in events],
         )
-        self.assertLess(events[0]["value"], events[1]["value"])
-        self.assertLess(events[1]["value"], 0)
+        self.assertEqual(0.45, events[0]["value"])
+        self.assertEqual(0.10, events[1]["value"])
         self.assertEqual(0.75, events[2]["value"])
 
     def test_scrobble_and_late_stop_are_counted_only_once(self):
@@ -250,7 +278,15 @@ class PlexWebhookV040Tests(unittest.TestCase):
         )
         apply_webhook_event(
             self.store, self.registry,
-            payload("media.stop", track="324", player="speaker", viewOffset=190000), now=110,
+            payload("media.play", track="324", player="speaker", viewOffset=0), now=110,
+        )
+        apply_webhook_event(
+            self.store, self.registry,
+            payload("media.stop", track="324", player="speaker", viewOffset=190000), now=300,
+        )
+        apply_webhook_event(
+            self.store, self.registry,
+            payload("media.play", track="999", player="speaker"), now=305,
         )
 
         self.assertEqual(
@@ -513,7 +549,7 @@ class PlexWebhookV040Tests(unittest.TestCase):
 
         sessions = profile.get("behavior_sessions")
         self.assertEqual(256, len(sessions))
-        self.assertIn("10:latest", sessions)
+        self.assertTrue(any(row.get("player_id") == "latest" for row in sessions.values()))
         self.assertNotIn("10:player-0", sessions)
 
     def test_daily_generation_no_longer_samples_active_sessions(self):

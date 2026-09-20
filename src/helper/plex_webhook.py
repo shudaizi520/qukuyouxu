@@ -12,6 +12,9 @@ import time
 from starlette.responses import JSONResponse
 
 from .behavior import MAX_EVENT_AGE, MAX_EVENTS, recent_behavior_events
+from .behavior_store import BehaviorRepository
+from .playback_learning import advance_playback
+from .preference_model import apply_evidence, materialize_track_state
 from .scoped_store import ScopedStore
 
 
@@ -185,6 +188,52 @@ def _event_key(signal, playback_id):
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
+def catalog_duration(store, track_id):
+    track_id = str(track_id or "")
+    for row in store.get("catalog", []) or []:
+        if isinstance(row, dict) and str(row.get("id") or "") == track_id:
+            return _number(row.get("duration"), 0) or 0
+    return 0
+
+
+def load_behavior_snapshot(store, now=None):
+    """Return materialized V2 track states for exactly one profile."""
+    now = time.time() if now is None else float(now)
+    base_store = getattr(store, "base", store)
+    profile_id = str(getattr(store, "profile_id", "") or "")
+    if not profile_id or not hasattr(base_store, "_db"):
+        return {}
+    repo = BehaviorRepository(base_store)
+    migration = repo.migrate_profile(
+        profile_id,
+        list(store.get("behavior_events", []) or []),
+        now,
+    )
+    if migration.get("inserted"):
+        user = repo.load_user_state(profile_id)
+        states = repo.load_track_states(profile_id)
+        for evidence in reversed(repo.list_events(profile_id, now)):
+            track_id = str(evidence.get("track_id") or "")
+            state, user = apply_evidence(states.get(track_id, {}), user, evidence, evidence.get("at") or now)
+            states[track_id] = state
+        for track_id, state in states.items():
+            repo.save_track_state(profile_id, track_id, state)
+        repo.save_user_state(profile_id, user)
+    snapshot = {}
+    for track_id, saved in repo.load_track_states(profile_id).items():
+        state = materialize_track_state(saved, now)
+        state.update({
+            "score": state["affinity"] - 0.20 * state["fatigue"],
+            "long_term_score": state["affinity"],
+            "short_term_score": -state["fatigue"],
+            "positive": int(state["positive_evidence"] > 0),
+            "negative": int(state["skip_evidence"] > 0 or state["hard_avoid"]),
+            "recent_positive": int(state["positive_evidence"] > 0),
+        })
+        snapshot[track_id] = state
+    return snapshot
+
+
 def _record_ingress(base_store, signal, result, now):
     """Keep one privacy-safe delivery receipt; never persist the raw payload."""
     previous = base_store.get(WEBHOOK_INGRESS_KEY, {}) or {}
@@ -257,9 +306,14 @@ def webhook_health(base_store, profile_store, now=None):
     # an event reaches the current endpoint, it remains verified until that
     # endpoint's secret is replaced.
     global_connected = bool(global_ingress)
-    events = recent_behavior_events(profile_store.get("behavior_events", []) or [], now)
-    product = profile_store.get("product_settings", {}) or {}
+    base_for_behavior = getattr(profile_store, "base", base_store)
     profile_id = str(getattr(profile_store, "profile_id", "") or "")
+    if profile_id and hasattr(base_for_behavior, "_db"):
+        load_behavior_snapshot(profile_store, now)
+        events = BehaviorRepository(base_for_behavior).list_events(profile_id, now)
+    else:
+        events = recent_behavior_events(profile_store.get("behavior_events", []) or [], now)
+    product = profile_store.get("product_settings", {}) or {}
     ingress = profile_receipts.get(profile_id) or latest
     matched_before = bool(
         ingress.get("received_at")
@@ -312,159 +366,120 @@ def apply_webhook_event(base_store, registry, payload, now=None):
     if config.get("behavior_enabled", True) is False:
         return _record_ingress(base_store, signal, {"status": "ignored", "reason": "disabled", "profile_id": profile_id}, now)
 
-    sessions = dict(store.get("behavior_sessions", {}) or {})
     sessions = {
-        key: row for key, row in sessions.items()
-        if isinstance(row, dict) and now - (_number(row.get("updated_at"), 0) or 0) <= (
-            TERMINAL_SESSION_TTL if row.get("terminal_event") else ACTIVE_SESSION_TTL
-        )
+        key: dict(row) for key, row in (store.get("behavior_sessions", {}) or {}).items()
+        if isinstance(row, dict)
+        and now - (_number(row.get("updated_at", row.get("last_at")), 0) or 0)
+        <= (TERMINAL_SESSION_TTL if row.get("terminal_event") else ACTIVE_SESSION_TTL)
     }
-    generation = int(_number(store.get("webhook_playback_generation", 0), 0) or 0)
-    session_id = signal["account_id"] + ":" + (signal.get("player_id") or "unknown")
-    session = sessions.get(session_id)
-    matches_session = bool(session and session.get("track_id") == signal["track_id"])
-    session_was_playing = bool(
-        matches_session
-        and not session.get("terminal_event")
-        and session.get("state") in ("media.play", "media.resume")
+    identity = "\x1f".join(
+        str(signal.get(key) or "")
+        for key in ("machine", "account_id", "library_id", "player_id")
     )
-
-    def new_playback(started_at=None):
-        nonlocal generation
-        generation += 1
-        started_at = now if started_at is None else started_at
-        raw = "|".join((signal["machine"], session_id, signal["track_id"], str(generation), str(started_at)))
-        return {
-            "track_id": signal["track_id"], "started_at": started_at,
-            "playback_id": hashlib.sha256(raw.encode()).hexdigest()[:24],
-            "terminal_event": "", "completion_event": "",
-        }
-
-    if signal["event"] == "media.play":
-        if matches_session and (session.get("terminal_event") or session.get("completion_event")):
-            # Plex's webhook payload has no documented playback/session id.  A
-            # play after a terminal event is therefore held as a candidate
-            # until its next progress event proves whether this is a genuine
-            # replay or a delayed redelivery of the old play notification.
-            session = dict(session)
-            session.update(pending_play_at=now, pending_play_offset=signal["offset_seconds"])
-            sessions[session_id] = session
+    previous = sessions.get(identity) or {}
+    pending_replay_at = _number(previous.get("pending_replay_at"), None)
+    if (
+        pending_replay_at is not None
+        and signal["event"] in ("media.stop", "media.scrobble")
+        and previous.get("track_id") == signal["track_id"]
+    ):
+        elapsed = max(0.0, now - pending_replay_at)
+        duration_for_replay = signal.get("duration_seconds") or previous.get("duration") or 0
+        offset = signal.get("offset_seconds") or 0
+        ratio = offset / duration_for_replay if duration_for_replay else 1.0
+        progressed = elapsed >= max(30.0, min(duration_for_replay or offset, offset) * 0.5)
+        if (signal["event"] == "media.stop" and ratio < 0.65) or progressed:
+            replay_signal = dict(signal, event="media.play", offset_seconds=0.0)
+            sessions, _ = advance_playback(
+                sessions, replay_signal, pending_replay_at,
+                catalog_duration(store, signal["track_id"]),
+            )
         else:
-            session = new_playback()
-    elif signal["event"] in ("media.pause", "media.resume"):
-        if matches_session and session.get("pending_play_at") is not None:
-            session = new_playback(session.get("pending_play_at"))
-        elif not matches_session or session.get("terminal_event"):
-            session = new_playback()
-    elif signal["event"] in ("media.stop", "media.scrobble"):
-        if not matches_session:
-            session = new_playback()
-        elif session.get("pending_play_at") is not None:
-            pending_at = _number(session.get("pending_play_at"), now) or now
-            elapsed = max(0.0, now - pending_at)
-            duration = signal["duration_seconds"]
-            offset = signal["offset_seconds"]
-            ratio = offset / duration if duration > 0 else 1.0
-            # A genuinely replayed track needs time to reach its reported
-            # offset, except for an obvious early skip.  Short, impossible
-            # gaps are treated as out-of-order redelivery of the old play.
-            progressed = elapsed >= max(30.0, min(duration or offset, offset) * 0.5)
-            if (signal["event"] == "media.stop" and ratio < 0.65) or progressed:
-                session = new_playback(pending_at)
-                if signal["event"] == "media.scrobble":
-                    session_was_playing = True
-            else:
-                session = dict(session)
-                session.pop("pending_play_at", None)
-                session.pop("pending_play_offset", None)
-    playback_id = (session or {}).get("playback_id") or "rating:" + signal["track_id"]
-
-    seen = dict(store.get("webhook_seen", {}) or {})
-    cutoff_seen = now - 3600
-    seen = {key: value for key, value in seen.items() if _number(value, 0) >= cutoff_seen}
-    key = _event_key(signal, playback_id)
-    if key in seen:
-        if signal["event"] == "media.play" and session is not None:
-            # Persist the ambiguous replay marker even though this exact play
-            # delivery was seen before; the next event resolves its meaning.
-            sessions[session_id] = session
-            store.set_many({
-                "webhook_playback_generation": generation,
-                "behavior_sessions": sessions,
-            })
-        return _record_ingress(base_store, signal, {"status": "duplicate", "profile_id": profile_id}, now)
-    seen[key] = now
+            row = dict(previous)
+            row.pop("pending_replay_at", None)
+            sessions[identity] = row
+        previous = sessions.get(identity) or {}
+    delivery_playback_id = previous.get("playback_id") or "direct:" + signal["track_id"]
+    seen = {
+        key: value for key, value in (store.get("webhook_seen", {}) or {}).items()
+        if (_number(value, 0) or 0) >= now - 3600
+    }
+    delivery_key = _event_key(signal, delivery_playback_id)
+    if delivery_key in seen:
+        if (
+            signal["event"] == "media.play"
+            and previous.get("track_id") == signal["track_id"]
+            and previous.get("completed")
+        ):
+            previous = dict(previous)
+            previous["pending_replay_at"] = now
+            sessions[identity] = previous
+            store.set("behavior_sessions", sessions)
+        return _record_ingress(
+            base_store, signal,
+            {"status": "duplicate", "profile_id": profile_id}, now,
+        )
+    seen[delivery_key] = now
     if len(seen) > 2000:
         seen = dict(sorted(seen.items(), key=lambda item: item[1])[-2000:])
 
-    if session is not None and signal["event"] != "media.rate":
-        if signal["event"] == "media.scrobble" and session_was_playing:
-            if signal["offset_seconds"] > 0 or "offset_seconds" not in session:
-                session["offset_seconds"] = signal["offset_seconds"]
-            if signal["duration_seconds"] > 0 or "duration_seconds" not in session:
-                session["duration_seconds"] = signal["duration_seconds"]
-            session.update({
-                "state": session.get("state") or "media.play",
-                "user": signal["user"], "updated_at": now,
-                "terminal_event": "", "completion_event": "media.scrobble",
+    duration = catalog_duration(store, signal["track_id"])
+    evidence_rows = []
+    if signal["event"] == "media.rate":
+        if signal.get("value"):
+            evidence_rows.append({
+                "event_key": delivery_key,
+                "track_id": signal["track_id"],
+                "kind": signal["kind"],
+                "value": signal["value"],
+                "at": now,
+                "progress": None,
+                "duration": signal.get("duration_seconds") or duration or None,
+                "player_id": signal.get("player_id") or "",
+                "playback_id": delivery_playback_id,
             })
-        else:
-            session.update({
-                "offset_seconds": signal["offset_seconds"],
-                "duration_seconds": signal["duration_seconds"],
-                "state": signal["event"], "user": signal["user"], "updated_at": now,
-            })
-            if signal["event"] in ("media.stop", "media.scrobble"):
-                session["terminal_event"] = signal["event"]
-        sessions[session_id] = session
+    else:
+        sessions, evidence_rows = advance_playback(sessions, signal, now, duration)
+
+    resulting = sessions.get(identity) or {}
+    resulting_playback_id = resulting.get("playback_id")
+    if resulting_playback_id:
+        seen[_event_key(signal, resulting_playback_id)] = now
+
     if len(sessions) > MAX_BEHAVIOR_SESSIONS:
         sessions = dict(sorted(
             sessions.items(),
-            key=lambda item: _number(item[1].get("updated_at"), 0) or 0,
+            key=lambda item: _number(item[1].get("updated_at", item[1].get("last_at")), 0) or 0,
         )[-MAX_BEHAVIOR_SESSIONS:])
 
-    events = list(store.get("behavior_events", []) or [])
-    def same_playback(row):
-        return bool(playback_id and row.get("playback_id") == playback_id)
-    if signal["kind"] == "completed":
-        events = [
-            row for row in events
-            if not (
-                same_playback(row) and row.get("kind") == "substantial_listen"
-            )
-        ]
-    if signal["kind"] == "substantial_listen" and any(
-        same_playback(row) and row.get("kind") == "completed"
-        for row in events
-    ):
-        signal.update(value=0.0, kind="neutral")
-    if signal["value"]:
-        events.append({
-            "track_id": signal["track_id"], "value": signal["value"], "kind": signal["kind"],
-            "at": now, "offset_seconds": round(signal["offset_seconds"], 3),
-            "duration_seconds": round(signal["duration_seconds"], 3), "user": signal["user"],
-            "source": "plex_webhook", "account_id": signal["account_id"],
-            "machine": signal["machine"], "player_id": signal.get("player_id") or "",
-            "playback_id": playback_id,
-        })
-    cutoff = now - MAX_EVENT_AGE
-    events = [row for row in events if (_number(row.get("at"), 0) or 0) >= cutoff][-MAX_EVENTS:]
+    repo = BehaviorRepository(base_store)
+    recorded = 0
+    for evidence in evidence_rows:
+        if not repo.append_event(profile_id, evidence):
+            continue
+        track = repo.load_track_state(profile_id, evidence["track_id"])
+        user = repo.load_user_state(profile_id)
+        track, user = apply_evidence(track, user, evidence, now)
+        repo.save_track_state(profile_id, evidence["track_id"], track)
+        repo.save_user_state(profile_id, user)
+        recorded += 1
+    repo.prune(profile_id, now)
+    event_count = len(repo.list_events(profile_id, now))
     store.set_many({
         "webhook_seen": seen,
-        "webhook_playback_generation": generation,
         "behavior_sessions": sessions,
-        "behavior_events": events,
         "behavior_status": {
             "updated_at": now,
             "active": active_session_count(sessions, now=now),
-            "event_count": len(events),
-            "new_events": 1 if signal["value"] else 0, "source": "plex_webhook",
+            "event_count": event_count,
+            "new_events": recorded,
+            "source": "plex_webhook",
         },
     })
     return _record_ingress(base_store, signal, {
-        "status": "recorded" if signal["value"] else "accepted",
+        "status": "recorded" if recorded else "accepted",
         "profile_id": profile_id,
-        "kind": signal["kind"],
+        "kind": evidence_rows[-1]["kind"] if evidence_rows else "neutral",
     }, now)
 
 

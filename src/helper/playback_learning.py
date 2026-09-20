@@ -42,12 +42,17 @@ def _new_session(identity: str, signal: dict, now: float, catalog_duration: floa
         "generation": generation,
         "started_at": float(now),
         "last_at": float(now),
+        "updated_at": float(now),
         "last_offset": offset,
+        "offset_seconds": offset,
         "active_seconds": 0.0,
         "duration": duration,
+        "duration_seconds": duration,
         "state": "media.play",
         "pending_at": None,
         "completed": False,
+        "terminal_event": "",
+        "completion_event": "",
     }
 
 
@@ -61,8 +66,11 @@ def _advance_time(session: dict, signal: dict, now: float, catalog_duration: flo
     duration = _number(signal.get("duration_seconds")) or _number(row.get("duration")) or _number(catalog_duration)
     if duration:
         row["duration"] = duration
+        row["duration_seconds"] = duration
     row["last_at"] = float(now)
+    row["updated_at"] = float(now)
     row["last_offset"] = _number(signal.get("offset_seconds"), row.get("last_offset") or 0)
+    row["offset_seconds"] = row["last_offset"]
     return row
 
 
@@ -148,6 +156,15 @@ def advance_playback(sessions: dict, signal: dict, now: float,
         return current, evidence
 
     if not session or str(session.get("track_id") or "") != track_id:
+        if event == "media.scrobble" and track_id:
+            row = _new_session(identity, signal, now, catalog_duration)
+            row.update(
+                completed=True,
+                state="media.scrobble",
+                completion_event="media.scrobble",
+            )
+            current[identity] = row
+            return current, [_evidence(row, "completed", 1.0, now, 1.0)]
         return current, []
 
     if event == "media.pause":
@@ -162,6 +179,7 @@ def advance_playback(sessions: dict, signal: dict, now: float,
         row["last_offset"] = _number(signal.get("offset_seconds"), row.get("last_offset") or 0)
         row["duration"] = _number(signal.get("duration_seconds")) or _number(row.get("duration")) or _number(catalog_duration)
         row["state"] = "media.resume"
+        row["updated_at"] = now
         current[identity] = row
         return current, []
 
@@ -169,7 +187,14 @@ def advance_playback(sessions: dict, signal: dict, now: float,
         if session.get("completed"):
             return current, []
         row = _advance_time(session, signal, now, catalog_duration)
-        row.update(completed=True, state="media.scrobble", pending_at=None)
+        active_state = session.get("state") if session.get("state") in _ACTIVE_EVENTS else "media.scrobble"
+        row.update(
+            completed=True,
+            state=active_state,
+            pending_at=None,
+            terminal_event="",
+            completion_event="media.scrobble",
+        )
         current[identity] = row
         duration = _number(row.get("duration"))
         progress = min(1.0, _number(row.get("active_seconds")) / duration) if duration else 1.0
@@ -177,9 +202,18 @@ def advance_playback(sessions: dict, signal: dict, now: float,
 
     if event == "media.stop":
         if session.get("completed"):
+            row = dict(session)
+            row.update(
+                state="media.stop",
+                last_at=now,
+                updated_at=now,
+                terminal_event="media.stop",
+                pending_at=None,
+            )
+            current[identity] = row
             return current, []
         row = _advance_time(session, signal, now, catalog_duration)
-        row.update(state="media.stop", pending_at=now)
+        row.update(state="media.stop", pending_at=now, terminal_event="media.stop")
         current[identity] = row
         return current, []
 

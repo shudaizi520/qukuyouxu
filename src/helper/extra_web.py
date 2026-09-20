@@ -108,13 +108,34 @@ def extensions_status(store):
     counts = Counter((x.get('status') for x in store.get('metadata_audit', [])))
     managed = store.get('daily_managed')
     now = time.time()
-    events = recent_behavior_events(store.get('behavior_events', []) or [], now)
-    profile = behavior_profile(events, now)
+    base_store = getattr(store, 'base', store)
+    profile_id = str(getattr(store, 'profile_id', '') or '')
+    if profile_id and hasattr(base_store, '_db'):
+        from .behavior_store import BehaviorRepository
+        from .plex_webhook import load_behavior_snapshot
+        profile = load_behavior_snapshot(store, now)
+        events = BehaviorRepository(base_store).list_events(profile_id, now)
+    else:
+        events = recent_behavior_events(store.get('behavior_events', []) or [], now)
+        profile = behavior_profile(events, now)
     behavior_status = store.get('behavior_status') or {}
     product = store.get('product_settings') or {}
     active_sessions = active_session_count(store.get('behavior_sessions', {}) or {})
-    behavior = {'enabled': product.get('behavior_enabled', True), 'event_count': len(events), 'positive_tracks': sum((1 for row in profile.values() if (row.get('score') or 0) > 0)), 'negative_tracks': sum((1 for row in profile.values() if (row.get('score') or 0) < 0)), 'active_sessions': active_sessions, 'updated_at': behavior_status.get('updated_at'), 'status': behavior_status.get('status', 'waiting')}
-    base_store = getattr(store, 'base', store)
+    preferred = sum(1 for row in profile.values() if (row.get('affinity', row.get('score', 0)) or 0) > 0)
+    cooled = sum(1 for row in profile.values() if (row.get('cooldown_until') or 0) > now)
+    behavior = {
+        'enabled': product.get('behavior_enabled', True),
+        'event_count': len(events),
+        'learned_tracks': len(profile),
+        'preferred_tracks': preferred,
+        'cooled_tracks': cooled,
+        # Compatibility aliases remain for one release while the UI switches.
+        'positive_tracks': preferred,
+        'negative_tracks': cooled,
+        'active_sessions': active_sessions,
+        'updated_at': behavior_status.get('updated_at'),
+        'status': behavior_status.get('status', 'waiting'),
+    }
     return {'source_settings': store.get('source_settings', {'reference_limit': 12}), 'metadata_summary': {'review': sum((counts.get(k, 0) for k in ('conflict', 'incomplete', 'stale_correction'))), 'confirmed': counts.get('confirmed', 0), 'breakdown': dict(counts)}, 'base_settings': {**DEFAULT_BASE, **(store.get('base_settings') or {})}, 'base_plan': public_base(store), 'base_notice': store.get('base_notice', ''), 'daily_settings': {**DEFAULT_DAILY, **store.get('daily_settings', {})}, 'daily_plan': public_daily(store), 'daily_published': public_daily_published(store), 'daily_managed': {k: managed.get(k) for k in ('id', 'title', 'date')} if managed else None, 'daily_repair': public_daily_repair(store), 'daily_notice': store.get('daily_notice', ''), 'behavior': behavior, 'status_refresh_ms': 5000 if behavior['active_sessions'] else 45000, 'webhook': webhook_health(base_store, store), 'active_profile': public_active_profile(store), 'product_settings': {'behavior_enabled': product.get('behavior_enabled', True)}, 'feedback': store.get('feedback', {'tracks': {}, 'artists': {}})}
 
 def attach_routes(app, store, engine, body, ensure_idle):

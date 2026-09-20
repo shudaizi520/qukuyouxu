@@ -5,6 +5,8 @@ import uuid
 from .metadata import prepare_catalog
 from .recommend import recommend, DEFAULT_DAILY, DAILY_POLICY, song_key
 from .behavior import behavior_profile
+from .behavior_store import BehaviorRepository
+from .plex_webhook import load_behavior_snapshot
 from .playlist_sync import has_exact_members, sync_owned_items
 from .audience import filter_childrens_context
 DAILY_CID = 'daily'
@@ -155,8 +157,19 @@ class DailyMixin:
             self.progress('每日推荐：读取你明确选择的收藏歌单')
             seed_ids.extend(p.playlist_track_ids(pid))
         features = self._daily_features(raw)
-        audience = filter_childrens_context(effective, features, self.store.get('behavior_events', []), seed_ids)
-        behavior = behavior_profile(audience['events'], now, excluded_ids=audience['excluded_ids'])
+        base_store = getattr(self.store, 'base', self.store)
+        profile_id = str(getattr(self.store, 'profile_id', '') or '')
+        if profile_id and hasattr(base_store, '_db'):
+            behavior = load_behavior_snapshot(self.store, now)
+            behavior_events = BehaviorRepository(base_store).list_events(profile_id, now)
+        else:
+            behavior_events = self.store.get('behavior_events', [])
+            behavior = behavior_profile(behavior_events, now)
+        audience = filter_childrens_context(effective, features, behavior_events, seed_ids)
+        behavior = {
+            track_id: state for track_id, state in behavior.items()
+            if track_id not in audience['excluded_ids']
+        }
         published_at = number_time((managed or {}).get('published_at'))
         if not published_at:
             published_at = max(
