@@ -12,7 +12,7 @@ from .auth import COOKIE_NAME
 from .engine import SafetyError
 from .external_audio import stream_local_audio
 from .external_export import format_missing_csv, format_missing_text, missing_download_name
-from .external_sources import recognize_source
+from .external_sources import validate_source_reference
 
 
 def _source_summary(data, last_run=None):
@@ -108,7 +108,7 @@ def attach_external_routes(app, store, engine, runtime, profiles, body, ensure_i
         filename = str(data.get("filename") or "").strip()
         encoded = data.get("content_base64")
         if value:
-            recognize_source(value)
+            validate_source_reference(value)
             content = None
         else:
             if not filename or not isinstance(encoded, str):

@@ -60,10 +60,56 @@ class ExternalSourcesV130Tests(unittest.TestCase):
         from helper.external_sources import recognize_source
 
         qq = recognize_source("https://y.qq.com/n/ryqq/playlist/123?ADTAG=x")
+        qq_v2 = recognize_source("https://y.qq.com/n/ryqq_v2/playlist/987?ADTAG=h5_share_playlist")
+        qq_share_target = recognize_source(
+            "https://i.y.qq.com/n2/m/share/details/taoge.html?ADTAG=pc_v17&id=7817632948"
+        )
         netease = recognize_source("https://music.163.com/#/playlist?id=456")
 
         self.assertEqual({"provider": "qq", "external_id": "123", "url": "https://y.qq.com/n/ryqq/playlist/123"}, qq)
+        self.assertEqual({"provider": "qq", "external_id": "987", "url": "https://y.qq.com/n/ryqq/playlist/987"}, qq_v2)
+        self.assertEqual(
+            {"provider": "qq", "external_id": "7817632948", "url": "https://y.qq.com/n/ryqq/playlist/7817632948"},
+            qq_share_target,
+        )
         self.assertEqual({"provider": "netease", "external_id": "456", "url": "https://music.163.com/playlist?id=456"}, netease)
+
+    def test_qq_share_short_link_is_resolved_only_through_official_public_hosts(self):
+        from helper.external_sources import SafeSourceHttp, resolve_source_reference
+
+        session = FakeSession([
+            FakeResponse(302, headers={
+                "Location": "https://i.y.qq.com/n2/m/share/details/taoge.html?id=7817632948"
+            }),
+            FakeResponse(302, headers={
+                "Location": "https://i2.y.qq.com/n3/other/pages/details/playlist.html?id=7817632948"
+            }),
+            FakeResponse(302, headers={
+                "Location": "https://y.qq.com/n/ryqq_v2/playlist/7817632948?ADTAG=h5_share_playlist"
+            }),
+            FakeResponse(200, body=b"share page"),
+        ])
+        http = SafeSourceHttp(session=session, resolver=public_resolver)
+
+        result = resolve_source_reference(
+            "https://c6.y.qq.com/base/fcgi-bin/u?__=IdNgNPHZ9fiW", http
+        )
+
+        self.assertEqual(
+            {"provider": "qq", "external_id": "7817632948", "url": "https://y.qq.com/n/ryqq/playlist/7817632948"},
+            result,
+        )
+        self.assertEqual(4, len(session.calls))
+        self.assertTrue(all(call[1]["allow_redirects"] is False for call in session.calls))
+
+        unsafe = SafeSourceHttp(
+            session=FakeSession([FakeResponse(302, headers={"Location": "https://evil.example/playlist/1"})]),
+            resolver=public_resolver,
+        )
+        with self.assertRaisesRegex(ValueError, "支持"):
+            resolve_source_reference(
+                "https://c6.y.qq.com/base/fcgi-bin/u?__=IdNgNPHZ9fiW", unsafe
+            )
 
     def test_private_credentialed_and_unknown_urls_are_rejected(self):
         from helper.external_sources import recognize_source

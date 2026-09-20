@@ -20,9 +20,12 @@ REDIRECT_CODES = frozenset({301, 302, 303, 307, 308})
 SUPPORTED_HOSTS = {
     "y.qq.com": "qq",
     "c.y.qq.com": "qq",
+    "i.y.qq.com": "qq",
     "music.163.com": "netease",
     "163cn.tv": "netease",
 }
+QQ_SHARE_HOSTS = {"c6.y.qq.com"}
+QQ_SHARE_RESOLVE_HOSTS = QQ_SHARE_HOSTS | {"i.y.qq.com", "i2.y.qq.com", "y.qq.com", "c.y.qq.com"}
 FORMULA_PREFIXES = ("=", "+", "-", "@")
 VERSION_PATTERNS = (
     ("现场版", re.compile(r"(?:现场|live)", re.I)),
@@ -122,16 +125,24 @@ def recognize_source(value: str) -> dict:
     query = parse_qs(parsed.query)
     fragment = parsed.fragment
     if provider == "qq":
-        match = re.fullmatch(r"/n/ryqq/(?:playlist|toplist)/(\d+)", path)
-        if not match:
-            candidate = (query.get("id") or query.get("disstid") or [""])[0]
-            kind = "toplist" if "top" in path.lower() else "playlist"
-            if not candidate.isdigit() or kind != "playlist":
+        if host == "i.y.qq.com":
+            if path != "/n2/m/share/details/taoge.html":
                 raise ExternalSourceError("这不是可识别的 QQ 音乐公开歌单链接")
-            external_id = candidate
+            candidate = (query.get("id") or query.get("disstid") or [""])[0]
+            if not candidate.isdigit():
+                raise ExternalSourceError("这不是可识别的 QQ 音乐公开歌单链接")
+            external_id, kind = candidate, "playlist"
         else:
-            external_id = match.group(1)
-            kind = "toplist" if "/toplist/" in path else "playlist"
+            match = re.fullmatch(r"/n/ryqq(?:_v2)?/(?:playlist|toplist)/(\d+)", path)
+            if not match:
+                candidate = (query.get("id") or query.get("disstid") or [""])[0]
+                kind = "toplist" if "top" in path.lower() else "playlist"
+                if not candidate.isdigit() or kind != "playlist":
+                    raise ExternalSourceError("这不是可识别的 QQ 音乐公开歌单链接")
+                external_id = candidate
+            else:
+                external_id = match.group(1)
+                kind = "toplist" if "/toplist/" in path else "playlist"
         canonical = f"https://y.qq.com/n/ryqq/{kind}/{external_id}"
     else:
         fragment_parsed = urlsplit(fragment if fragment.startswith("/") else "")
@@ -143,6 +154,38 @@ def recognize_source(value: str) -> dict:
         external_id = candidate
         canonical = f"https://music.163.com/playlist?id={external_id}"
     return {"provider": provider, "external_id": external_id, "url": canonical}
+
+
+def validate_source_reference(value: str) -> dict:
+    """Validate a direct playlist URL or the exact QQ share-link shape."""
+    try:
+        return recognize_source(value)
+    except ExternalSourceError as direct_error:
+        try:
+            parsed, _host = _safe_url(_clean(value, "歌单链接", 2000), QQ_SHARE_HOSTS)
+        except ExternalSourceError:
+            raise direct_error from None
+        query = parse_qs(parsed.query)
+        token = (query.get("__") or [""])[0]
+        if parsed.path.rstrip("/") != "/base/fcgi-bin/u" or not re.fullmatch(r"[A-Za-z0-9_-]{6,128}", token):
+            raise ExternalSourceError("这不是可识别的 QQ 音乐公开分享链接")
+        return {
+            "provider": "qq",
+            "share_url": f"https://c6.y.qq.com/base/fcgi-bin/u?__={token}",
+        }
+
+
+def resolve_source_reference(value: str, http) -> dict:
+    reference = validate_source_reference(value)
+    if reference.get("external_id"):
+        return reference
+    if not isinstance(http, SafeSourceHttp):
+        raise ExternalSourceError("QQ 音乐分享链接暂时无法解析", retryable=True, kind="network")
+    resolved = http.resolve_url(reference["share_url"], allowed_hosts=QQ_SHARE_RESOLVE_HOSTS)
+    result = recognize_source(resolved)
+    if result.get("provider") != "qq":
+        raise ExternalSourceError("QQ 音乐分享链接没有指向公开歌单", kind="redirect")
+    return result
 
 
 def _decode_upload(content):
@@ -354,6 +397,37 @@ class SafeSourceHttp:
             if response is not None:
                 response.close()
 
+    def resolve_url(self, url: str, *, allowed_hosts: set[str]) -> str:
+        """Resolve a bounded redirect chain without reading response bodies."""
+        current = str(url)
+        for redirects in range(6):
+            current = self._validate(current, allowed_hosts)
+            try:
+                response = self.session.get(
+                    current, allow_redirects=False, stream=True, timeout=(5, 20),
+                    headers={"Accept": "text/html", "User-Agent": "QukuYouxu/1"},
+                )
+            except requests.RequestException:
+                raise ExternalSourceError("外部歌单来源暂时无法连接", retryable=True, kind="network") from None
+            try:
+                if response.status_code in REDIRECT_CODES:
+                    location = response.headers.get("Location", "")
+                    if redirects >= 5:
+                        raise ExternalSourceError("外部来源重定向次数过多", kind="redirect")
+                    if not location:
+                        raise ExternalSourceError("外部来源返回了无效重定向", kind="redirect")
+                    current = urljoin(current, location)
+                    continue
+                status = int(response.status_code)
+                if status == 429 or status >= 500:
+                    raise ExternalSourceError("外部歌单来源暂时不可用", retryable=True, kind="upstream")
+                if status >= 300:
+                    raise ExternalSourceError("外部歌单不可访问或不是公开歌单", kind="upstream")
+                return current
+            finally:
+                response.close()
+        raise ExternalSourceError("外部来源重定向次数过多", kind="redirect")
+
 
 def refresh_needs_confirmation(old_count: int, new_count: int) -> bool:
     if any(isinstance(value, bool) or not isinstance(value, int) or value < 0 for value in (old_count, new_count)):
@@ -365,7 +439,7 @@ def refresh_needs_confirmation(old_count: int, new_count: int) -> bool:
 
 
 class ExternalProviderRegistry:
-    def __init__(self, qq_source, netease_source):
+    def __init__(self, qq_source, netease_source, source_http=None):
         from .external_netease import NetEasePublicPlaylistSource
         from .external_qq import QQPublicPlaylistSource
 
@@ -376,6 +450,10 @@ class ExternalProviderRegistry:
                 else NetEasePublicPlaylistSource(netease_source)
             ),
         }
+        self.source_http = source_http or (netease_source if isinstance(netease_source, SafeSourceHttp) else SafeSourceHttp())
+
+    def recognize(self, value: str) -> dict:
+        return resolve_source_reference(value, self.source_http)
 
     def fetch(self, recognized: dict) -> dict:
         if not isinstance(recognized, dict):

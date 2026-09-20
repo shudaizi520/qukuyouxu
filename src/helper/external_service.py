@@ -132,7 +132,10 @@ class ExternalPlaylistService:
             raise ValueError("请选择链接或上传文件中的一种")
         started = self.clock()
         if value:
-            recognized = recognize_source(value)
+            recognized = (
+                self.providers.recognize(value)
+                if hasattr(self.providers, "recognize") else recognize_source(value)
+            )
             snapshot = self.providers.fetch(recognized)
         else:
             if not filename or not isinstance(content, bytes):

@@ -8,21 +8,21 @@ sys.path.insert(0, str(ROOT / "src"))
 
 
 class ReleaseVersionTests(unittest.TestCase):
-    def test_application_and_static_pages_use_release_1_3_0(self):
+    def test_application_and_static_pages_use_release_1_3_1(self):
         from helper import __version__
 
-        self.assertEqual("1.3.0", __version__)
+        self.assertEqual("1.3.1", __version__)
         for name in ("daily.html", "home.html", "mixes.html", "external.html", "settings.html", "status.html"):
             with self.subTest(name=name):
                 html = (ROOT / "src/helper/static" / name).read_text(encoding="utf-8")
-                self.assertIn("?v=1.3.0", html)
-                self.assertIn(">v1.3.0<", html)
+                self.assertIn("?v=1.3.1", html)
+                self.assertIn(">v1.3.1<", html)
 
     def test_release_notes_describe_external_playlist_workflow_and_limits(self):
         changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
-        self.assertIn("## 1.3.0 - 2026-09-20", changelog)
+        self.assertIn("## 1.3.1 - 2026-09-20", changelog)
         self.assertIn("20,000", changelog)
         self.assertIn("Plex Sonic", changelog)
         self.assertIn("可靠匹配", changelog)
@@ -37,7 +37,7 @@ class ReleaseVersionTests(unittest.TestCase):
     def test_accepts_exact_v_prefixed_application_version(self):
         from tools.check_release_version import check_release_version
 
-        self.assertEqual("1.3.0", check_release_version("v1.3.0", "1.3.0"))
+        self.assertEqual("1.3.1", check_release_version("v1.3.1", "1.3.1"))
 
     def test_rejects_mismatched_or_malformed_tags(self):
         from tools.check_release_version import check_release_version
