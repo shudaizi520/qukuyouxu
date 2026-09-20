@@ -57,14 +57,14 @@ class WebhookHealthV047Tests(unittest.TestCase):
         self.assertTrue(health["endpoint_path"].startswith("/api/plex/webhook?secret="))
         self.assertGreaterEqual(len(health["endpoint_path"].split("=", 1)[1]), 40)
 
-    def test_neutral_play_proves_connection_without_inventing_learning(self):
+    def test_neutral_play_reports_learning_while_session_is_active(self):
         from helper.plex_webhook import apply_webhook_event, webhook_health
 
         result = apply_webhook_event(self.base, self.registry, payload("media.play"), now=100)
         health = webhook_health(self.base, self.profile, now=101)
 
         self.assertEqual("accepted", result["status"])
-        self.assertEqual("connected_waiting", health["state"])
+        self.assertEqual("learning", health["state"])
         self.assertTrue(health["connected"])
         self.assertEqual("media.play", health["last_event"])
         self.assertEqual(0, health["event_count"])
@@ -99,13 +99,13 @@ class WebhookHealthV047Tests(unittest.TestCase):
         later = webhook_health(self.base, self.profile, now=103)
         self.assertTrue(later["global_connected"])
 
-    def test_scored_event_changes_state_to_learning(self):
+    def test_scored_history_without_active_playback_stays_connected(self):
         from helper.plex_webhook import apply_webhook_event, webhook_health
 
         apply_webhook_event(self.base, self.registry, payload("media.scrobble"), now=100)
         health = webhook_health(self.base, self.profile, now=101)
 
-        self.assertEqual("learning", health["state"])
+        self.assertEqual("connected_waiting", health["state"])
         self.assertEqual(1, health["event_count"])
         self.assertEqual(100, health["last_behavior_at"])
 
@@ -215,7 +215,7 @@ class WebhookHealthV047Tests(unittest.TestCase):
         from helper.plex_webhook import apply_webhook_event, webhook_health
 
         now = MAX_EVENT_AGE + 1_000
-        apply_webhook_event(self.base, self.registry, payload("media.play"), now=now - 10)
+        apply_webhook_event(self.base, self.registry, payload("media.play"), now=now - 1_000)
         self.profile.set(
             "behavior_events",
             [{"at": now - MAX_EVENT_AGE - 1, "value": 1, "track_id": "123"}],

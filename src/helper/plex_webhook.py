@@ -330,6 +330,9 @@ def webhook_health(base_store, profile_store, now=None):
             "last_at": max((_number(row.get("at"), 0) or 0 for row in events), default=None),
         }
     product = profile_store.get("product_settings", {}) or {}
+    active_sessions = active_session_count(
+        profile_store.get("behavior_sessions", {}) or {}, now=now,
+    )
     ingress = profile_receipts.get(profile_id) or latest
     matched_before = bool(
         ingress.get("received_at")
@@ -343,7 +346,7 @@ def webhook_health(base_store, profile_store, now=None):
         state = "disabled"
     elif not matched_before:
         state = "not_connected"
-    elif stats["count"]:
+    elif active_sessions:
         state = "learning"
     else:
         state = "connected_waiting"

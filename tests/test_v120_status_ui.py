@@ -8,6 +8,14 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class StatusUiV120Tests(unittest.TestCase):
+    def test_status_shows_latest_processed_playback_activity(self):
+        page = (ROOT / "src/helper/static/status.html").read_text()
+        script = (ROOT / "src/helper/static/status.js").read_text()
+
+        self.assertIn("最近活动", page)
+        self.assertIn("time(b.updated_at)", script)
+        self.assertNotIn("time(w.last_behavior_at)", script)
+
     def test_status_uses_cooled_tracks_instead_of_negative_tracks(self):
         page = (ROOT / "src/helper/static/status.html").read_text()
         script = (ROOT / "src/helper/static/status.js").read_text()
