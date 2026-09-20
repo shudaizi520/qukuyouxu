@@ -648,7 +648,11 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn("++profileRequest", reset)
         self.assertIn("window.addEventListener('pch-auth-logout',resetSession)", script)
         self.assertIn("function announceLogout()", auth)
-        self.assertGreaterEqual(auth.count("announceLogout();"), 2)
+        self.assertIn("function expireSession()", auth)
+        request = auth.split("async function request", 1)[1].split("async function post", 1)[0]
+        logout = auth.split("async function logout", 1)[1].split("window.PCHAuth", 1)[0]
+        self.assertIn("expireSession()", request)
+        self.assertIn("expireSession()", logout)
         search_reset = search.split("function reset()", 1)[1].split(
             "function focus", 1
         )[0]
@@ -745,6 +749,29 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn("搜索失败，请重试", run)
         self.assertIn("row.onkeydown", search)
         self.assertIn("event.key==='Enter'||event.key===' '", search)
+
+    def test_workspace_navigation_cancels_an_inflight_library_search(self):
+        script = (STATIC / "playlists.js").read_text(encoding="utf-8")
+        navigation = script.split("function openWorkspacePage", 1)[1].split(
+            "function openTool", 1
+        )[0]
+
+        self.assertIn("librarySearch.reset()", navigation)
+
+    def test_embedded_auth_loss_resets_the_parent_workspace(self):
+        auth = (STATIC / "auth.js").read_text(encoding="utf-8")
+        script = (STATIC / "playlists.js").read_text(encoding="utf-8")
+
+        self.assertIn("const EMBEDDED=", auth)
+        self.assertIn("window.parent.postMessage({type:'pch-auth-logout'}", auth)
+        self.assertIn("expire:expireSession", auth)
+        boot = auth.split("async function boot()", 1)[1].split("async function login", 1)[0]
+        self.assertIn("else if(EMBEDDED)expireSession()", boot)
+        listener = script.split("window.addEventListener('message'", 1)[1].split(
+            "window.addEventListener('keydown'", 1
+        )[0]
+        self.assertIn("pch-auth-logout", listener)
+        self.assertIn("PCHAuth.expire()", listener)
 
 
 class ExternalPlaylistPreviewUiTests(unittest.TestCase):

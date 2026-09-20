@@ -176,7 +176,7 @@ async function returnFromWorkspace(){
  await loadPlaylists(preferred,requestId);
 }
 function openWorkspacePage(url,title,type='tool',navigation=null){
- setSidebarOpen(false);++playlistRequest;setPlaylistLoading(false);workspace.openPage(url,title,{type,navigation});
+ librarySearch.reset();setSidebarOpen(false);++playlistRequest;setPlaylistLoading(false);workspace.openPage(url,title,{type,navigation});
 }
 function openTool(url,title='创建与整理'){openWorkspacePage(url,title,'tool');}
 
@@ -218,7 +218,9 @@ function mount(){
  window.addEventListener('pch-profile-change',event=>{const profileId=String(event.detail?.profile_id||'');if(profileId&&profileId!==loadedProfileId)action(()=>switchProfile(profileId,false));});
  window.addEventListener('pch-auth-logout',resetSession);
  window.addEventListener('message',event=>{
-  if(event.origin!==location.origin||event.source!==$('playlistToolFrame').contentWindow||event.data?.type!=='pch-player-preview')return;
+  if(event.origin!==location.origin||event.source!==$('playlistToolFrame').contentWindow)return;
+  if(event.data?.type==='pch-auth-logout'){PCHAuth.expire();return;}
+  if(event.data?.type!=='pch-player-preview')return;
   const track=event.data.track;if(!track||typeof track.source!=='string'||!track.source.startsWith('/api/external/'))return;
   playlistPlayer.playPreview(track);
  });
