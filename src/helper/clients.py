@@ -346,7 +346,8 @@ class PlexClient:
         container = str(media.get('container') or part.get('container') or '').lower()
         codec = str(media.get('audioCodec') or '').lower()
         browser_safe = (
-            (container == 'mp3' and codec in {'', 'mp3'})
+            (container == 'flac' and codec in {'', 'flac'})
+            or (container == 'mp3' and codec in {'', 'mp3'})
             or (container in {'m4a', 'mp4'} and codec in {'', 'aac', 'mp3'})
         )
         if browser_safe:

@@ -55,13 +55,11 @@ function profileLabel(row){
  const library=row.library?.name||'音乐';
  return account+' · '+library;
 }
-function mediaUrl(type,track,context=current,options={}){
+function mediaUrl(type,track,context=current){
  const profile=context?.profileId||loadedProfileId||PCHAuth.profile();
  const params=new URLSearchParams();if(profile)params.set('profile_id',profile);
- const offset=Number(options.offsetSeconds);if(type==='audio'&&Number.isFinite(offset)&&offset>0)params.set('offset',String(offset));
  const query=params.size?'?'+params.toString():'';
- if(context?.kind==='library')return '/api/playlists/library/tracks/'+encoded(track.id)+'/'+type+query;
- return '/api/playlists/'+encoded(context?.kind)+'/'+encoded(context?.key)+'/tracks/'+encoded(track.id)+'/'+type+query;
+ return '/api/playlists/library/tracks/'+encoded(track.id)+'/'+type+query;
 }
 function playlistContext(item=current){return item?{kind:item.kind,key:item.key,profileId:loadedProfileId}:null;}
 

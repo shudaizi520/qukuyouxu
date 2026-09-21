@@ -654,8 +654,8 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn("let queue=[]", player)
         self.assertIn("startQueueTrack", player)
         self.assertIn("let context=null", player)
-        self.assertIn("context?.kind==='library'", script)
         self.assertIn("/api/playlists/library/tracks/", script)
+        self.assertNotIn("/api/playlists/'+encoded(context?.kind)", script)
         self.assertNotIn("if(stop)stopPlayback();current=item;const detail", script)
         self.assertIn(
             "grid-template-columns:34px minmax(0,1fr) minmax(100px,.7fr) 58px 58px",
@@ -909,19 +909,21 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn("trackDuration", timeline)
         self.assertIn("playerDuration", timeline)
 
-    def test_unknown_duration_seek_reloads_audio_with_target_offset(self):
+    def test_local_media_uses_catalog_routes_and_unknown_streams_do_not_seek_by_offset(self):
         player = (STATIC / "playlist-player.js").read_text(encoding="utf-8")
         script = (STATIC / "playlists.js").read_text(encoding="utf-8")
         seek = player.split("function seekTo(seconds)", 1)[1].split(
             "function playNext", 1
         )[0]
         self.assertIn("Number.isFinite(audio.duration)", seek)
-        self.assertIn("replaceSource(target,true", seek)
-        self.assertIn("offsetSeconds", player)
-        self.assertIn("options={}", script.split("function mediaUrl", 1)[1].split(
+        self.assertNotIn("replaceSource(target,true", seek)
+        self.assertNotIn("offsetSeconds", player)
+        media = script.split("function mediaUrl", 1)[1].split(
             "function playlistContext", 1
-        )[0])
-        self.assertIn("params.set('offset'", script)
+        )[0]
+        self.assertIn("/api/playlists/library/tracks/", media)
+        self.assertNotIn("context?.kind", media)
+        self.assertNotIn("params.set('offset'", media)
 
     def test_stale_source_media_events_are_generation_and_source_guarded(self):
         player = (STATIC / "playlist-player.js").read_text(encoding="utf-8")

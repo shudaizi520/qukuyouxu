@@ -237,7 +237,7 @@ class PlexAudioPartV130Tests(unittest.TestCase):
         with self.assertRaisesRegex(PlexError, "音频"):
             client.open_audio_part("10")
 
-    def test_browser_audio_transcodes_flac_to_mp3_but_keeps_mp3_direct(self):
+    def test_browser_audio_direct_plays_seekable_flac_with_range(self):
         from helper.clients import PlexClient
 
         class Session:
@@ -246,7 +246,10 @@ class PlexAudioPartV130Tests(unittest.TestCase):
 
             def request(self, method, url, **kwargs):
                 self.calls.append((method, url, kwargs))
-                return FakeAudioResponse(status=200, headers={"Content-Type": "audio/mpeg"})
+                return FakeAudioResponse(status=206, headers={
+                    "Content-Type": "audio/flac", "Content-Length": "1024",
+                    "Content-Range": "bytes 4096-5119/12000", "Accept-Ranges": "bytes",
+                })
 
         client = object.__new__(PlexClient)
         client.base = "http://plex"
@@ -254,16 +257,12 @@ class PlexAudioPartV130Tests(unittest.TestCase):
         client._xml = lambda _path: ET.fromstring(
             '<MediaContainer><Track ratingKey="10"><Media container="flac" audioCodec="flac"><Part key="/library/parts/1/file.flac" container="flac" accessible="1" exists="1" /></Media></Track></MediaContainer>'
         )
-        response = client.open_browser_audio("10", "bytes=0-1023", offset_seconds=91.25)
+        response = client.open_browser_audio("10", "bytes=4096-")
         method, url, kwargs = client.session.calls[-1]
         self.assertEqual("GET", method)
-        self.assertEqual("http://plex/music/:/transcode/universal/start.mp3", url)
-        self.assertEqual("/library/metadata/10", kwargs["params"]["path"])
-        self.assertEqual("320", kwargs["params"]["musicBitrate"])
-        self.assertEqual("0", kwargs["params"]["directPlay"])
-        self.assertEqual("91.25", kwargs["params"]["offset"])
-        self.assertNotIn("Range", kwargs["headers"])
-        self.assertIn("add-transcode-target", kwargs["headers"]["X-Plex-Client-Profile-Extra"])
+        self.assertEqual("http://plex/library/parts/1/file.flac", url)
+        self.assertEqual("bytes=4096-", kwargs["headers"]["Range"])
+        self.assertIsNone(kwargs.get("params"))
         response.close()
 
         for value in (-1, float("inf"), 86401, "bad"):
@@ -286,10 +285,10 @@ class PlexAudioPartV130Tests(unittest.TestCase):
         client.session = Session()
         client._xml = lambda _path: ET.fromstring(
             '<MediaContainer><Track ratingKey="10">'
-            '<Media container="flac"><Part key="/unsafe" accessible="0" /></Media>'
-            '<Media container="flac" audioCodec="flac">'
-            '<Part key="/library/parts/missing.flac" exists="0" />'
-            '<Part key="/library/parts/selected.flac" accessible="1" exists="1" />'
+            '<Media container="wav"><Part key="/unsafe" accessible="0" /></Media>'
+            '<Media container="wav" audioCodec="pcm">'
+            '<Part key="/library/parts/missing.wav" exists="0" />'
+            '<Part key="/library/parts/selected.wav" accessible="1" exists="1" />'
             '</Media></Track></MediaContainer>'
         )
 
