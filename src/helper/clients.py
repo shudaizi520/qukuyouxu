@@ -404,6 +404,20 @@ class PlexClient:
             raise PlexError(f'Plex封面返回HTTP {response.status_code}')
         return response
 
+    def rate_track(self,track_id,rating):
+        track_id=str(track_id or '')
+        try: rating=float(rating)
+        except (TypeError,ValueError,OverflowError):raise PlexError('Plex 喜欢状态无效') from None
+        if not track_id.isdigit() or rating not in (0.0,10.0):raise PlexError('Plex 喜欢状态无效')
+        self._xml('/:/rate','PUT',{
+            'identifier':'com.plexapp.plugins.library','key':track_id,'rating':rating,
+        })
+        element=self._xml(f'/library/metadata/{track_id}').find('Track')
+        if element is None or str(element.get('ratingKey') or '')!=track_id:
+            raise PlexError('Plex 评分回读项目不一致')
+        row=parse_plex_track(element)
+        return float(row.get('user_rating') or 0)
+
     def playlists(self):
         return [dict(e.attrib) for e in self._page('/playlists','Playlist',{'playlistType':'audio'})]
 

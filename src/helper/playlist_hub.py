@@ -21,6 +21,7 @@ from .playlist_ownership import legacy_external_marker, legacy_pch_marker, repla
 KIND_LABELS = {
     "daily": "每日推荐",
     "smart": "智能歌单",
+    "favorite": "我的最爱",
     "category": "分类歌单",
     "external": "外部歌单",
 }
@@ -87,6 +88,17 @@ def assistant_playlist_rows(store):
             "smart", kind, record, _plan_count(smart_plans.get(kind)),
             record.get("updated_at"), "/mixes",
         ))
+
+    favorite_count = sum(
+        isinstance(row, dict) and row.get("available", True)
+        and float(row.get("user_rating") or 0) >= 8
+        for row in (store.get("catalog", []) or [])
+    )
+    rows.append({
+        "kind": "favorite", "kind_label": KIND_LABELS["favorite"], "key": "liked",
+        "playlist_id": "", "title": KIND_LABELS["favorite"], "count": favorite_count,
+        "updated_at": 0, "manage_url": "", "status": "已建立",
+    })
 
     groups = {
         str(group.get("id") or group.get("category_id") or ""): group
@@ -388,13 +400,67 @@ def search_library(store, query, limit=40):
             continue
         haystack = " ".join(str(row.get(field) or "") for field in ("title", "artist", "album")).casefold()
         if all(token in haystack for token in tokens):
-            result.append({field: row.get(field) for field in ("id", "title", "artist", "album", "duration", "thumb")})
+            item = {field: row.get(field) for field in (
+                "id", "title", "artist", "album", "duration", "thumb", "user_rating",
+            )}
+            item["liked"] = float(row.get("user_rating") or 0) >= 8
+            result.append(item)
         if len(result) >= max(1, min(int(limit), 100)):
             break
     return result
 
 
+def favorite_playlist_detail(store):
+    tracks = []
+    for row in store.get("catalog", []) or []:
+        if not isinstance(row, dict) or not row.get("available", True):
+            continue
+        rating = float(row.get("user_rating") or 0)
+        if rating < 8:
+            continue
+        tracks.append({
+            "id": str(row.get("id") or ""), "position": len(tracks) + 1,
+            "title": str(row.get("title") or "未知歌曲"),
+            "artist": str(row.get("artist") or "未知歌手"),
+            "album": str(row.get("album") or ""),
+            "duration": float(row.get("duration") or 0),
+            "thumb": str(row.get("thumb") or ""),
+            "user_rating": rating, "liked": True,
+        })
+    return {
+        "kind": "favorite", "key": "liked", "playlist_id": "",
+        "title": "我的最爱", "count": len(tracks), "tracks": tracks,
+        "unavailable_count": 0,
+    }
+
+
+def set_track_liked(engine, track_id, liked, now=None):
+    track_id = str(track_id or "")
+    if not track_id.isdigit() or not isinstance(liked, bool):
+        raise ValueError("喜欢状态无效")
+    catalog = list(engine.store.get("catalog", []) or [])
+    index = next((
+        position for position, row in enumerate(catalog)
+        if isinstance(row, dict) and str(row.get("id") or "") == track_id
+        and row.get("available", True)
+    ), None)
+    if index is None:
+        raise ValueError("这首歌已不在当前曲库中")
+    expected = 10.0 if liked else 0.0
+    plex = engine.plex_factory(engine.store.get("settings"))
+    actual = float(plex.rate_track(track_id, expected))
+    if actual != expected:
+        raise SafetyError("Plex 评分回读不一致，喜欢状态未保存")
+    revised = dict(catalog[index])
+    revised["user_rating"] = expected
+    catalog[index] = revised
+    engine.store.set("catalog", catalog)
+    return {"track_id": track_id, "liked": liked, "user_rating": expected}
+
+
 def playlist_detail(engine, kind, key):
+    if str(kind) == "favorite" and str(key) == "liked":
+        return favorite_playlist_detail(engine.store)
     if str(kind) == "plex":
         key = _safe_key(key)
         if not key.isdigit():
@@ -426,6 +492,8 @@ def playlist_detail(engine, kind, key):
                 "album": str(playlist_row.get("album") or metadata.get("album") or ""),
                 "duration": float(playlist_row.get("duration") or metadata.get("duration") or 0),
                 "thumb": str(playlist_row.get("thumb") or metadata.get("thumb") or ""),
+                "user_rating": float(metadata.get("user_rating") or 0),
+                "liked": float(metadata.get("user_rating") or 0) >= 8,
             })
         return {
             "kind": "plex", "key": key, "playlist_id": key,
@@ -459,6 +527,8 @@ def playlist_detail(engine, kind, key):
             "album": str(playlist_row.get("album") or metadata.get("album") or ""),
             "duration": float(playlist_row.get("duration") or metadata.get("duration") or 0),
             "thumb": str(playlist_row.get("thumb") or metadata.get("thumb") or ""),
+            "user_rating": float(metadata.get("user_rating") or 0),
+            "liked": float(metadata.get("user_rating") or 0) >= 8,
         })
     return {
         "kind": str(kind), "key": str(key), "playlist_id": str(record["id"]),
@@ -727,3 +797,13 @@ def attach_playlist_hub_routes(app, store, runtime, profiles, body, ensure_idle)
                 target, str(data.get("kind") or ""), data.get("key"),
                 data.get("track_id"), str(data.get("operation") or ""),
             )
+
+    @app.post("/api/playlists/tracks/liked")
+    async def set_liked(request: Request):
+        data = await body(request)
+        if data.get("confirm") is not True:
+            raise SafetyError("请确认修改喜欢状态")
+        ensure_idle()
+        target = fixed_engine()
+        with target.exclusive():
+            return set_track_liked(target, data.get("track_id"), data.get("liked"))

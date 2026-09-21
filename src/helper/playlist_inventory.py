@@ -37,6 +37,12 @@ def assistant_playlist_row(row):
     )
     result.update(section=section, source=source, smart=False, stale=False)
     result.update(capabilities(source=source, smart=False))
+    if kind == "favorite":
+        result.update(
+            can_play=True, can_rename=False, can_add_tracks=False,
+            can_remove_tracks=False, can_delete=False,
+        )
+        return result
     if not str(result.get("playlist_id") or ""):
         result["can_play"] = False
         result["can_add_tracks"] = False

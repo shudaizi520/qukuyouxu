@@ -64,16 +64,17 @@ class PlaylistHubRowsTests(unittest.TestCase):
 
         rows = assistant_playlist_rows(self.store)
         self.assertEqual(
-            ["daily", "smart", "category", "external"],
+            ["daily", "smart", "favorite", "category", "external"],
             [row["kind"] for row in rows],
         )
         self.assertEqual(
-            ["每日推荐", "每周常听", "开车精选", "百万收藏"],
+            ["每日推荐", "每周常听", "我的最爱", "开车精选", "百万收藏"],
             [row["title"] for row in rows],
         )
-        self.assertEqual([30, 2, 3, 1], [row["count"] for row in rows])
-        self.assertTrue(all(row["playlist_id"] for row in rows))
-        self.assertTrue(all(row["manage_url"].startswith("/") for row in rows))
+        self.assertEqual([30, 2, 0, 3, 1], [row["count"] for row in rows])
+        physical = [row for row in rows if row["kind"] != "favorite"]
+        self.assertTrue(all(row["playlist_id"] for row in physical))
+        self.assertTrue(all(row["manage_url"].startswith("/") for row in physical))
 
     def test_daily_entry_remains_available_before_its_first_publish(self):
         from helper.playlist_hub import assistant_playlist_rows
