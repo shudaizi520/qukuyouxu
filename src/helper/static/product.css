@@ -697,3 +697,43 @@ body[data-view=playlists]{--playlist-heart:#d84d5b}
 .playlist-heart:focus-visible{outline:2px solid var(--playlist-heart);outline-offset:2px}
 @media(max-width:700px){.playlist-now-info #playerLiked{width:36px;height:36px}}
 @media(max-width:720px){body[data-view=external] .external-import-form{grid-template-columns:1fr auto}body[data-view=external] .external-url-field{grid-column:1/-1;grid-template-columns:1fr;gap:3px}body[data-view=external] .external-command-bar{flex-wrap:wrap;gap:6px 12px}body[data-view=external] .external-command-bar>label:first-child,body[data-view=external] #replenishmentCard strong{flex:0 0 100%}body[data-view=external] #sourceSelector,body[data-view=external] #plexPlaylistTitle{flex:1 1 100%;max-width:none}body[data-view=external] .external-state{flex-basis:100%}body[data-view=external] .external-file-name{padding-left:0}body[data-view=external] .external-track-row{grid-template-columns:minmax(0,1fr) auto}body[data-view=external] .external-track-row .bucket{display:none}}
+
+/* v1.4.12: keep organizer content in one calm, inset column. */
+#playlistToolView[data-page=library] .playlist-tool-bar h1{display:none}
+.pch-embedded body[data-view=library] .wrap{max-width:1120px;margin:0 auto;padding:28px 36px 48px}
+body[data-view=library] .library-page-head{min-height:62px;margin-bottom:20px;align-items:center}
+body[data-view=library] .library-page-head h1{font-size:28px}
+body[data-view=library] .library-page-head .primary{white-space:nowrap}
+body[data-view=library] .library-overview{margin:0;padding:14px 18px;border:1px solid var(--line);border-radius:10px;background:#f8fbfa}
+body[data-view=library] .library-automation-line{margin:0 0 14px;border-top:0}
+body[data-view=library] .managed-playlists-card{margin:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}
+body[data-view=library] .managed-playlists-card>.panel-title{align-items:baseline;margin:0;padding:12px 0 6px}
+body[data-view=library] .managed-playlists-card>.panel-title h2{font-size:20px}
+body[data-view=library] .managed-playlists-card>.panel-title .muted{font-size:12px}
+body[data-view=library] .managed-playlist-row{gap:12px;padding:14px 4px;border-color:var(--line)}
+body[data-view=library] .managed-playlist-row>div:first-child{display:grid;gap:2px}
+body[data-view=library] .managed-playlist-title{width:max-content;max-width:100%;padding:0;border:0;background:transparent;color:var(--ink);font-weight:700;text-align:left;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+body[data-view=library] .managed-playlist-title:hover{text-decoration:underline;color:var(--brand)}
+body[data-view=library] .managed-playlist-open{margin-left:auto}
+body[data-view=library] .managed-playlist-more summary{width:36px;height:34px;display:grid;place-items:center;padding:0;font-size:22px;line-height:1;letter-spacing:1px}
+body[data-view=library] .managed-playlist-more .managed-playlist-actions{top:calc(100% - 2px)}
+body[data-view=library] .library-result{margin-top:14px;padding:16px 0;border:0;border-top:1px solid var(--line);border-radius:0;background:transparent}
+body[data-view=library][data-library-shared=true] #incrementalAction{display:none}
+@media(max-width:720px){.pch-embedded body[data-view=library] .wrap{padding:18px 18px 34px}body[data-view=library] .library-page-head{align-items:flex-start}body[data-view=library] .managed-playlists-card>.panel-title .muted{display:none}}
+
+/* The embedded import page keeps labels, fields and actions on one shared grid. */
+.pch-embedded body[data-view=external] .external-shell{width:100%;max-width:1120px;margin:0 auto;padding:28px 36px 48px}
+body[data-view=external] .external-import-form{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:center}
+body[data-view=external] .external-url-field{grid-column:auto;grid-template-columns:100px minmax(0,1fr);gap:16px}
+body[data-view=external] .external-file-name{padding-left:116px}
+body[data-view=external] .external-command-bar{display:grid;grid-template-columns:100px minmax(0,1fr) auto;gap:16px;align-items:center;min-height:68px}
+body[data-view=external] .external-command-bar>label:first-child,body[data-view=external] #replenishmentCard strong{flex:none;white-space:nowrap}
+body[data-view=external] #sourceSelector,body[data-view=external] #plexPlaylistTitle{width:100%;max-width:none}
+body[data-view=external] .external-command-main{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,auto);gap:12px;align-items:center;min-width:0}
+body[data-view=external] .external-command-main .external-state{max-width:230px}
+body[data-view=external] .external-command-actions{display:flex;align-items:center;justify-content:flex-start;gap:10px;white-space:nowrap}
+body[data-view=external] .external-command-actions .external-file-action{width:auto}
+body[data-view=external] .external-command-actions .external-text-action{padding:5px 4px}
+body[data-view=external] .external-command-actions .external-more{flex:none}
+@media(max-width:900px){body[data-view=external] .external-command-bar{grid-template-columns:90px minmax(0,1fr)}body[data-view=external] .external-command-bar>.external-command-actions{grid-column:2;flex-wrap:wrap}body[data-view=external] .external-url-field{grid-template-columns:90px minmax(0,1fr)}body[data-view=external] .external-file-name{padding-left:106px}}
+@media(max-width:560px){.pch-embedded body[data-view=external] .external-shell{padding:18px 16px 34px}body[data-view=external] .external-import-form{grid-template-columns:1fr}body[data-view=external] .external-url-field{grid-template-columns:1fr}body[data-view=external] .external-import-form>.external-command-actions{flex-wrap:wrap;justify-content:flex-start;padding-left:0}body[data-view=external] .external-file-name{padding-left:0}body[data-view=external] .external-command-bar{grid-template-columns:minmax(0,1fr);gap:5px;padding:12px 0}body[data-view=external] .external-command-bar>.external-command-actions{grid-column:1}body[data-view=external] .external-command-main{grid-template-columns:1fr}body[data-view=external] .external-command-main .external-state{max-width:100%}}

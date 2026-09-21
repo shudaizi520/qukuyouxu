@@ -5,9 +5,9 @@
  <meta name="viewport" content="width=device-width,initial-scale=1">
  <meta name="color-scheme" content="light">
  <title>曲库有序 · 外部歌单</title>
- <link rel="stylesheet" href="/static/product.css?v=1.4.11">
- <script defer src="/static/auth.js?v=1.4.11"></script>
- <script defer src="/static/external.js?v=1.4.11"></script>
+ <link rel="stylesheet" href="/static/product.css?v=1.4.12">
+ <script defer src="/static/auth.js?v=1.4.12"></script>
+ <script defer src="/static/external.js?v=1.4.12"></script>
 </head>
 <body data-view="external" data-auth-state="checking">
 <div id="bootScreen" class="auth-boot"><div class="boot-mark">♫</div><strong>曲库有序</strong><span>正在进入你的音乐库…</span></div>
@@ -20,7 +20,7 @@
  </div>
 </section>
 <div id="workspace" hidden>
- <header class="topbar"><a class="brand" href="/"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v1.4.11</small></span></a><nav><a href="/">我的歌单</a><a href="/status">运行状态</a><a href="/settings">设置</a></nav><button class="logout" data-auth-logout hidden>退出</button></header>
+ <header class="topbar"><a class="brand" href="/"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v1.4.12</small></span></a><nav><a href="/">我的歌单</a><a href="/status">运行状态</a><a href="/settings">设置</a></nav><button class="logout" data-auth-logout hidden>退出</button></header>
  <main class="wrap external-shell">
   <div id="notice" class="notice" role="status" hidden></div>
   <section class="hero external-page-title"><div><h1>导入歌单</h1><p>从 QQ 音乐、网易云音乐或歌单文件导入。</p></div></section>
@@ -28,24 +28,22 @@
   <section id="importCard" class="external-import-card">
    <form id="importForm" class="external-import-form">
     <label class="field external-url-field" for="sourceUrl"><span>导入</span><input id="sourceUrl" type="url" inputmode="url" autocomplete="off" placeholder="粘贴公开歌单链接"></label>
-    <label class="external-file-action" for="sourceFile">选择文件<input id="sourceFile" type="file" accept=".m3u,.m3u8,.txt,.csv,text/plain,text/csv,audio/x-mpegurl" hidden></label>
-    <button id="importSource" class="primary" type="submit">开始导入</button>
+    <div class="external-command-actions"><label class="external-file-action" for="sourceFile">选择文件<input id="sourceFile" type="file" accept=".m3u,.m3u8,.txt,.csv,text/plain,text/csv,audio/x-mpegurl" hidden></label><button id="importSource" class="primary" type="submit">开始导入</button></div>
    </form>
    <span id="selectedFile" class="external-file-name" hidden></span>
   </section>
 
   <section id="sourceWorkspace" class="external-workspace" hidden>
    <section class="external-command-bar" aria-label="已导入歌单">
-    <label for="sourceSelector">已导入</label><select id="sourceSelector" aria-label="切换已导入歌单"></select><button id="reloadSources" class="external-text-action" type="button">刷新列表</button>
-    <button id="refreshSource" class="external-text-action" type="button">重新读取</button><button id="removeSource" class="external-text-action danger-text" type="button">移除来源</button>
+    <label for="sourceSelector">已导入</label><select id="sourceSelector" aria-label="切换已导入歌单"></select><div class="external-command-actions"><button id="reloadSources" class="external-text-action" type="button">刷新列表</button><button id="refreshSource" class="external-text-action" type="button">重新读取</button><button id="removeSource" class="external-text-action danger-text" type="button">移除来源</button></div>
    </section>
    <section class="external-command-bar" aria-label="Plex 歌单设置">
-    <label for="plexPlaylistTitle">Plex 歌单</label><input id="plexPlaylistTitle" maxlength="80" aria-label="Plex 歌单名称"><span id="sourceState" class="external-state"></span>
-    <label id="followUpdatesRow" class="external-follow-label"><input id="followUpdates" type="checkbox">自动刷新</label><button id="publishSource" class="primary" type="button">更新歌单</button>
+    <label for="plexPlaylistTitle">Plex 歌单</label><div class="external-command-main"><input id="plexPlaylistTitle" maxlength="80" aria-label="Plex 歌单名称"><span id="sourceState" class="external-state"></span></div>
+    <div class="external-command-actions"><label id="followUpdatesRow" class="external-follow-label"><input id="followUpdates" type="checkbox">自动刷新</label><button id="publishSource" class="primary" type="button">更新歌单</button></div>
    </section>
    <section id="replenishmentCard" class="external-command-bar" aria-label="缺失歌曲" hidden>
     <strong>缺失歌曲</strong><span id="missingSummary"></span>
-    <button id="copyMissing" class="external-text-action" type="button">复制清单</button><button id="downloadImage" class="external-text-action" type="button">下载长图</button><details class="external-more"><summary class="external-text-action">其他格式</summary><div><a id="downloadText" class="link" href="#">下载 TXT</a><a id="downloadCsv" class="link" href="#">下载 CSV</a><button id="copyShareLink" class="external-text-action" type="button">复制清单链接</button></div></details>
+    <div class="external-command-actions"><button id="copyMissing" class="external-text-action" type="button">复制清单</button><button id="downloadImage" class="external-text-action" type="button">下载长图</button><details class="external-more"><summary class="external-text-action">其他格式</summary><div><a id="downloadText" class="link" href="#">下载 TXT</a><a id="downloadCsv" class="link" href="#">下载 CSV</a><button id="copyShareLink" class="external-text-action" type="button">复制清单链接</button></div></details></div>
    </section>
    <section id="detailCard" class="external-detail-card">
      <div class="external-detail-head"><div><span id="sourceProvider" class="eyebrow"></span><h2 id="sourceTitle">歌单</h2></div></div>

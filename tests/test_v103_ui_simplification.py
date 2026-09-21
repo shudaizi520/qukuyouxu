@@ -62,8 +62,8 @@ class UISimplificationV103Tests(unittest.TestCase):
         task = page.by_id("task")
         for control in ("analyzeLibrary", "pause", "progressArea"):
             self.assertIn(task, page.by_id(control)["ancestors"])
-        managed = next(node for node in page.nodes if "managed-playlists-card" in node["classes"])
-        self.assertIn(managed, page.by_id("incrementalAction")["ancestors"])
+        heading = next(node for node in page.nodes if "library-page-head" in node["classes"])
+        self.assertIn(heading, page.by_id("incrementalAction")["ancestors"])
         self.assertNotIn('id="autoToggle"', html)
         self.assertNotIn("workflow-path", html)
         self.assertNotIn("<th>说明</th>", html)

@@ -124,6 +124,7 @@ async function setLiked(track,liked){
  })();
  return pending.promise;
 }
+function updateLiked(track,liked){return setLiked(track,liked).catch(error=>notify(error.message||'喜欢状态更新失败',true));}
 
 function refreshLikedRows(track){
  for(const row of $('playlistTracks').children){
@@ -158,7 +159,7 @@ function renderNextTrackBatch(){
   const duration=document.createElement('span');duration.className='playlist-track-duration';duration.textContent=formatTime(track.duration);
   const actions=document.createElement('span');actions.className='playlist-track-actions';
   const heart=document.createElement('button');heart.type='button';heart.className='playlist-heart';heart.textContent=track.liked?'♥':'♡';heart.setAttribute('aria-pressed',String(!!track.liked));heart.setAttribute('aria-label',(track.liked?'取消喜欢 ':'喜欢 ')+(track.title||'歌曲'));
-  heart.onclick=event=>{event.stopPropagation();action(()=>setLiked(track,!track.liked));};identity.append(heart,title);
+  heart.onclick=event=>{event.stopPropagation();setLiked(track,!track.liked).catch(error=>notify(error.message||'喜欢状态更新失败',true));};identity.append(heart,title);
   if(current?.can_remove_tracks){const remove=document.createElement('button');remove.type='button';remove.className='playlist-track-remove';remove.textContent='移除';remove.setAttribute('aria-label','从歌单移除 '+(track.title||'歌曲'));remove.onclick=event=>{event.stopPropagation();action(()=>removeTrack(track));};actions.append(remove);}
   row.append(number,identity,artist,album,duration,actions);fragment.append(row);
  }
@@ -173,7 +174,7 @@ function renderTracks(){
  renderNextTrackBatch();
 }
 
-const playlistPlayer=createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange:refreshPlayingRows,reportPlayback:reportWebPlayback,onLikedChange:(track,liked)=>action(()=>setLiked(track,liked))});
+const playlistPlayer=createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange:refreshPlayingRows,reportPlayback:reportWebPlayback,onLikedChange:updateLiked});
 function playingFrom(item){return playlistPlayer.isContext(playlistContext(item));}
 function renderPlaylistList(){
  playlistSections.setItems(playlists);
@@ -347,7 +348,7 @@ function openSearchWorkspace(query){
 const librarySearch=createLibrarySearch({
  document,requestJson:json,getProfileId:()=>loadedProfileId,getPlaylists:()=>playlists,getCurrentPlaylist:()=>current,
  onPlayQueue:playlistPlayer.startQueue,onSearchStart:openSearchWorkspace,onBack:restorePlaylistView,notify,
- onLikedChange:(track,liked)=>action(()=>setLiked(track,liked)),
+ onLikedChange:updateLiked,
  onPlaylistChanged:async(kind,key,count)=>{syncPlaylistCount(kind,key,count);if(current?.kind===kind&&current?.key===key)await openPlaylist(current);},
 });
 

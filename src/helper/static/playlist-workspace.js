@@ -39,8 +39,9 @@ export function createPlaylistWorkspace({document}){
  }
 
  function openPage(url,title,{type='tool',navigation=null}={}){
-  const target=new URL(url,window.location.origin);
+ const target=new URL(url,window.location.origin);
   target.searchParams.set('embedded','1');
+  playlistToolView.dataset.page=target.pathname.slice(1);
   document.getElementById('playlistToolTitle').textContent=title;
   const frame=document.getElementById('playlistToolFrame');
   frame.removeAttribute('style');

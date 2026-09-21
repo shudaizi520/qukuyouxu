@@ -52,16 +52,17 @@
   if(managedCard)managedCard.hidden=!(data.items||[]).length&&!retiredRows.length;
   for(const row of data.items||[]){
    const line=document.createElement('article');line.className='managed-playlist-row';
-   const info=document.createElement('div'),title=document.createElement('strong'),meta=document.createElement('span');
-   title.textContent=row.title;meta.textContent=(row.count==null?'曲目数待核对':row.count+' 首')+' · '+row.status+(row.enabled?'':' · 已停止维护');info.append(title,meta);
+   const openPlaylist=()=>{if(window.parent!==window)window.parent.postMessage({type:'pch-open-playlist',kind:'category',key:String(row.category_id)},location.origin);else location.assign('/');};
+   const info=document.createElement('div'),title=button(row.title,'managed-playlist-title',openPlaylist),meta=document.createElement('span');
+   meta.textContent=(row.count==null?'曲目数待核对':row.count+' 首')+' · '+row.status+(row.enabled?'':' · 已停止维护');info.append(title,meta);
    const actions=document.createElement('div');actions.className='managed-playlist-actions';
    if(row.safe_to_forget)actions.append(button('清除记录','danger',async()=>{if(!await PCHUI.confirm('Plex 中已经找不到“'+row.title+'”。只清除助手里的历史记录，不删除歌曲或音乐文件。确定继续？'))return;await action(async()=>{const r=await post('/api/managed/forget',{confirm:true,category_id:row.category_id,playlist_id:row.playlist_id,title:row.title});note(r.message);await loadManaged(true);await refresh();});}));
    actions.append(button(row.enabled?'停止维护':'已停止','secondary',async()=>{if(!await PCHUI.confirm('停止维护“'+row.title+'”？Plex 中的歌单和歌曲都会保留。'))return;await action(async()=>{const r=await post('/api/managed/disable',{confirm:true,category_id:row.category_id});note(r.message);await loadManaged(true);});},!row.enabled));
    actions.append(button('移除歌单','danger',async()=>{if(!await PCHUI.confirm('从 Plex 移除助手创建的“'+row.title+'”（'+row.count+' 首）？\\n\\n只删除这张歌单，不删除歌曲；操作前会保存恢复快照。'))return;await action(async()=>{const r=await post('/api/managed/remove',{confirm:true,category_id:row.category_id,title:row.title});note(r.message);await loadManaged(true);await refresh();});},!row.safe_to_remove));
    if(!row.safe_to_remove)actions.lastChild.title='歌单被手动修改或管理标记不符时，为保护内容不能移除';
    if(row.safe_to_forget){actions.lastChild.remove();actions.lastChild.title='只清除助手本地历史记录，不访问 Plex 删除接口';}
-   const open=button('打开','managed-playlist-open',()=>{if(window.parent!==window)window.parent.postMessage({type:'pch-open-playlist',kind:'category',key:String(row.category_id)},location.origin);else location.assign('/');});
-   const more=document.createElement('details');more.className='managed-playlist-more';const summary=document.createElement('summary');summary.textContent='更多';more.append(summary,actions);
+   const open=button('打开','managed-playlist-open',openPlaylist);
+   const more=document.createElement('details');more.className='managed-playlist-more';const summary=document.createElement('summary');summary.textContent='···';summary.setAttribute('aria-label','更多'+row.title+'操作');more.append(summary,actions);
    line.append(info,open,more);box.append(line);
   }
   const retired=get('retiredPlaylists'),disclosure=get('retiredDisclosure');retired.replaceChildren();

@@ -33,9 +33,8 @@ export function createPlaylistSections({document,onOpenPlaylist,onOpenTool}){
   const box=byId('customPlaylistList');box.replaceChildren();
   for(const item of groups.custom){
    const button=document.createElement('button');button.type='button';button.dataset.kind=item.kind;button.dataset.key=item.key;
-   const icon=document.createElement('span');icon.className='playlist-side-icon';icon.setAttribute('aria-hidden','true');icon.textContent=item.kind==='favorite'?'♥':item.source==='external'?'⇩':'♫';
    const text=document.createElement('span'),title=document.createElement('strong'),meta=document.createElement('small');
-   title.textContent=item.title;meta.textContent=(item.smart?'智能 · ':'')+countLabel(item)+(item.kind==='favorite'&&item.status?' · '+item.status:'');text.append(title,meta);button.append(icon,text);
+   title.textContent=item.title;meta.textContent=(item.smart?'智能 · ':'')+countLabel(item)+(item.kind==='favorite'&&item.status?' · '+item.status:'');text.append(title,meta);button.append(text);
    if(item.kind==='favorite'&&favoriteUnseen){button.classList.add('has-unseen');const dot=document.createElement('span');dot.className='playlist-favorite-dot';dot.setAttribute('aria-label','有新收藏歌曲');button.append(dot);}
    button.onclick=()=>onOpenPlaylist(item);box.append(button);
   }
