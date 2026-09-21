@@ -30,6 +30,7 @@ from .smart_mix_web import attach_smart_mix_routes
 from .automation import attach_automation_routes
 from .external_web import attach_external_routes
 from .playlist_hub import attach_playlist_hub_routes
+from .web_playback import attach_web_playback_route
 STATIC = Path(__file__).with_name('static')
 
 def _origin(value):
@@ -539,6 +540,7 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
     attach_automation_routes(app, base_store, profiles, runtime, body)
     attach_external_routes(app, store, engine, runtime, profiles, body, ensure_idle)
     attach_playlist_hub_routes(app, store, runtime, profiles, body, ensure_idle)
+    attach_web_playback_route(app, base_store, profiles, body)
     attach_webhook_route(app, base_store, profiles)
     attach_smart_mix_routes(app, store, engine, runtime, profiles, body, ensure_idle)
     attach_routes(app, store, engine, body, ensure_idle)

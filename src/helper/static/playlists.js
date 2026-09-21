@@ -17,6 +17,13 @@ let playlistRequest=0;
 let profileRequest=0;
 let playlistLoading=false;
 let noticeTimer=0;
+const WEB_PLAYER_KEY='pch-web-player-id';
+function newWebPlayerId(){
+ if(globalThis.crypto&&typeof crypto.randomUUID==='function')return crypto.randomUUID();
+ return Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,14);
+}
+let webPlayerId=sessionStorage.getItem(WEB_PLAYER_KEY)||'';
+if(!webPlayerId){webPlayerId=newWebPlayerId();sessionStorage.setItem(WEB_PLAYER_KEY,webPlayerId);}
 
 function notify(message,error=false,timeout=0){
  clearTimeout(noticeTimer);
@@ -33,6 +40,14 @@ async function navigate(fn){
  catch(error){notify(error.message||'操作失败',true);}
 }
 async function json(path,method='GET',body){return (await PCHAuth.request(path,method,body)).json();}
+function reportWebPlayback(event,payload,{keepalive=false}={}){
+ const profileId=String(payload.profileId||loadedProfileId||PCHAuth.profile()||'');if(!profileId)return Promise.resolve();
+ const body={...payload,event,player_id:webPlayerId,event_id:newWebPlayerId()};delete body.profileId;
+ return fetch('/api/playback/events',{
+  method:'POST',credentials:'same-origin',cache:'no-store',keepalive,
+  headers:{'Content-Type':'application/json','X-Plex-Profile':profileId},body:JSON.stringify(body),
+ }).then(()=>{}).catch(()=>{});
+}
 function encoded(value){return encodeURIComponent(String(value||''));}
 function formatTime(value){const seconds=Math.max(0,Math.floor(Number(value)||0));return Math.floor(seconds/60)+':'+String(seconds%60).padStart(2,'0');}
 function profileLabel(row){
@@ -69,7 +84,7 @@ function renderTracks(){
  });
 }
 
-const playlistPlayer=createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange:renderTracks});
+const playlistPlayer=createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange:renderTracks,reportPlayback:reportWebPlayback});
 function playingFrom(item){return playlistPlayer.isContext(playlistContext(item));}
 function renderPlaylistList(){
  const box=$('playlistList');box.replaceChildren();$('playlistCount').textContent=String(playlists.length);
@@ -234,6 +249,8 @@ function mount(){
   playlistPlayer.playPreview(track);
  });
  window.addEventListener('keydown',event=>{if(event.key==='Escape')setSidebarOpen(false);});
+ document.addEventListener('visibilitychange',()=>{if(!document.hidden)return;const event=playlistPlayer.paused()?'pause':'progress';playlistPlayer.flush(event,true);});
+ window.addEventListener('pagehide',()=>playlistPlayer.flush('stop',true));
 }
 async function boot(){const requestId=profileRequest,profileId=await loadProfiles();if(requestId!==profileRequest)return;await switchProfile(profileId,false);}
 

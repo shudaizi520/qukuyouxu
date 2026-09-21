@@ -1,6 +1,7 @@
 const byId=(document,id)=>document.getElementById(id);
+const PROGRESS_INTERVAL=15;
 
-export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange=()=>{}}){
+export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange=()=>{},reportPlayback=()=>Promise.resolve()}){
  const audio=byId(document,'playerAudio');
  const artwork=byId(document,'playerArtwork');
  const player=byId(document,'playlistPlayer');
@@ -20,6 +21,9 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
  let resettingSource=false;
  let retryTimer=0;
  let lastAudibleVolume=audio.volume||1;
+ let hasReportedPlay=false;
+ let terminalReported=false;
+ let lastProgressReport=0;
 
  function sameContext(candidate){
   return !!candidate&&!!context&&candidate.kind===context.kind&&candidate.key===context.key&&candidate.profileId===context.profileId;
@@ -43,6 +47,23 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
   byId(document,'playerCurrent').textContent=formatTime(position);
   byId(document,'playerDuration').textContent=formatTime(duration);
   byId(document,'playerSeek').value=duration?String(Math.round(Math.min(1,position/duration)*1000)):'0';
+ }
+ function report(event,{keepalive=false}={}){
+  const track=queue[queueIndex];
+  if(!track||!context||context.kind==='preview'||!String(track.id||'').match(/^\d+$/))return Promise.resolve();
+  const position=logicalPosition();
+  if(event==='play')hasReportedPlay=true;
+  if(['play','resume','pause','progress'].includes(event))lastProgressReport=position;
+  if(event==='stop'||event==='scrobble')terminalReported=true;
+  const payload={
+   track_id:String(track.id),position,duration:trackDuration,
+   profileId:String(context.profileId||''),
+  };
+  return Promise.resolve(reportPlayback(event,payload,{keepalive})).catch(()=>{});
+ }
+ function finishCurrent(event='stop',keepalive=false){
+  if(!activeTrackId||terminalReported)return Promise.resolve();
+  return report(event,{keepalive});
  }
  function clearFeedback(){
   byId(document,'playerFeedback').hidden=true;
@@ -114,10 +135,10 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
  }
  function bindSourceHandlers(generation,source){
   audio.onerror=()=>{if(generation!==playbackGeneration||!sourceMatches(source))return;handleFailure(generation,audio.error,currentSource());};
-  audio.ontimeupdate=()=>{if(generation!==playbackGeneration||!sourceMatches(source))return;updateTimeline();};
-  audio.onplaying=()=>{if(generation!==playbackGeneration||!sourceMatches(source))return;clearFeedback();setPlaying(true);onStateChange();};
-  audio.onpause=()=>{if(generation!==playbackGeneration||!sourceMatches(source))return;setPlaying(false);onStateChange();};
-  audio.onended=()=>{if(generation!==playbackGeneration||!sourceMatches(source))return;playNext();};
+  audio.ontimeupdate=()=>{if(generation!==playbackGeneration||!sourceMatches(source))return;updateTimeline();const position=logicalPosition();if(hasReportedPlay&&!audio.paused&&(position-lastProgressReport>=PROGRESS_INTERVAL||position<lastProgressReport-5))report('progress');};
+  audio.onplaying=()=>{if(generation!==playbackGeneration||!sourceMatches(source))return;clearFeedback();setPlaying(true);report(hasReportedPlay?'resume':'play');onStateChange();};
+  audio.onpause=()=>{if(generation!==playbackGeneration||!sourceMatches(source))return;setPlaying(false);if(hasReportedPlay&&!terminalReported)report('pause');onStateChange();};
+  audio.onended=()=>{if(generation!==playbackGeneration||!sourceMatches(source))return;if(trackDuration&&logicalPosition()+3<trackDuration){handleFailure(generation,new Error('音频流提前结束'),source);return;}finishCurrent('scrobble');playNext();};
  }
  function replaceSource(offsetSeconds=0,autoplay=true,resetRetry=true){
   const track=queue[queueIndex];if(!track||!context)return;
@@ -129,9 +150,11 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
   audio.src=activeSource;resettingSource=false;updateTimeline();
   if(autoplay)attemptPlay(generation);
  }
- function startQueueTrack(index,autoplay=true){
+ function startQueueTrack(index,autoplay=true,finishPrevious=true){
   const track=queue[index];if(!track||!context)return;
+  if(finishPrevious)finishCurrent('stop');
   queueIndex=index;activeTrackId=String(track.id);trackDuration=boundedSeconds(track.duration);sourceOffset=0;
+  hasReportedPlay=false;terminalReported=false;lastProgressReport=0;
   clearFeedback();
   byId(document,'playerTitle').textContent=track.title||'未知歌曲';
   byId(document,'playerArtist').textContent=track.artist||'未知歌手';
@@ -139,7 +162,7 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
   updateArtwork(track);onStateChange();replaceSource(0,autoplay,true);
  }
  function startQueue(items,index,candidate){
-  queue=Array.isArray(items)?items.slice():[];context={...candidate};startQueueTrack(index,true);
+  finishCurrent('stop');queue=Array.isArray(items)?items.slice():[];context={...candidate};startQueueTrack(index,true,false);
  }
  function playAt(items,index,candidate,autoplay=true){
   const track=items[index];if(!track)return;
@@ -147,7 +170,7 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
    if(audio.paused&&autoplay)attemptPlay();else if(!audio.paused)audio.pause();
    return;
   }
-  queue=items.slice();context={...candidate};startQueueTrack(index,autoplay);
+  finishCurrent('stop');queue=items.slice();context={...candidate};startQueueTrack(index,autoplay,false);
  }
  function seekTo(seconds){
   const target=boundedSeconds(seconds,trackDuration||86400);
@@ -165,14 +188,20 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
   if(queueIndex>0)startQueueTrack(queueIndex-1);
  }
  function stop(){
-  playbackGeneration+=1;clearTimeout(retryTimer);audio.onerror=null;audio.ontimeupdate=null;audio.onplaying=null;audio.onpause=null;audio.onended=null;audio.pause();audio.removeAttribute('src');audio.load();
+  finishCurrent('stop');playbackGeneration+=1;clearTimeout(retryTimer);audio.onerror=null;audio.ontimeupdate=null;audio.onplaying=null;audio.onpause=null;audio.onended=null;audio.pause();audio.removeAttribute('src');audio.load();
   queue=[];context=null;queueIndex=-1;activeTrackId='';activeSource='';sourceOffset=0;trackDuration=0;retryCount=0;recoveryPending=false;resettingSource=false;
+  hasReportedPlay=false;terminalReported=false;lastProgressReport=0;
   clearFeedback();updateArtwork(null);byId(document,'playerTitle').textContent='未播放';byId(document,'playerArtist').textContent='请选择歌曲';byId(document,'playerQueue').textContent='0 / 0';
   byId(document,'playerCurrent').textContent='0:00';byId(document,'playerDuration').textContent='0:00';byId(document,'playerSeek').value='0';setPlaying(false);onStateChange();
  }
  function playPreview(track){
   if(!track?.source)return;
   playAt([track],0,{kind:'preview',key:'external',profileId:String(track.profileId||'')});
+ }
+ function flush(event='stop',keepalive=false){
+  if(event==='stop'||event==='scrobble')return finishCurrent(event,keepalive);
+  if(!hasReportedPlay||terminalReported)return Promise.resolve();
+  return report(event,{keepalive});
  }
  function mount(){
   byId(document,'playerToggle').onclick=()=>{if(audio.paused)attemptPlay();else audio.pause();};
@@ -186,7 +215,7 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
  }
 
  return {
-  mount,startQueue,playAt,playPreview,playNext,playPrevious,stop,
+  mount,startQueue,playAt,playPreview,playNext,playPrevious,stop,flush,
   paused:()=>audio.paused,trackId:()=>activeTrackId,
   isContext:sameContext,
   isPlayingTrack:(track,candidate)=>sameContext(candidate)&&String(track?.id)===activeTrackId,

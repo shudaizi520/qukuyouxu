@@ -933,6 +933,37 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertGreaterEqual(handlers.count("generation!==playbackGeneration"), 5)
         self.assertGreaterEqual(handlers.count("sourceMatches(source)"), 5)
 
+    def test_player_reports_profile_scoped_playback_without_blocking_audio(self):
+        player = (STATIC / "playlist-player.js").read_text(encoding="utf-8")
+        script = (STATIC / "playlists.js").read_text(encoding="utf-8")
+        web = (ROOT / "src/helper/web.py").read_text(encoding="utf-8")
+        self.assertIn("reportPlayback=()=>Promise.resolve()", player)
+        self.assertIn("const PROGRESS_INTERVAL=15", player)
+        self.assertIn("function report(event", player)
+        for name in ("play", "resume", "pause", "progress", "stop", "scrobble"):
+            self.assertIn("'" + name + "'", player)
+        self.assertIn("reportPlayback(event,payload", player)
+        self.assertIn(".catch(()=>{})", player)
+        self.assertIn("function reportWebPlayback", script)
+        self.assertIn("function newWebPlayerId()", script)
+        self.assertIn("typeof crypto.randomUUID==='function'", script)
+        self.assertIn("Math.random()", script)
+        self.assertIn("'/api/playback/events'", script)
+        self.assertIn("'X-Plex-Profile':profileId", script)
+        self.assertIn("keepalive", script)
+        self.assertIn("reportPlayback:reportWebPlayback", script)
+        self.assertIn("attach_web_playback_route", web)
+
+    def test_page_hide_and_visibility_flush_current_profile_playback(self):
+        player = (STATIC / "playlist-player.js").read_text(encoding="utf-8")
+        script = (STATIC / "playlists.js").read_text(encoding="utf-8")
+        self.assertIn("flush", player.split("return {", 1)[1])
+        self.assertIn("document.addEventListener('visibilitychange'", script)
+        self.assertIn("playlistPlayer.paused()?'pause':'progress'", script)
+        self.assertIn("playlistPlayer.flush(event,true)", script)
+        self.assertIn("window.addEventListener('pagehide'", script)
+        self.assertIn("playlistPlayer.flush('stop',true)", script)
+
     def test_workspace_view_switch_keeps_player_instance_and_logical_timeline(self):
         page = (STATIC / "playlists.html").read_text(encoding="utf-8")
         script = (STATIC / "playlists.js").read_text(encoding="utf-8")
