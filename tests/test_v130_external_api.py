@@ -179,6 +179,12 @@ class ExternalApiV130Tests(unittest.TestCase):
         paths = {getattr(route, "path", "") for route in self.app.routes}
         self.assertIn("/api/external/sources/{source_id}/tracks/{track_key}/audio", paths)
 
+    def test_batch_confirmation_route_requires_a_nonempty_selection(self):
+        path = f"/api/external/sources/{self.source['id']}/confirm-batch"
+        status, payload, _ = self.json(path, method="POST", body={"choices": []})
+        self.assertEqual(400, status)
+        self.assertIn("歌曲", payload["error"])
+
 
 if __name__ == "__main__":
     unittest.main()

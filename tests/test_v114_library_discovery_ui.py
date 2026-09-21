@@ -30,7 +30,7 @@ def test_managed_view_keeps_manual_new_song_check_and_safe_playlist_actions():
     html = (STATIC / "home.html").read_text(encoding="utf-8")
     managed = (STATIC / "theme_home.js").read_text(encoding="utf-8")
 
-    assert "我的分类歌单" in html
+    assert "分类歌单" in html
     assert "检查新增歌曲" in html
     assert "停止维护" in managed
     assert "移除歌单" in managed

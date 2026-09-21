@@ -4,9 +4,9 @@
  <meta charset="utf-8">
  <meta name="viewport" content="width=device-width,initial-scale=1">
  <title>曲库有序 · 我的歌单</title>
- <link rel="stylesheet" href="/static/product.css?v=1.4.12">
- <script defer src="/static/auth.js?v=1.4.12"></script>
- <script type="module" src="/static/playlists.js?v=1.4.12"></script>
+ <link rel="stylesheet" href="/static/product.css?v=1.4.13">
+ <script defer src="/static/auth.js?v=1.4.13"></script>
+ <script type="module" src="/static/playlists.js?v=1.4.13"></script>
 </head>
 <body data-view="playlists" data-auth-state="checking">
 <div id="bootScreen" class="auth-boot"><div class="boot-mark">♫</div><strong>曲库有序</strong><span>正在进入你的音乐库…</span></div>
@@ -21,7 +21,7 @@
 <div id="workspace" hidden>
  <header class="topbar">
   <button id="playlistSidebarToggle" class="playlist-sidebar-toggle" type="button" aria-label="打开歌单导航" aria-controls="playlistSidebar" aria-expanded="false">☰</button>
-  <button class="brand" id="workspaceHome" type="button"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v1.4.12</small></span></button>
+  <button class="brand" id="workspaceHome" type="button"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v1.4.13</small></span></button>
   <form id="librarySearchForm" class="playlist-global-search" role="search"><span class="playlist-search-icon" aria-hidden="true"></span><input id="librarySearchInput" type="search" placeholder="搜索全库歌曲、歌手或专辑" autocomplete="off"><button type="submit">搜索</button></form>
   <nav><button type="button" data-workspace-url="/status">运行状态</button><button id="openSettings" type="button">设置</button></nav><button class="logout" data-auth-logout hidden>退出</button>
  </header>
@@ -43,7 +43,7 @@
   <section class="playlist-main">
    <div id="playlistNotice" class="notice" role="status" hidden></div>
    <section id="playlistSectionView" class="playlist-section-view">
-    <header class="playlist-section-head"><div><span id="playlistSectionKind" class="playlist-kind">为你整理</span><h1 id="playlistSectionTitle">智能歌单</h1><p id="playlistSectionSummary" class="muted">每天打开就能直接听</p></div><button id="playlistSectionSettings" class="secondary" type="button">设置智能歌单</button></header>
+    <header class="playlist-section-head"><h1 id="playlistSectionTitle">智能歌单</h1><button id="playlistSectionSettings" class="secondary" type="button">设置</button></header>
     <div id="playlistSectionCards" class="playlist-section-cards"></div>
    </section>
    <section id="playlistView">
@@ -61,11 +61,10 @@
     </div>
    </section>
    <section id="playlistSearchView" class="playlist-search-view" hidden>
-    <header class="playlist-search-head"><div><span class="playlist-kind">全库搜索</span><h1 id="librarySearchTitle">搜索结果</h1><p id="librarySearchSummary" class="muted"></p></div><button id="librarySearchBack" class="secondary" type="button">返回歌单</button></header>
+    <header class="playlist-search-head"><div><h1 id="librarySearchTitle">搜索结果</h1><p id="librarySearchSummary" class="muted"></p></div></header>
     <div id="librarySearchResults" class="playlist-search-results"></div>
    </section>
    <section id="playlistToolView" hidden>
-    <div class="playlist-tool-bar"><button id="playlistToolBack" class="secondary" type="button">← 返回歌单</button><h1 id="playlistToolTitle">创建与整理</h1></div>
     <iframe id="playlistToolFrame" title="创建与整理" loading="eager"></iframe>
    </section>
   </section>

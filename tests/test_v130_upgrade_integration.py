@@ -132,7 +132,7 @@ class UpgradeIntegrationV130Tests(unittest.TestCase):
             try:
                 health = next(route.endpoint for route in app.routes if getattr(route, "path", "") == "/healthz")()
                 external_page = next(route.endpoint for route in app.routes if getattr(route, "path", "") == "/external")()
-                self.assertEqual({"ok": True, "version": "1.4.12"}, health)
+                self.assertEqual({"ok": True, "version": "1.4.13"}, health)
                 self.assertEqual(200, external_page.status_code)
                 status, _, payload = request(
                     app, "/api/external/sources",

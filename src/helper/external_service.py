@@ -195,6 +195,43 @@ class ExternalPlaylistService:
         self._record(source["id"], "confirm", "completed", started, "确认完成")
         return self.public_source(source["id"])
 
+    def confirm_many(self, source_id, choices):
+        if not isinstance(choices, list) or not 1 <= len(choices) <= 200:
+            raise ValueError("请选择 1 至 200 首待确认歌曲")
+        selected = {}
+        for item in choices:
+            if not isinstance(item, dict) or not isinstance(item.get("choice"), dict):
+                raise ValueError("歌曲确认内容无效")
+            key = str(item.get("track_key") or "")
+            if not key:
+                raise ValueError("歌曲确认内容无效")
+            if key in selected:
+                raise ValueError("不能重复确认同一首歌曲")
+            selected[key] = item["choice"]
+        started = self.clock()
+        source = self.repository.get_source(self.profile_id, source_id)
+        _plex, tracks, revision = self._catalog()
+        rows = self.repository.list_matches(self.profile_id, source["id"])
+        review_keys = {row["source_track_key"] for row in rows if row.get("status") == "review"}
+        if any(row.get("catalog_revision") != revision for row in rows):
+            previous = {row["source_track_key"]: row for row in rows if row.get("manual")}
+            source_tracks = self.repository.list_tracks(self.profile_id, source["id"])
+            rows = match_external_tracks(source_tracks, tracks, previous, revision)
+        by_key = {row["source_track_key"]: row for row in rows}
+        catalog = Catalog(tracks)
+        confirmed = {}
+        for key, choice in selected.items():
+            target = by_key.get(key)
+            if not target or key not in review_keys:
+                raise ValueError("选择的歌曲不再需要确认，请刷新待确认列表")
+            if choice.get("status") not in ("matched", "missing"):
+                raise ValueError("确认状态无效")
+            confirmed[key] = apply_external_confirmation(target, choice, catalog)
+        revised = [confirmed.get(row["source_track_key"], row) for row in rows]
+        self.repository.replace_matches(self.profile_id, source["id"], revised, revision)
+        self._record(source["id"], "confirm", "completed", started, f"已确认 {len(confirmed)} 首")
+        return self.public_source(source["id"])
+
     def publish(self, source_id, title, expected_revision):
         started = self.clock()
         source = self.repository.get_source(self.profile_id, source_id)

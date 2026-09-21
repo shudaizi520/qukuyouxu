@@ -17,14 +17,6 @@ export function createPlaylistSections({document,onOpenPlaylist,onOpenTool}){
   const count=Number(item.count);
   return Number.isFinite(count)?count+' 首歌曲':'歌曲数未知';
  }
- function description(item){
-  if(item.kind==='favorite')return '你在 Plex 中评为四星或五星的歌曲';
-  if(item.kind==='daily')return '根据近期播放与偏好持续更新';
-  if(item.source==='plex'&&item.smart)return 'Plex 动态智能歌单';
-  if(item.source==='plex')return 'Plex / Plexamp 自建歌单';
-  if(item.source==='external')return '从外部平台导入并匹配到本地曲库';
-  return item.section==='library'?'由当前曲库整理生成':'智能算法生成';
- }
  function activate(item){
   if(item.can_play)return onOpenPlaylist(item);
   if(item.manage_url)return onOpenTool(item.manage_url,item.title,{type:'section',section:item.section});
@@ -42,18 +34,14 @@ export function createPlaylistSections({document,onOpenPlaylist,onOpenTool}){
  }
  function renderSection(section){
   const rows=groups[section]||[],box=byId('playlistSectionCards');box.replaceChildren();
-  byId('playlistSectionKind').textContent=section==='smart'?'为你整理':'曲库分类';
   byId('playlistSectionTitle').textContent=section==='smart'?'智能歌单':'曲库整理';
-  byId('playlistSectionSummary').textContent=section==='smart'?'每天打开就能直接听':'按年代、风格与评分整理本地音乐';
-  byId('playlistSectionSettings').textContent=section==='smart'?'设置智能歌单':'设置曲库整理';
+  byId('playlistSectionSettings').textContent='设置';
   for(const item of rows){
    const card=document.createElement('button');card.type='button';card.className='playlist-section-card';
    card.dataset.kind=item.kind;card.dataset.key=item.key;card.setAttribute('aria-label','打开'+item.title);
-   const art=document.createElement('span');art.className='playlist-section-art';art.textContent=item.kind==='favorite'?'♥':'♫';
    const body=document.createElement('span');body.className='playlist-section-card-body';
    const title=document.createElement('strong');title.textContent=item.title;
-   const detail=document.createElement('span');detail.textContent=description(item);
-   const count=document.createElement('small');count.textContent=countLabel(item);body.append(title,detail,count);card.append(art,body);
+   const count=document.createElement('small');count.textContent=countLabel(item);body.append(title,count);card.append(body);
    card.onclick=()=>activate(item);box.append(card);
   }
   if(!rows.length){

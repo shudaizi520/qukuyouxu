@@ -148,6 +148,76 @@ class ExternalServiceV130Tests(unittest.TestCase):
         with self.assertRaises(ValueError):
             parent.public_source(imported["id"])
 
+    def test_batch_confirmation_applies_selected_choices_together(self):
+        imported = self.service.import_source(value=QQ_URL)
+        rows = self.service.repository.list_matches("default", imported["id"])
+        for row in rows:
+            if row["source_track_key"] == "b":
+                row.update(status="review", candidate_ids=["40"], reason="ambiguous")
+        self.service.repository.replace_matches("default", imported["id"], rows, rows[0]["catalog_revision"])
+
+        result = self.service.confirm_many(imported["id"], [
+            {"track_key": "d", "choice": {"status": "matched", "plex_track_id": "41"}},
+            {"track_key": "b", "choice": {"status": "matched", "plex_track_id": "40"}},
+        ])
+
+        by_key = {row["source_track_key"]: row for row in result["tracks"]}
+        self.assertEqual("41", by_key["d"]["plex_track_id"])
+        self.assertEqual("40", by_key["b"]["plex_track_id"])
+        self.assertEqual(0, result["counts"]["review"])
+
+    def test_batch_confirmation_rejects_invalid_choice_without_partial_write(self):
+        imported = self.service.import_source(value=QQ_URL)
+        rows = self.service.repository.list_matches("default", imported["id"])
+        for row in rows:
+            if row["source_track_key"] == "b":
+                row.update(status="review", candidate_ids=["40"], reason="ambiguous")
+        self.service.repository.replace_matches("default", imported["id"], rows, rows[0]["catalog_revision"])
+        before = self.service.repository.list_matches("default", imported["id"])
+
+        with self.assertRaisesRegex(ValueError, "不存在"):
+            self.service.confirm_many(imported["id"], [
+                {"track_key": "d", "choice": {"status": "matched", "plex_track_id": "40"}},
+                {"track_key": "b", "choice": {"status": "matched", "plex_track_id": "missing-id"}},
+            ])
+
+        self.assertEqual(before, self.service.repository.list_matches("default", imported["id"]))
+
+    def test_batch_confirmation_rejects_duplicates_and_non_review_rows(self):
+        imported = self.service.import_source(value=QQ_URL)
+        choice = {"track_key": "d", "choice": {"status": "matched", "plex_track_id": "40"}}
+        with self.assertRaisesRegex(ValueError, "重复"):
+            self.service.confirm_many(imported["id"], [choice, choice])
+        with self.assertRaisesRegex(ValueError, "待确认"):
+            self.service.confirm_many(imported["id"], [
+                {"track_key": "a", "choice": {"status": "matched", "plex_track_id": "10"}},
+            ])
+
+    def test_batch_confirmation_rematches_stale_catalog_in_one_write(self):
+        imported = self.service.import_source(value=QQ_URL)
+        previous_revision = self.service.repository.list_matches("default", imported["id"])[0]["catalog_revision"]
+        self.plex.catalog.append(local("50", "新入库", "新歌手"))
+
+        result = self.service.confirm_many(imported["id"], [
+            {"track_key": "d", "choice": {"status": "matched", "plex_track_id": "40"}},
+        ])
+        self.assertEqual("40", next(row for row in result["tracks"] if row["source_track_key"] == "d")["plex_track_id"])
+        revisions = {row["catalog_revision"] for row in self.service.repository.list_matches("default", imported["id"])}
+        self.assertEqual(1, len(revisions))
+        self.assertNotIn(previous_revision, revisions)
+
+    def test_batch_confirmation_stale_catalog_invalid_choice_is_atomic(self):
+        imported = self.service.import_source(value=QQ_URL)
+        before = self.service.repository.list_matches("default", imported["id"])
+        self.plex.catalog.append(local("50", "新入库", "新歌手"))
+
+        with self.assertRaisesRegex(ValueError, "不存在"):
+            self.service.confirm_many(imported["id"], [
+                {"track_key": "d", "choice": {"status": "matched", "plex_track_id": "removed"}},
+            ])
+
+        self.assertEqual(before, self.service.repository.list_matches("default", imported["id"]))
+
     def test_refresh_adds_tracks_and_large_removal_pauses_without_overwriting(self):
         imported = self.service.import_source(value=QQ_URL)
         old_tracks = self.service.repository.list_tracks("default", imported["id"])

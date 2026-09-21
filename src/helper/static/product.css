@@ -737,3 +737,51 @@ body[data-view=external] .external-command-actions .external-text-action{padding
 body[data-view=external] .external-command-actions .external-more{flex:none}
 @media(max-width:900px){body[data-view=external] .external-command-bar{grid-template-columns:90px minmax(0,1fr)}body[data-view=external] .external-command-bar>.external-command-actions{grid-column:2;flex-wrap:wrap}body[data-view=external] .external-url-field{grid-template-columns:90px minmax(0,1fr)}body[data-view=external] .external-file-name{padding-left:106px}}
 @media(max-width:560px){.pch-embedded body[data-view=external] .external-shell{padding:18px 16px 34px}body[data-view=external] .external-import-form{grid-template-columns:1fr}body[data-view=external] .external-url-field{grid-template-columns:1fr}body[data-view=external] .external-import-form>.external-command-actions{flex-wrap:wrap;justify-content:flex-start;padding-left:0}body[data-view=external] .external-file-name{padding-left:0}body[data-view=external] .external-command-bar{grid-template-columns:minmax(0,1fr);gap:5px;padding:12px 0}body[data-view=external] .external-command-bar>.external-command-actions{grid-column:1}body[data-view=external] .external-command-main{grid-template-columns:1fr}body[data-view=external] .external-command-main .external-state{max-width:100%}}
+
+/* v1.4.13: one heading per page and a column-aligned import review. */
+#playlistToolView{grid-template-rows:minmax(0,1fr)}
+#playlistToolFrame{display:block;width:100%;height:100%;min-height:0;border:0;background:var(--playlist-canvas)}
+.playlist-section-head{align-items:center;padding:24px 30px 12px}
+.playlist-section-head h1{margin:0;font-size:27px}
+.playlist-section-head>button{margin:0}
+.playlist-section-cards{gap:10px;padding:8px 30px 30px}
+.playlist-section-card{min-height:76px;display:block;padding:14px 18px;border-radius:10px}
+.playlist-section-card-body{gap:3px}
+.playlist-section-card-body strong{font-size:15px}
+body[data-view=settings] .settings-nav{padding-top:8px}
+.pch-embedded body[data-view=external] .external-shell{max-width:1040px;padding-top:18px}
+.pch-embedded body[data-view=external] .external-page-title{display:block;margin:0 0 10px!important}
+body[data-view=external] .external-page-title h1{margin:0;font-size:27px}
+body[data-view=external] .external-import-card{padding:10px 0}
+body[data-view=external] .external-workspace{border-top:0}
+body[data-view=external] .external-command-bar{min-height:58px;padding:8px 0}
+body[data-view=external] .external-command-main .external-state{max-width:120px;color:#58716f}
+body[data-view=external] .external-detail-card{padding:10px 0 0}
+body[data-view=external] .external-counts{margin:0}
+body[data-view=external] .external-review-toolbar{display:flex;align-items:center;gap:16px;min-height:48px;border-bottom:1px solid #dce8e5;font-size:13px}
+body[data-view=external] .external-review-toolbar[hidden]{display:none}
+body[data-view=external] .external-review-toolbar label{display:flex;align-items:center;gap:7px;cursor:pointer}
+body[data-view=external] .external-review-toolbar input{width:16px;height:16px;accent-color:#0f817e}
+body[data-view=external] .external-review-toolbar span{color:#58716f}
+body[data-view=external] .external-review-toolbar button{min-height:32px;padding:5px 12px;font-size:12px}
+body[data-view=external] .external-track-column-head,body[data-view=external] .external-track-row{display:grid;grid-template-columns:38px minmax(160px,2fr) minmax(110px,1fr) minmax(110px,1fr) 56px 112px;align-items:center;gap:12px;min-width:0}
+body[data-view=external] .external-detail-card[data-status=review] .external-track-column-head,body[data-view=external] .external-detail-card[data-status=review] .external-track-row{grid-template-columns:38px minmax(150px,1.6fr) minmax(90px,.8fr) minmax(90px,.8fr) 52px minmax(245px,310px)}
+body[data-view=external] .external-track-column-head{position:sticky;top:0;z-index:2;height:36px;border-bottom:1px solid #dce8e5;background:#f8fbfa;color:#718783;font-size:12px}
+body[data-view=external] .external-track-column-head[hidden]{display:none}
+body[data-view=external] .external-track-row{min-height:60px;padding:7px 0}
+body[data-view=external] .external-track-row.external-track-missing{grid-template-columns:38px minmax(0,1fr);min-height:54px}
+body[data-view=external] .external-track-number{text-align:center;color:#718783;font-size:12px}
+body[data-view=external] .external-review-check{width:16px;height:16px;margin:0;accent-color:#0f817e;cursor:pointer}
+body[data-view=external] .external-review-check:disabled{cursor:not-allowed}
+body[data-view=external] .external-track-identity strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}
+body[data-view=external] .external-track-identity span,body[data-view=external] .external-track-artist,body[data-view=external] .external-track-album,body[data-view=external] .external-track-duration{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#718783;font-size:12px}
+body[data-view=external] .external-track-actions{display:flex;align-items:center;justify-content:flex-start;gap:5px;min-width:0}
+body[data-view=external] .external-track-actions .external-candidate-select{width:100%;min-width:0;max-width:152px;height:34px;border:1px solid #cbdeda;border-radius:7px;padding:4px 7px;background:#fff;color:#17323a;font-size:12px}
+body[data-view=external] .external-track-actions .external-preview-control{min-width:0;gap:3px}
+body[data-view=external] .external-track-actions .external-preview-progress{display:none}
+body[data-view=external] .external-track-actions button{border:0;background:transparent;color:#0b706d;padding:5px 3px;font-size:12px;white-space:nowrap;cursor:pointer}
+body[data-view=external] .external-track-actions button:disabled{color:#9aaca9;cursor:not-allowed}
+body[data-view=external] .external-track-missing .external-track-identity span{margin-top:2px}
+@media(max-width:950px){body[data-view=external] .external-track-column-head,body[data-view=external] .external-track-row,body[data-view=external] .external-detail-card[data-status=review] .external-track-column-head,body[data-view=external] .external-detail-card[data-status=review] .external-track-row{grid-template-columns:32px minmax(150px,1.5fr) minmax(85px,1fr) minmax(210px,1fr)}body[data-view=external] .external-track-column-head span:nth-child(4),body[data-view=external] .external-track-column-head span:nth-child(5),body[data-view=external] .external-track-album,body[data-view=external] .external-track-duration{display:none}body[data-view=external] .external-track-missing{grid-template-columns:32px minmax(0,1fr)!important}}
+@media(max-width:640px){body[data-view=external] .external-track-column-head,body[data-view=external] .external-track-row,body[data-view=external] .external-detail-card[data-status=review] .external-track-column-head,body[data-view=external] .external-detail-card[data-status=review] .external-track-row{grid-template-columns:28px minmax(0,1fr) auto;gap:8px}body[data-view=external] .external-track-column-head span:nth-child(3),body[data-view=external] .external-track-artist{display:none}body[data-view=external] .external-detail-card[data-status=review] .external-track-row{grid-template-columns:28px minmax(0,1fr)}body[data-view=external] .external-detail-card[data-status=review] .external-track-actions{grid-column:2;flex-wrap:wrap}body[data-view=external] .external-review-toolbar{flex-wrap:wrap;gap:8px;padding:8px 0}body[data-view=external] .external-track-missing{grid-template-columns:28px minmax(0,1fr)!important}body[data-view=external] .external-command-actions{flex-wrap:wrap}}
+@media(max-width:640px){body[data-view=external] .external-detail-card[data-status=review] .external-track-column-head{grid-template-columns:28px minmax(0,1fr)}body[data-view=external] .external-detail-card[data-status=review] .external-track-column-head span:nth-child(6){display:none}}

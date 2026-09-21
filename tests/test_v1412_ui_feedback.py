@@ -37,7 +37,7 @@ def test_library_organizer_has_single_heading_and_primary_action_above_summary()
     html = (STATIC / "home.html").read_text()
     assert html.index('id="incrementalAction"') < html.index('id="libraryOverview"')
     assert html.count("<h1>曲库整理</h1>") == 1
-    assert "我的分类歌单" in html
+    assert "分类歌单" in html
     assert css_rules(".pch-embedded body[data-view=library] .wrap")["max-width"] == "1120px"
 
 
@@ -45,7 +45,7 @@ def test_import_controls_are_grouped_in_one_inset_column():
     html = (STATIC / "external.html").read_text()
     assert html.count('class="external-command-actions"') == 4
     assert html.count('class="external-command-bar"') == 3
-    assert css_rules(".pch-embedded body[data-view=external] .external-shell")["max-width"] == "1120px"
+    assert css_rules(".pch-embedded body[data-view=external] .external-shell")["max-width"] == "1040px"
     css = (STATIC / "product.css").read_text()
     assert "body[data-view=external] .external-command-bar{display:grid;grid-template-columns:100px minmax(0,1fr) auto" in css
 

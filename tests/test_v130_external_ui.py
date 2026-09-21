@@ -37,11 +37,11 @@ class ExternalPlaylistUiV130Tests(unittest.TestCase):
     def test_replenishment_actions_are_explicit_and_never_claim_platform_writes(self):
         page = (STATIC / "external.html").read_text(encoding="utf-8")
         script = (STATIC / "external.js").read_text(encoding="utf-8")
-        for label in ("复制清单", "下载长图", "其他格式", "复制清单链接"):
+        for label in ("复制清单", "下载", "TXT", "CSV", "长图"):
             self.assertIn(label, page)
-        self.assertIn("查看链接已复制", script)
-        self.assertIn("去 QQ 音乐搜索", script)
-        self.assertIn("去网易云音乐搜索", script)
+        self.assertNotIn("复制清单链接", page)
+        self.assertNotIn("去 QQ 音乐搜索", script)
+        self.assertNotIn("去网易云音乐搜索", script)
         self.assertNotIn("发送到 QQ", page + script)
         self.assertNotIn("发送到网易云", page + script)
 
@@ -71,8 +71,8 @@ class ExternalPlaylistUiV130Tests(unittest.TestCase):
         self.assertIn("render_versioned_html((STATIC / 'external.html')", source)
         self.assertIn("'external.js'", source)
         page = (STATIC / "external.html").read_text(encoding="utf-8")
-        self.assertEqual(1, page.count('id="version">v1.4.12</small>'))
-        self.assertIn('/static/external.js?v=1.4.12', page)
+        self.assertEqual(1, page.count('id="version">v1.4.13</small>'))
+        self.assertIn('/static/external.js?v=1.4.13', page)
 
 
 if __name__ == "__main__":

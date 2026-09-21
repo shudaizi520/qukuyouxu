@@ -100,7 +100,6 @@ export function createLibrarySearch({
  }
  function mount(){
   byId(document,'librarySearchForm').onsubmit=event=>{event.preventDefault();run(byId(document,'librarySearchInput').value).catch(error=>notify(error.message||'搜索失败',true));};
-  byId(document,'librarySearchBack').onclick=onBack;
   byId(document,'librarySearchConfirm').onclick=()=>confirmAdd().catch(error=>notify(error.message||'添加失败',true));
  }
 

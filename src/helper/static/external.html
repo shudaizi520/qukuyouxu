@@ -5,9 +5,9 @@
  <meta name="viewport" content="width=device-width,initial-scale=1">
  <meta name="color-scheme" content="light">
  <title>曲库有序 · 外部歌单</title>
- <link rel="stylesheet" href="/static/product.css?v=1.4.12">
- <script defer src="/static/auth.js?v=1.4.12"></script>
- <script defer src="/static/external.js?v=1.4.12"></script>
+ <link rel="stylesheet" href="/static/product.css?v=1.4.13">
+ <script defer src="/static/auth.js?v=1.4.13"></script>
+ <script defer src="/static/external.js?v=1.4.13"></script>
 </head>
 <body data-view="external" data-auth-state="checking">
 <div id="bootScreen" class="auth-boot"><div class="boot-mark">♫</div><strong>曲库有序</strong><span>正在进入你的音乐库…</span></div>
@@ -20,14 +20,14 @@
  </div>
 </section>
 <div id="workspace" hidden>
- <header class="topbar"><a class="brand" href="/"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v1.4.12</small></span></a><nav><a href="/">我的歌单</a><a href="/status">运行状态</a><a href="/settings">设置</a></nav><button class="logout" data-auth-logout hidden>退出</button></header>
+ <header class="topbar"><a class="brand" href="/"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v1.4.13</small></span></a><nav><a href="/">我的歌单</a><a href="/status">运行状态</a><a href="/settings">设置</a></nav><button class="logout" data-auth-logout hidden>退出</button></header>
  <main class="wrap external-shell">
   <div id="notice" class="notice" role="status" hidden></div>
-  <section class="hero external-page-title"><div><h1>导入歌单</h1><p>从 QQ 音乐、网易云音乐或歌单文件导入。</p></div></section>
+  <header class="external-page-title"><h1>导入歌单</h1></header>
 
   <section id="importCard" class="external-import-card">
    <form id="importForm" class="external-import-form">
-    <label class="field external-url-field" for="sourceUrl"><span>导入</span><input id="sourceUrl" type="url" inputmode="url" autocomplete="off" placeholder="粘贴公开歌单链接"></label>
+    <label class="field external-url-field" for="sourceUrl"><span>歌单链接</span><input id="sourceUrl" type="url" inputmode="url" autocomplete="off" placeholder="粘贴 QQ 音乐或网易云音乐歌单链接"></label>
     <div class="external-command-actions"><label class="external-file-action" for="sourceFile">选择文件<input id="sourceFile" type="file" accept=".m3u,.m3u8,.txt,.csv,text/plain,text/csv,audio/x-mpegurl" hidden></label><button id="importSource" class="primary" type="submit">开始导入</button></div>
    </form>
    <span id="selectedFile" class="external-file-name" hidden></span>
@@ -35,7 +35,7 @@
 
   <section id="sourceWorkspace" class="external-workspace" hidden>
    <section class="external-command-bar" aria-label="已导入歌单">
-    <label for="sourceSelector">已导入</label><select id="sourceSelector" aria-label="切换已导入歌单"></select><div class="external-command-actions"><button id="reloadSources" class="external-text-action" type="button">刷新列表</button><button id="refreshSource" class="external-text-action" type="button">重新读取</button><button id="removeSource" class="external-text-action danger-text" type="button">移除来源</button></div>
+    <label for="sourceSelector">已导入</label><select id="sourceSelector" aria-label="切换已导入歌单"></select><div class="external-command-actions"><button id="refreshSource" class="external-text-action" type="button">重新读取</button><button id="removeSource" class="external-text-action danger-text" type="button">移除来源</button></div>
    </section>
    <section class="external-command-bar" aria-label="Plex 歌单设置">
     <label for="plexPlaylistTitle">Plex 歌单</label><div class="external-command-main"><input id="plexPlaylistTitle" maxlength="80" aria-label="Plex 歌单名称"><span id="sourceState" class="external-state"></span></div>
@@ -43,15 +43,16 @@
    </section>
    <section id="replenishmentCard" class="external-command-bar" aria-label="缺失歌曲" hidden>
     <strong>缺失歌曲</strong><span id="missingSummary"></span>
-    <div class="external-command-actions"><button id="copyMissing" class="external-text-action" type="button">复制清单</button><button id="downloadImage" class="external-text-action" type="button">下载长图</button><details class="external-more"><summary class="external-text-action">其他格式</summary><div><a id="downloadText" class="link" href="#">下载 TXT</a><a id="downloadCsv" class="link" href="#">下载 CSV</a><button id="copyShareLink" class="external-text-action" type="button">复制清单链接</button></div></details></div>
+    <div class="external-command-actions"><button id="copyMissing" class="external-text-action" type="button">复制清单</button><details class="external-more"><summary class="external-text-action">下载</summary><div><a id="downloadText" class="link" href="#">TXT</a><a id="downloadCsv" class="link" href="#">CSV</a><button id="downloadImage" class="external-text-action" type="button">长图</button></div></details></div>
    </section>
    <section id="detailCard" class="external-detail-card">
-     <div class="external-detail-head"><div><span id="sourceProvider" class="eyebrow"></span><h2 id="sourceTitle">歌单</h2></div></div>
      <div class="external-counts" aria-label="匹配结果">
       <button class="external-count-tab active" type="button" data-match-status="matched"><span>已匹配</span><strong id="matchedCount">0</strong></button>
       <button class="external-count-tab" type="button" data-match-status="review"><span>待确认</span><strong id="reviewCount">0</strong></button>
       <button class="external-count-tab" type="button" data-match-status="missing"><span>缺失歌曲</span><strong id="missingCount">0</strong></button>
      </div>
+     <div id="reviewToolbar" class="external-review-toolbar" hidden><label><input id="reviewSelectAll" type="checkbox">全选本页</label><span id="reviewSelectedCount">已选 0 首</span><button id="confirmSelected" class="primary" type="button" disabled>确认所选</button></div>
+     <div id="trackColumnHead" class="external-track-column-head"><span>#</span><span>歌曲</span><span>歌手</span><span>专辑</span><span>时长</span><span id="trackActionHeading">操作</span></div>
      <div id="trackList" class="external-track-list" aria-live="polite"></div>
      <div id="trackPaging" class="external-paging"><button id="previousTracks" class="secondary" type="button">上一页</button><span id="trackRange"></span><button id="nextTracks" class="secondary" type="button">下一页</button></div>
      <audio id="auditionPlayer" preload="none" hidden></audio>

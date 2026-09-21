@@ -42,8 +42,8 @@ export function createPlaylistWorkspace({document}){
  const target=new URL(url,window.location.origin);
   target.searchParams.set('embedded','1');
   playlistToolView.dataset.page=target.pathname.slice(1);
-  document.getElementById('playlistToolTitle').textContent=title;
   const frame=document.getElementById('playlistToolFrame');
+  frame.title=title;
   frame.removeAttribute('style');
   frame.setAttribute('scrolling','auto');
   frame.src=target.pathname+target.search;

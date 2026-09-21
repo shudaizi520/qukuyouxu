@@ -372,7 +372,6 @@ function mount(){
   const profileId=loadedProfileId,requestId=profileRequest,selected={kind:current.kind,key:current.key,title:current.title};if(playingFrom(selected))playlistPlayer.stop();
   const result=await json('/api/playlists/remove','POST',{kind:selected.kind,key:selected.key,title:selected.title,confirm:true});if(profileId!==loadedProfileId||requestId!==profileRequest)return;notify(result.message);current=null;await loadPlaylists({section:'smart'},requestId);
  });
- $('playlistToolBack').onclick=()=>action(returnFromWorkspace);
  $('smartHubButton').onclick=()=>openSection('smart');$('libraryHubButton').onclick=()=>openSection('library');
  $('playlistSectionSettings').onclick=()=>{const section=workspace.current().section==='library'?'library':'smart';openWorkspacePage(section==='library'?'/library':'/mixes',section==='library'?'曲库整理设置':'智能歌单设置','tool',{type:'section',section});};
  $('customPlaylistRefresh').onclick=()=>action(()=>loadPlaylists(workspace.current(),profileRequest));

@@ -147,6 +147,17 @@ def attach_external_routes(app, store, engine, runtime, profiles, body, ensure_i
         with target.exclusive():
             return target.external.confirm(source_id, track_key, choice)
 
+    @app.post("/api/external/sources/{source_id}/confirm-batch")
+    async def confirm_tracks(source_id: str, request: Request):
+        data = await body(request)
+        choices = data.get("choices")
+        if not isinstance(choices, list) or not 1 <= len(choices) <= 200:
+            raise ValueError("请选择 1 至 200 首待确认歌曲")
+        ensure_idle()
+        target = fixed_engine()
+        with target.exclusive():
+            return target.external.confirm_many(source_id, choices)
+
     @app.post("/api/external/sources/{source_id}/publish")
     async def publish_source(source_id: str, request: Request):
         data = await body(request)

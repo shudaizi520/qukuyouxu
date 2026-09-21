@@ -740,7 +740,7 @@ class PlaylistHubPageTests(unittest.TestCase):
             "async function switchProfile", 1
         )[0]
         remove_playlist = script.split("$('playlistRemove').onclick", 1)[1].split(
-            "$('playlistToolBack').onclick", 1
+            "$('smartHubButton').onclick", 1
         )[0]
         self.assertIn("playingFrom(selected)", remove_track)
         self.assertIn("playingFrom(selected)", remove_playlist)
@@ -1034,8 +1034,8 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn("workspace.current()", refresh)
         self.assertIn("view.type==='playlist'", refresh)
         self.assertIn("await loadPlaylists(preferred,requestId)", refresh)
-        self.assertIn("playlistToolBack", script)
-        self.assertIn("returnFromWorkspace", script.split("playlistToolBack", 1)[1])
+        self.assertNotIn("playlistToolBack", script)
+        self.assertIn("if(target.pathname==='/'){action(returnFromWorkspace);return;}", script)
 
     def test_library_search_handles_failures_stale_errors_and_keyboard_playback(self):
         search = (STATIC / "playlist-search.js").read_text(encoding="utf-8")
