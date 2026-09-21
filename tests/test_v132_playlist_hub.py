@@ -71,7 +71,7 @@ class PlaylistHubRowsTests(unittest.TestCase):
             ["每日推荐", "每周常听", "我的最爱", "开车精选", "百万收藏"],
             [row["title"] for row in rows],
         )
-        self.assertEqual([30, 2, 0, 3, 1], [row["count"] for row in rows])
+        self.assertEqual([30, 2, None, 3, 1], [row["count"] for row in rows])
         physical = [row for row in rows if row["kind"] != "favorite"]
         self.assertTrue(all(row["playlist_id"] for row in physical))
         self.assertTrue(all(row["manage_url"].startswith("/") for row in physical))
@@ -88,7 +88,7 @@ class PlaylistHubRowsTests(unittest.TestCase):
         self.assertEqual("每日推荐", daily["title"])
         self.assertEqual("", daily["playlist_id"])
         self.assertEqual("未建立", daily["status"])
-        self.assertEqual("/daily", daily["manage_url"])
+        self.assertEqual("/mixes", daily["manage_url"])
 
     def test_every_automatic_playlist_writer_applies_manual_track_choices(self):
         for name in ("daily.py", "smart_mix_web.py", "engine.py", "external_service.py"):
@@ -118,6 +118,12 @@ class _PlaylistPlex:
     def open_browser_audio(self, track_id, range_header="", offset_seconds=0):
         self.last_audio_offset = offset_seconds
         return self.open_audio_part(track_id, range_header)
+
+    def track_section(self, track_id):
+        return "1" if str(track_id) == "10" else "22"
+
+    def track_metadata(self, track_id):
+        return {"id": str(track_id), "thumb": "/library/metadata/10/thumb", "library_section_id": self.track_section(track_id)}
 
     def open_artwork(self, path):
         self.last_artwork = str(path)
@@ -280,7 +286,7 @@ class PlaylistHubPlaybackTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "当前歌单"):
             stream_playlist_audio(self.engine, "daily", "daily", "999", "", "session")
 
-    def test_library_audio_allows_only_available_tracks_in_the_active_catalog(self):
+    def test_library_audio_uses_live_plex_membership_even_if_catalog_is_stale(self):
         import asyncio
         from helper.playlist_hub import stream_library_audio
         from tests.test_v130_external_audio import FakeAudioResponse, close_response
@@ -298,8 +304,11 @@ class PlaylistHubPlaybackTests(unittest.TestCase):
         catalog = self.store.get("catalog")
         catalog[0]["available"] = False
         self.store.set("catalog", catalog)
-        with self.assertRaisesRegex(ValueError, "当前曲库"):
-            stream_library_audio(self.engine, "10", "", "session-disabled")
+        self.plex.audio = FakeAudioResponse(status=200, headers={
+            "Content-Type": "audio/mpeg", "Content-Length": "1024",
+        })
+        response = stream_library_audio(self.engine, "10", "", "session-disabled")
+        asyncio.run(close_response(response))
 
     def test_library_artwork_uses_the_validated_catalog_row(self):
         from helper.playlist_hub import stream_library_artwork
@@ -501,7 +510,7 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn("artist.className='playlist-track-artist'", render_tracks)
         append = render_tracks.split("row.append(", 1)[1].split(")", 1)[0]
         self.assertEqual("number,identity,artist,album,duration,actions", append)
-        self.assertIn("actions.append(heart)", render_tracks)
+        self.assertIn("identity.append(heart,title)", render_tracks)
         self.assertIn("current?.can_remove_tracks", render_tracks)
 
     def test_track_columns_compact_before_the_sidebar_can_clip_the_action_column(self):
@@ -532,7 +541,7 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn('id="librarySearchResults"', page)
         self.assertIn('data-workspace-url="/status"', topbar)
         self.assertIn('id="openSettings"', topbar)
-        self.assertIn("location.assign('/settings')", script)
+        self.assertIn("openWorkspacePage('/settings','设置','system')", script)
         self.assertNotIn('href="/status"', topbar)
         self.assertNotIn('href="/settings"', topbar)
 

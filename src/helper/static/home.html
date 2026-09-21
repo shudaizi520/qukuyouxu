@@ -1,4 +1,4 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><title>曲库有序 · 曲库整理</title><link rel="stylesheet" href="/static/product.css?v=1.4.8"><script defer src="/static/auth.js?v=1.4.8"></script><script defer src="/static/home.js?v=1.4.8"></script><script defer src="/static/theme_home.js?v=1.4.8"></script></head><body data-view="library" data-auth-state="checking">
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><title>曲库有序 · 曲库整理</title><link rel="stylesheet" href="/static/product.css?v=1.4.9"><script defer src="/static/auth.js?v=1.4.9"></script><script defer src="/static/home.js?v=1.4.9"></script><script defer src="/static/contextual-settings.js?v=1.4.9"></script><script defer src="/static/theme_home.js?v=1.4.9"></script></head><body data-view="library" data-auth-state="checking">
 <div id="bootScreen" class="auth-boot"><div class="boot-mark">♫</div><strong>曲库有序</strong><span>正在进入你的音乐库…</span></div>
 <section id="authShell" class="auth-shell" hidden>
  <div class="auth-card">
@@ -8,10 +8,12 @@
   <p id="authMessage" class="auth-message" hidden></p>
  </div>
 </section>
-<div id="workspace" hidden><header class="topbar"><a class="brand" href="/"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v1.4.8</small></span></a><nav><a href="/">我的歌单</a><a href="/status">运行状态</a><a href="/settings">设置</a></nav><button class="logout" data-auth-logout hidden>退出</button></header>
+<div id="workspace" hidden><header class="topbar"><a class="brand" href="/"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v1.4.9</small></span></a><nav><a href="/">我的歌单</a><a href="/status">运行状态</a><a href="/settings">设置</a></nav><button class="logout" data-auth-logout hidden>退出</button></header>
 <main class="wrap">
 <div id="notice" class="notice" role="status" hidden></div>
-<section class="hero"><div><h1>曲库整理</h1></div></section>
+<section class="hero"><div><h1>曲库整理设置</h1><p>分析并更新对应的分类歌单，不会修改音乐文件。</p></div></section>
+<section id="librarySharePanel" class="card library-share-panel" hidden><div class="panel-title"><div><h2>跟随主账户同步</h2><p class="muted">同一个 Plex 音乐曲库使用主账户整理好的分类，无需再次授权 QQ。</p></div></div><p id="libraryShareMessage" class="muted"></p><div id="libraryShareRows" class="library-share-rows"></div></section>
+<section class="card contextual-settings-card"><div class="panel-title"><div><h2>新增歌曲自动整理</h2><p class="muted">每天按指定时间检查新入库歌曲，更新已托管的分类歌单。</p></div></div><div class="contextual-automation"><label>执行时间<select id="libraryAutomationHour"></select><input id="libraryAutomationEnabled" type="checkbox" aria-label="启用新增歌曲自动整理"></label></div></section>
 <section id="setupPrompt" class="card setup-card" hidden><h2>连接 Plex 音乐库</h2><a class="primary link" href="/settings#accounts">设置连接</a></section>
 <section id="libraryOverview" class="library-overview" aria-label="曲库概况">
  <div class="library-metrics"><div><strong id="totalCount">—</strong><span>曲库歌曲</span></div><div><strong id="classifiedCount">—</strong><span title="已经匹配到至少一个分类，不代表逐曲查询过 QQ 标签">已分类匹配</span></div><div><strong id="reviewCount">—</strong><span title="Plex 标签与文件名线索存在冲突，或歌名歌手不完整">标签待核对</span></div><div><strong id="playlistCount">—</strong><span>托管歌单</span></div></div>

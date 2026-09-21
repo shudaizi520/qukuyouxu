@@ -65,11 +65,12 @@ class PlaylistNavigationTests(unittest.TestCase):
                       'id="playlistCreateDialog"'):
             self.assertTrue(token in page, token)
 
-    def test_settings_opens_as_a_standalone_management_page(self):
+    def test_settings_opens_inside_the_player_workspace(self):
         page = (ROOT / "src/helper/static/playlists.html").read_text(encoding="utf-8")
         script = (ROOT / "src/helper/static/playlists.js").read_text(encoding="utf-8")
         self.assertTrue('id="openSettings"' in page)
-        self.assertTrue("location.assign('/settings')" in script)
+        self.assertTrue("openWorkspacePage('/settings','设置','system')" in script)
+        self.assertNotIn("location.assign('/settings')", script)
 
     def test_mobile_sidebar_keeps_settings_accessible(self):
         page = (ROOT / "src/helper/static/playlists.html").read_text(encoding="utf-8")

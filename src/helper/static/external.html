@@ -5,9 +5,9 @@
  <meta name="viewport" content="width=device-width,initial-scale=1">
  <meta name="color-scheme" content="light">
  <title>曲库有序 · 外部歌单</title>
- <link rel="stylesheet" href="/static/product.css?v=1.4.8">
- <script defer src="/static/auth.js?v=1.4.8"></script>
- <script defer src="/static/external.js?v=1.4.8"></script>
+ <link rel="stylesheet" href="/static/product.css?v=1.4.9">
+ <script defer src="/static/auth.js?v=1.4.9"></script>
+ <script defer src="/static/external.js?v=1.4.9"></script>
 </head>
 <body data-view="external" data-auth-state="checking">
 <div id="bootScreen" class="auth-boot"><div class="boot-mark">♫</div><strong>曲库有序</strong><span>正在进入你的音乐库…</span></div>
@@ -20,20 +20,20 @@
  </div>
 </section>
 <div id="workspace" hidden>
- <header class="topbar"><a class="brand" href="/"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v1.4.8</small></span></a><nav><a href="/">我的歌单</a><a href="/status">运行状态</a><a href="/settings">设置</a></nav><button class="logout" data-auth-logout hidden>退出</button></header>
+ <header class="topbar"><a class="brand" href="/"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v1.4.9</small></span></a><nav><a href="/">我的歌单</a><a href="/status">运行状态</a><a href="/settings">设置</a></nav><button class="logout" data-auth-logout hidden>退出</button></header>
  <main class="wrap external-shell">
   <div id="notice" class="notice" role="status" hidden></div>
   <section class="hero external-page-title"><div><h1>外部歌单</h1><p>导入公开歌单，与自己的 Plex 曲库快速核对。</p></div></section>
 
-  <section id="importCard" class="card external-import-card">
-   <div class="panel-title"><h2>导入歌单</h2><span class="external-import-hint">QQ 音乐、网易云音乐或本地歌单文件</span></div>
+  <details id="importCard" class="card external-import-card" open>
+   <summary class="external-import-summary"><span><strong>导入其他歌单</strong><small>QQ 音乐、网易云音乐或本地文件</small></span><span class="external-import-chevron" aria-hidden="true">⌄</span></summary>
    <form id="importForm" class="external-import-form">
     <label class="field external-url-field" for="sourceUrl"><span>公开歌单链接</span><input id="sourceUrl" type="url" inputmode="url" autocomplete="off" placeholder="粘贴 QQ 音乐或网易云音乐公开歌单链接"></label>
     <button id="importSource" class="primary" type="submit">导入并分析</button>
     <label class="secondary button external-file-action" for="sourceFile">选择歌单文件<input id="sourceFile" type="file" accept=".m3u,.m3u8,.txt,.csv,text/plain,text/csv,audio/x-mpegurl" hidden></label>
    </form>
    <span id="selectedFile" class="external-file-name">支持 QQ 音乐、网易云音乐、M3U、TXT 和 CSV</span>
-  </section>
+  </details>
 
   <section id="sourceWorkspace" class="external-workspace" hidden>
    <aside class="external-source-panel external-source-strip" aria-label="已导入歌单">

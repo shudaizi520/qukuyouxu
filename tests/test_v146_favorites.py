@@ -14,7 +14,7 @@ sys.path.insert(0, str(ROOT / "src"))
 class _Store:
     def __init__(self, catalog, profile_id="default"):
         self.profile_id = profile_id
-        self.values = {"settings": {}, "catalog": catalog}
+        self.values = {"settings": {"section": "15" if profile_id == "second" else "11"}, "catalog": catalog}
 
     def get(self, key, default=None):
         return self.values.get(key, default)
@@ -31,6 +31,9 @@ class _RatingPlex:
     def rate_track(self, track_id, rating):
         self.ratings.append((str(track_id), float(rating)))
         return float(rating if self.readback is None else self.readback)
+
+    def track_section(self, track_id):
+        return "15" if str(track_id) == "2" else "11"
 
 
 class _Engine:
@@ -201,7 +204,7 @@ class FavoritePlaylistTests(unittest.TestCase):
         }]):
             attach_playlist_hub_routes(app, stores["default"], runtime, profiles, body, lambda: None)
             route = lambda path: next(row.endpoint for row in app.routes if row.path == path)
-            self.assertEqual(2, route("/api/playlists")()["items"][0]["count"])
+            self.assertEqual(1, route("/api/playlists")()["items"][0]["count"])
             self.assertEqual(["1", "2"], [row["id"] for row in
                              route("/api/playlists/{kind}/{key}")("favorite", "liked")["tracks"]])
             request = type("Request", (), {"payload": {
@@ -268,10 +271,23 @@ class _FavoriteRuntime:
         self.plex = plex
 
     def engine(self, profile_id):
+        store = self.stores[profile_id]
+        upstream = self.plex or _RatingPlex()
+
+        class ScopedPlex:
+            def tracks(self, _section):
+                return store.get("catalog")
+
+            def track_section(self, track_id):
+                return upstream.track_section(track_id)
+
+            def rate_track(self, track_id, rating):
+                return upstream.rate_track(track_id, rating)
+
         return type("Engine", (), {
-            "store": self.stores[profile_id],
+            "store": store,
             "exclusive": lambda _self: nullcontext(),
-            "plex_factory": lambda _self, _settings: self.plex,
+            "plex_factory": lambda _self, _settings: ScopedPlex(),
         })()
 
 

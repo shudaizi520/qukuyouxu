@@ -4,6 +4,9 @@ from __future__ import annotations
 
 def is_confirmed_missing(exc):
     """Only a definite Plex 404 is allowed to unlock local-record cleanup."""
+    from .clients import PlexNotFound
+    if isinstance(exc, PlexNotFound):
+        return True
     status = getattr(exc, "status_code", None)
     text = str(exc or "").casefold()
     return status == 404 or "http 404" in text or "status 404" in text
@@ -39,6 +42,13 @@ def forget_missing_managed_playlist(engine, category_id, playlist_id, confirm_ti
         if str(source.get("id") or "") == category_id:
             source["enabled"] = False
             source["approved"] = False
-    store.set_many({"managed": managed, "sources": sources, "plan": None})
+    changes = {"managed": managed, "sources": sources, "plan": None}
+    if record.get("shared_from"):
+        from .library_sharing import STATE_KEY
+        share = dict(store.get(STATE_KEY, {}) or {})
+        if share.get("owner_id") == record["shared_from"]:
+            share["excluded"] = sorted(set(share.get("excluded") or []) | {category_id})
+            changes[STATE_KEY] = share
+    store.set_many(changes)
     store.log("已只清除不存在的 Plex 歌单本地记录：" + saved_title)
     return {"message": "Plex 中的歌单已不存在；已只清除助手本地记录，歌曲和文件未作任何修改。"}

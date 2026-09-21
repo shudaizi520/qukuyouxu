@@ -300,6 +300,19 @@ class PlexClient:
         if not str(section).isdigit():raise ValueError('音乐资料库ID无效')
         return [parse_plex_track(e) for e in self._page(f'/library/sections/{section}/all','Track',{'type':10})]
 
+    def track_metadata(self,track_id):
+        track_id=str(track_id or '')
+        if not track_id.isdigit():raise PlexError('曲目ID无效')
+        rows=self._xml(f'/library/metadata/{track_id}').findall('Track')
+        if len(rows)!=1 or str(rows[0].get('ratingKey') or '')!=track_id:
+            raise PlexError('Plex 曲目不存在或不唯一')
+        section=str(rows[0].get('librarySectionID') or '')
+        if not section.isdigit():raise PlexError('Plex 未返回曲目所属音乐库')
+        return {**parse_plex_track(rows[0]),'library_section_id':section}
+
+    def track_section(self,track_id):
+        return self.track_metadata(track_id)['library_section_id']
+
     def _audio_source(self, track_id):
         track_id = str(track_id or '')
         if not track_id.isdigit():raise PlexError('音频曲目ID无效')
@@ -447,6 +460,8 @@ class PlexClient:
                 'title': x.get('title', ''), 'artist': x.get('grandparentTitle', ''),
                 'album': x.get('parentTitle', ''), 'duration': duration,
                 'thumb': x.get('thumb', ''),
+                'library_section_id':str(x.get('librarySectionID') or ''),
+                'user_rating':_optional_number(x.get('userRating'),10),
             }
         return {'id':str(pid),'title':e.get('title',''),'summary':e.get('summary',''),
                 'smart':e.get('smart')=='1','items':[item(x) for x in arr]}

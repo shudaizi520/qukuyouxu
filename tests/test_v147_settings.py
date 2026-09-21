@@ -28,11 +28,11 @@ class _SettingsLinks(HTMLParser):
 
 
 class SettingsPlaylistAccessTests(unittest.TestCase):
-    def test_settings_exposes_direct_links_to_three_existing_music_tools(self):
+    def test_settings_keeps_music_tools_in_their_own_hubs(self):
         document = _SettingsLinks()
         document.feed((ROOT / "src/helper/static/settings.html").read_text())
 
-        self.assertIn("playlists", document.navigation)
+        self.assertEqual({"accounts", "system"}, document.navigation)
         self.assertEqual({"/daily", "/mixes", "/library"}, set(document.links))
 
 

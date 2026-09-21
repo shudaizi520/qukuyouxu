@@ -207,10 +207,17 @@ def remove_managed_playlist(engine, category_id, confirm_title):
                 "snapshot_id": snapshot["id"], "title": title,
                 "machine": snapshot["machine"], "scope": snapshot["scope"],
             }
-            store.set_many({
+            changes = {
                 "managed": managed, "sources": sources, "retired_managed": retired,
                 "plan": None,
-            })
+            }
+            if record.get("shared_from"):
+                from .library_sharing import STATE_KEY
+                share = dict(store.get(STATE_KEY, {}) or {})
+                if share.get("owner_id") == record["shared_from"]:
+                    share["excluded"] = sorted(set(share.get("excluded") or []) | {category_id})
+                    changes[STATE_KEY] = share
+            store.set_many(changes)
             store.log("已移除助手托管分类歌单：" + title)
             return {
                 "message": "已从 Plex 移除该分类歌单；音乐文件未删除，可从快照恢复。",

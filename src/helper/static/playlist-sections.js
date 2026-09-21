@@ -8,10 +8,12 @@ export function groupPlaylists(items){
 
 export function createPlaylistSections({document,onOpenPlaylist,onOpenTool}){
  let groups=groupPlaylists([]);
+ let favoriteUnseen=false;
  const byId=id=>document.getElementById(id);
 
  function countLabel(item){
   if(!item.can_play)return '尚未生成';
+  if(item.count===null||item.count===undefined)return '打开后同步歌曲数';
   const count=Number(item.count);
   return Number.isFinite(count)?count+' 首歌曲':'歌曲数未知';
  }
@@ -29,11 +31,11 @@ export function createPlaylistSections({document,onOpenPlaylist,onOpenTool}){
  }
  function renderCustom(){
   const box=byId('customPlaylistList');box.replaceChildren();
-  byId('customPlaylistCount').textContent=String(groups.custom.length);
   for(const item of groups.custom){
    const button=document.createElement('button');button.type='button';button.dataset.kind=item.kind;button.dataset.key=item.key;
    const text=document.createElement('span'),title=document.createElement('strong'),meta=document.createElement('small');
    title.textContent=item.title;meta.textContent=(item.smart?'智能 · ':'')+countLabel(item);text.append(title,meta);button.append(text);
+   if(item.kind==='favorite'&&favoriteUnseen){button.classList.add('has-unseen');const dot=document.createElement('span');dot.className='playlist-favorite-dot';dot.setAttribute('aria-label','有新收藏歌曲');button.append(dot);}
    button.onclick=()=>onOpenPlaylist(item);box.append(button);
   }
   if(!groups.custom.length){const empty=document.createElement('span');empty.className='playlist-side-empty';empty.textContent='还没有自建歌单';box.append(empty);}
@@ -43,6 +45,7 @@ export function createPlaylistSections({document,onOpenPlaylist,onOpenTool}){
   byId('playlistSectionKind').textContent=section==='smart'?'为你整理':'曲库分类';
   byId('playlistSectionTitle').textContent=section==='smart'?'智能歌单':'曲库整理';
   byId('playlistSectionSummary').textContent=section==='smart'?'每天打开就能直接听':'按年代、风格与评分整理本地音乐';
+  byId('playlistSectionSettings').textContent=section==='smart'?'设置智能歌单':'设置曲库整理';
   for(const item of rows){
    const card=document.createElement('button');card.type='button';card.className='playlist-section-card';
    card.dataset.kind=item.kind;card.dataset.key=item.key;card.setAttribute('aria-label','打开'+item.title);
@@ -61,5 +64,6 @@ export function createPlaylistSections({document,onOpenPlaylist,onOpenTool}){
   }
  }
  function setItems(items){groups=groupPlaylists(Array.isArray(items)?items:[]);renderCustom();return groups;}
- return {setItems,renderSection,groups:()=>groups};
+ function setFavoriteUnseen(value){favoriteUnseen=!!value;renderCustom();}
+ return {setItems,renderSection,setFavoriteUnseen,groups:()=>groups};
 }

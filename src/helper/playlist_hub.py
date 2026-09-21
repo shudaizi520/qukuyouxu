@@ -11,6 +11,7 @@ from starlette.background import BackgroundTask
 from starlette.responses import StreamingResponse
 
 from .auth import COOKIE_NAME
+from .clients import PlexError
 from .engine import SafetyError, fingerprint
 from .external_audio import stream_track_audio
 from .external_playlist_sync import external_marker
@@ -83,13 +84,13 @@ def assistant_playlist_rows(store):
             count = len(published["items"])
         rows.append(_item(
             "daily", "daily", daily, count,
-            daily.get("published_at") or published.get("published_at"), "/daily",
+            daily.get("published_at") or published.get("published_at"), "/mixes",
         ))
     else:
         rows.append({
             "kind": "daily", "kind_label": KIND_LABELS["daily"], "key": "daily",
             "playlist_id": "", "title": KIND_LABELS["daily"], "count": 0,
-            "updated_at": 0, "manage_url": "/daily", "status": "未建立",
+            "updated_at": 0, "manage_url": "/mixes", "status": "未建立",
         })
 
     smart_plans = store.get("smart_mix_plans", {}) or {}
@@ -99,14 +100,9 @@ def assistant_playlist_rows(store):
             record.get("updated_at"), "/mixes",
         ))
 
-    favorite_count = sum(
-        isinstance(row, dict) and row.get("available", True)
-        and _safe_number(row.get("user_rating")) >= 8
-        for row in (store.get("catalog", []) or [])
-    )
     rows.append({
         "kind": "favorite", "kind_label": KIND_LABELS["favorite"], "key": "liked",
-        "playlist_id": "", "title": KIND_LABELS["favorite"], "count": favorite_count,
+        "playlist_id": "", "title": KIND_LABELS["favorite"], "count": None,
         "updated_at": 0, "manage_url": "", "status": "已建立",
     })
 
@@ -381,12 +377,14 @@ def edit_playlist_track(engine, kind, key, track_id, operation, hidden_playlist_
         str(row.get("id")): row for row in (engine.store.get("catalog", []) or [])
         if isinstance(row, dict) and row.get("available", True)
     }
-    if track_id not in catalog:
-        raise ValueError("这首歌已不在当前曲库中")
     if kind == "plex":
         plex = engine.plex_factory(engine.store.get("settings"))
         section = str((engine.store.get("settings") or {}).get("section") or "")
+        if track_id not in catalog and (not section.isdigit() or plex.track_section(track_id) != section):
+            raise ValueError("这首歌不属于当前曲库")
         return _edit_native_playlist_track(plex, key, track_id, operation, section, hidden_playlist_ids)
+    if track_id not in catalog:
+        raise ValueError("这首歌已不在当前曲库中")
     record, marker = _playlist_record(engine, kind, key)
     plex = engine.plex_factory(engine.store.get("settings"))
     before = plex.playlist_state(record["id"])
@@ -428,13 +426,13 @@ def edit_playlist_track(engine, kind, key, track_id, operation, hidden_playlist_
     return {"message": "已加入歌单" if operation == "add" else "已从歌单移除", "count": len(after.get("items", []))}
 
 
-def search_library(store, query, limit=40):
+def _search_library_rows(rows, query, limit=40):
     query = str(query or "").strip().casefold()
     if len(query) < 1 or len(query) > 100:
         raise ValueError("请输入 1—100 个字搜索")
     tokens = [token for token in query.split() if token]
     result = []
-    for row in store.get("catalog", []) or []:
+    for row in rows or []:
         if not isinstance(row, dict) or not row.get("available", True):
             continue
         haystack = " ".join(str(row.get(field) or "") for field in ("title", "artist", "album")).casefold()
@@ -450,9 +448,23 @@ def search_library(store, query, limit=40):
     return result
 
 
-def favorite_playlist_detail(store):
+def search_library(store, query, limit=40):
+    return _search_library_rows(store.get("catalog", []), query, limit)
+
+
+def search_library_live(engine, query, limit=40):
+    settings = engine.store.get("settings") or {}
+    section = str(settings.get("section") or "")
+    if not section.isdigit():
+        raise ValueError("请先选择 Plex 音乐库")
+    if not str(query or "").strip() or len(str(query).strip()) > 100:
+        raise ValueError("请输入 1—100 个字搜索")
+    return _search_library_rows(engine.plex_factory(settings).tracks(section), query, limit)
+
+
+def favorite_playlist_detail(store, catalog=None):
     tracks = []
-    for row in store.get("catalog", []) or []:
+    for row in (store.get("catalog", []) if catalog is None else catalog) or []:
         if not isinstance(row, dict) or not row.get("available", True):
             continue
         rating = _safe_number(row.get("user_rating"))
@@ -472,6 +484,13 @@ def favorite_playlist_detail(store):
         "title": "我的最爱", "count": len(tracks), "tracks": tracks,
         "unavailable_count": 0,
     }
+
+
+def favorite_playlist_detail_live(engine):
+    settings = engine.store.get("settings") or {}
+    section = str(settings.get("section") or "")
+    catalog = engine.plex_factory(settings).tracks(section) if section.isdigit() else []
+    return favorite_playlist_detail(engine.store, catalog)
 
 
 def related_favorite_profile_ids(profiles, current_profile_id):
@@ -545,7 +564,8 @@ def resolve_favorite_profile_id(profiles, current_profile_id, requested_profile_
 def favorite_playlist_detail_for_profiles(profiles, runtime, current_profile_id):
     tracks = []
     for profile_id in related_favorite_profile_ids(profiles, current_profile_id):
-        detail = favorite_playlist_detail(runtime.engine(profile_id).store)
+        engine = runtime.engine(profile_id)
+        detail = favorite_playlist_detail_live(engine)
         for row in detail["tracks"]:
             tracks.append({**row, "profile_id": profile_id, "position": len(tracks) + 1})
     return {
@@ -559,29 +579,32 @@ def set_track_liked(engine, track_id, liked, now=None):
     track_id = str(track_id or "")
     if not track_id.isdigit() or not isinstance(liked, bool):
         raise ValueError("喜欢状态无效")
+    settings = engine.store.get("settings") or {}
+    plex = engine.plex_factory(settings)
+    section = str(settings.get("section") or "")
+    if not section.isdigit() or plex.track_section(track_id) != section:
+        raise ValueError("这首歌不属于当前曲库")
     catalog = list(engine.store.get("catalog", []) or [])
     index = next((
         position for position, row in enumerate(catalog)
         if isinstance(row, dict) and str(row.get("id") or "") == track_id
         and row.get("available", True)
     ), None)
-    if index is None:
-        raise ValueError("这首歌已不在当前曲库中")
     expected = 10.0 if liked else 0.0
-    plex = engine.plex_factory(engine.store.get("settings"))
     actual = float(plex.rate_track(track_id, expected))
     if actual != expected:
         raise SafetyError("Plex 评分回读不一致，喜欢状态未保存")
-    revised = dict(catalog[index])
-    revised["user_rating"] = expected
-    catalog[index] = revised
-    engine.store.set("catalog", catalog)
+    if index is not None:
+        revised = dict(catalog[index])
+        revised["user_rating"] = expected
+        catalog[index] = revised
+        engine.store.set("catalog", catalog)
     return {"track_id": track_id, "liked": liked, "user_rating": expected}
 
 
 def playlist_detail(engine, kind, key, hidden_playlist_ids=()):
     if str(kind) == "favorite" and str(key) == "liked":
-        return favorite_playlist_detail(engine.store)
+        return favorite_playlist_detail_live(engine)
     if str(kind) == "plex":
         key = _safe_key(key)
         if not key.isdigit():
@@ -596,9 +619,19 @@ def playlist_detail(engine, kind, key, hidden_playlist_ids=()):
         tracks = []
         for playlist_row in state.get("items") or []:
             track_id = str(playlist_row.get("id") or "")
-            metadata = catalog.get(track_id)
-            if not metadata:
+            source_section=str(playlist_row.get("library_section_id") or "")
+            if not track_id.isdigit():
                 continue
+            if not source_section:
+                try:
+                    source_section = plex.track_section(track_id)
+                except PlexError:
+                    continue
+            if source_section != section:
+                continue
+            metadata = catalog.get(track_id) or {}
+            plex_rating = playlist_row.get("user_rating")
+            rating=_safe_number(metadata.get("user_rating") if plex_rating is None else plex_rating)
             tracks.append({
                 "id": track_id, "position": len(tracks) + 1,
                 "title": str(playlist_row.get("title") or metadata.get("title") or "未知歌曲"),
@@ -606,8 +639,8 @@ def playlist_detail(engine, kind, key, hidden_playlist_ids=()):
                 "album": str(playlist_row.get("album") or metadata.get("album") or ""),
                 "duration": float(playlist_row.get("duration") or metadata.get("duration") or 0),
                 "thumb": str(playlist_row.get("thumb") or metadata.get("thumb") or ""),
-                "user_rating": _safe_number(metadata.get("user_rating")),
-                "liked": _safe_number(metadata.get("user_rating")) >= 8,
+                "user_rating": rating,
+                "liked": rating >= 8,
             })
         return {
             "kind": "plex", "key": key, "playlist_id": key,
@@ -633,6 +666,8 @@ def playlist_detail(engine, kind, key, hidden_playlist_ids=()):
     for position, playlist_row in enumerate(state.get("items") or [], 1):
         track_id = str(playlist_row.get("id") or "")
         metadata = catalog.get(track_id, {})
+        plex_rating = playlist_row.get("user_rating")
+        rating = _safe_number(metadata.get("user_rating") if plex_rating is None else plex_rating)
         tracks.append({
             "id": track_id,
             "position": position,
@@ -641,8 +676,8 @@ def playlist_detail(engine, kind, key, hidden_playlist_ids=()):
             "album": str(playlist_row.get("album") or metadata.get("album") or ""),
             "duration": float(playlist_row.get("duration") or metadata.get("duration") or 0),
             "thumb": str(playlist_row.get("thumb") or metadata.get("thumb") or ""),
-            "user_rating": _safe_number(metadata.get("user_rating")),
-            "liked": _safe_number(metadata.get("user_rating")) >= 8,
+            "user_rating": rating,
+            "liked": rating >= 8,
         })
     return {
         "kind": str(kind), "key": str(key), "playlist_id": str(record["id"]),
@@ -657,7 +692,7 @@ def stream_playlist_audio(engine, kind, key, track_id, range_header, session_key
         raise ValueError("当前歌单中没有这首可试听歌曲")
     return stream_track_audio(
         engine.store, engine.plex_factory, track_id, range_header, session_key,
-        offset_seconds,
+        offset_seconds, allow_uncached=True,
     )
 
 
@@ -673,10 +708,9 @@ def _library_track(store, track_id):
 
 
 def stream_library_audio(engine, track_id, range_header, session_key, offset_seconds=0):
-    track = _library_track(engine.store, track_id)
     return stream_track_audio(
-        engine.store, engine.plex_factory, str(track["id"]), range_header, session_key,
-        offset_seconds,
+        engine.store, engine.plex_factory, str(track_id), range_header, session_key,
+        offset_seconds, allow_uncached=True,
     )
 
 
@@ -724,7 +758,15 @@ def stream_playlist_artwork(engine, kind, key, track_id, hidden_playlist_ids=())
 
 
 def stream_library_artwork(engine, track_id):
-    return _stream_artwork(engine, _library_track(engine.store, track_id))
+    try:
+        track = _library_track(engine.store, track_id)
+    except ValueError:
+        settings = engine.store.get("settings") or {}
+        section = str(settings.get("section") or "")
+        track = engine.plex_factory(settings).track_metadata(track_id)
+        if not section.isdigit() or str(track.get("library_section_id") or "") != section:
+            raise ValueError("这首歌不属于当前曲库")
+    return _stream_artwork(engine, track)
 
 
 def _remove_daily(engine, confirm_title, now=None):
@@ -824,16 +866,15 @@ def attach_playlist_hub_routes(app, store, runtime, profiles, body, ensure_idle)
         items = playlist_rows(
             fixed_engine(), sibling_owned_playlist_ids(profiles, runtime, str(store.profile_id)),
         )
-        favorite = next((row for row in items if row.get("kind") == "favorite"), None)
-        if favorite is not None:
-            favorite["count"] = favorite_playlist_detail_for_profiles(
-                profiles, runtime, str(store.profile_id),
-            )["count"]
         return {"items": items}
 
     @app.get("/api/playlists/search")
     def playlist_search(q: str = "", limit: int = 40):
-        return {"items": search_library(fixed_engine().store, q, limit)}
+        target = fixed_engine()
+        try:
+            return {"items": search_library_live(target, q, limit)}
+        except PlexError:
+            return {"items": search_library(target.store, q, limit)}
 
     @app.post("/api/playlists/create")
     async def create_playlist(request: Request):

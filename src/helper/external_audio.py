@@ -96,7 +96,7 @@ def _matched_track(repository, profile_id, source_id, track_key, candidate_id=''
     raise ValueError('这首歌还没有可靠匹配，不能试听')
 
 
-def stream_track_audio(store, plex_factory, track_id, range_header, session_key, offset_seconds=0):
+def stream_track_audio(store, plex_factory, track_id, range_header, session_key, offset_seconds=0, *, allow_uncached=False):
     """Stream one catalog track after the caller has established its playlist scope."""
     profile_id = str(getattr(store, 'profile_id', 'default') or 'default')
     track_id = str(track_id or '')
@@ -108,7 +108,7 @@ def stream_track_audio(store, plex_factory, track_id, range_header, session_key,
         str(row.get('id')): row for row in (store.get('catalog', []) or [])
         if isinstance(row, dict) and row.get('id') is not None
     }
-    if track_id not in catalog or not catalog[track_id].get('available', True):
+    if not allow_uncached and (track_id not in catalog or not catalog[track_id].get('available', True)):
         raise ValueError('这首歌已不在当前曲库中，请先检查新增歌曲')
     settings = store.get('settings', {}) or {}
     key = _stream_key(profile_id, session_key)
@@ -132,6 +132,10 @@ def stream_track_audio(store, plex_factory, track_id, range_header, session_key,
 
     try:
         plex = plex_factory(settings)
+        if allow_uncached:
+            section=str(settings.get('section') or '')
+            if not section.isdigit() or plex.track_section(track_id)!=section:
+                raise ValueError('这首歌不属于当前曲库')
         try:
             upstream = plex.open_browser_audio(track_id, range_header, offset_seconds)
         except requests.RequestException:

@@ -39,15 +39,17 @@ export function createLibrarySearch({
    const play=()=>onPlayQueue(results.slice(),index,{kind:'library',key:'all',profileId:getProfileId()});
    row.onclick=play;row.onkeydown=event=>{if(event.target===row&&(event.key==='Enter'||event.key===' ')){event.preventDefault();play();}};
    const number=document.createElement('span');number.className='playlist-track-number';number.textContent=String(index+1);
-   const identity=document.createElement('span'),title=document.createElement('strong'),artist=document.createElement('small');
-   title.textContent=track.title||'未知歌曲';artist.textContent=track.artist||'未知歌手';identity.append(title,artist);
+   const identity=document.createElement('span'),titleLine=document.createElement('span'),title=document.createElement('strong'),artist=document.createElement('small');
+   identity.className='playlist-search-identity';titleLine.className='playlist-search-title-line';
+   title.textContent=track.title||'未知歌曲';artist.textContent=track.artist||'未知歌手';
    const album=document.createElement('span');album.className='playlist-search-album';album.textContent=track.album||'—';
    const actions=document.createElement('span');actions.className='playlist-search-actions';
    const heart=document.createElement('button');heart.type='button';heart.className='playlist-heart';heart.textContent=track.liked?'♥':'♡';heart.setAttribute('aria-pressed',String(!!track.liked));heart.setAttribute('aria-label',(track.liked?'取消喜欢 ':'喜欢 ')+(track.title||'歌曲'));
    heart.onclick=event=>{event.stopPropagation();onLikedChange(track,!track.liked);};
    const add=document.createElement('button');add.type='button';add.className='secondary';add.textContent='添加到歌单';
    add.onclick=event=>{event.stopPropagation();openAddDialog(track);};
-   actions.append(heart,add);row.append(number,identity,album,actions);box.append(row);
+   titleLine.append(heart,title);identity.append(titleLine,artist);
+   actions.append(add);row.append(number,identity,album,actions);box.append(row);
   });
   if(!results.length&&emptyText){const empty=document.createElement('div');empty.className='playlist-empty';empty.textContent=emptyText;box.append(empty);}
  }

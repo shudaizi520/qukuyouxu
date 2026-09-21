@@ -155,21 +155,86 @@ class ProfileRuntime:
                         scheduled["next_at"] = advance_slot(scheduled.get("slot"), now, task, settings)
                         scheduled["slot"] = scheduled["next_at"]
                     engine.store.set(PROFILE_STATE_KEY, state)
+        self.sync_library_shares_due(now)
         return results
+
+    def sync_library_shares_due(self, now):
+        """Default same-library category copies, independent of QQ/scan schedules."""
+        from .engine import digest, safe_error
+        from .library_sharing import STATE_KEY, owner_for_recipient, sync_recipient
+
+        if self.job_gate.locked() or self.operation_gate.locked():
+            return
+        pairs = []
+        for profile in self.registry.list_public(enabled_only=True):
+            if profile.get("kind") not in {"home", "shared"}:
+                continue
+            owner_id = owner_for_recipient(self, profile["id"])
+            if not owner_id:
+                continue
+            owner_engine = self.engine(owner_id)
+            if not callable(getattr(owner_engine, "plex_factory", None)):
+                continue
+            managed = owner_engine.store.get("managed", {}) or {}
+            child_store = self.engine(profile["id"]).store
+            shared = child_store.get("managed", {}) or {}
+            if not managed and not any(
+                isinstance(row, dict) and row.get("shared_from") == owner_id
+                for row in shared.values()
+            ):
+                continue
+            sources = {str(row.get("id")): row for row in owner_engine.store.get("sources", []) or []}
+            manifest = [
+                (key, row.get("id"), row.get("title"), row.get("fingerprint"),
+                 sources.get(key, {}).get("enabled", True))
+                for key, row in sorted(managed.items()) if isinstance(row, dict)
+            ]
+            revision = digest(manifest)
+            share = child_store.get(STATE_KEY, {}) or {}
+            checked_at = float(share.get("checked_at") or 0)
+            if share.get("owner_digest") == revision and 0 <= now - checked_at < 900:
+                continue
+            pairs.append((owner_id, profile["id"], revision, child_store))
+        if not pairs or not self.job_gate.acquire(blocking=False):
+            return
+        if not self.operation_gate.acquire(blocking=False):
+            self.job_gate.release()
+            return
+        try:
+            for owner_id, recipient_id, revision, store in pairs:
+                try:
+                    outcome = sync_recipient(self, owner_id, recipient_id, now=now)
+                    share = dict(store.get(STATE_KEY, {}) or {})
+                    share["owner_digest"] = revision
+                    share["last_result"] = outcome
+                    store.set(STATE_KEY, share)
+                except Exception as exc:
+                    store.log("同库歌单同步已暂停：" + safe_error(exc), "error")
+                    share = dict(store.get(STATE_KEY, {}) or {})
+                    share.update(checked_at=now, owner_digest=revision,
+                                 last_result={"errors": [safe_error(exc)]})
+                    store.set(STATE_KEY, share)
+        finally:
+            self.operation_gate.release()
+            self.job_gate.release()
 
     @staticmethod
     def _eligible_for_task(engine, task):
+        if task == "library":
+            from .external_store import ExternalRepository
+            profile_id = str(getattr(engine.store, "profile_id", "default") or "default")
+            managed = engine.store.get("managed", {}) or {}
+            own_categories = any(
+                not isinstance(record, dict) or not record.get("shared_from")
+                for record in managed.values()
+            )
+            return own_categories or ExternalRepository(engine.store).has_managed(profile_id)
         keys = {
-            "library": "managed",
             "smart": "smart_mix_managed",
             "daily": "daily_managed",
         }
         if engine.store.get(keys[task], {}) or {}:
             return True
-        if task == "library":
-            from .external_store import ExternalRepository
-            profile_id = str(getattr(engine.store, "profile_id", "default") or "default")
-            return ExternalRepository(engine.store).has_managed(profile_id)
         return False
 
     @staticmethod

@@ -324,7 +324,7 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
     def static(name):
         if name not in (
             'home.js', 'home.css', 'theme_home.js', 'product.css', 'daily.js',
-            'refined.js', 'status.js', 'settings.js', 'auth.js', 'mixes.js',
+            'refined.js', 'status.js', 'settings.js', 'contextual-settings.js', 'auth.js', 'mixes.js',
             'external.js', 'playlists.js', 'playlist-workspace.js',
             'playlist-search.js', 'playlist-player.js', 'playlist-sections.js',
         ):
@@ -561,10 +561,12 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
         export = {k: v for k, v in plan.items() if k not in ('signature', 'track_fingerprints')}
         return Response(json.dumps(export, ensure_ascii=False, indent=2), media_type='application/json', headers={'Content-Disposition': 'attachment; filename="classification-report.json"'})
     attach_profile_routes(app, base_store, profiles, body, ensure_idle, engine=engine)
+    from .library_sharing import attach_library_share_routes
+    attach_library_share_routes(app, store, runtime, body, ensure_idle)
     attach_automation_routes(app, base_store, profiles, runtime, body)
     attach_external_routes(app, store, engine, runtime, profiles, body, ensure_idle)
     attach_playlist_hub_routes(app, store, runtime, profiles, body, ensure_idle)
-    attach_web_playback_route(app, base_store, profiles, body)
+    attach_web_playback_route(app, base_store, profiles, body, runtime)
     attach_webhook_route(app, base_store, profiles)
     attach_smart_mix_routes(app, store, engine, runtime, profiles, body, ensure_idle)
     attach_routes(app, store, engine, body, ensure_idle)

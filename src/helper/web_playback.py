@@ -40,7 +40,7 @@ def _seconds(value, name):
     return number
 
 
-def _parse_payload(store, profile, payload):
+def _parse_payload(store, profile, payload, plex_factory=None):
     if not isinstance(payload, dict):
         raise ValueError("网页播放事件需要 JSON 对象")
     event = str(payload.get("event") or "")
@@ -55,7 +55,11 @@ def _parse_payload(store, profile, payload):
         and row.get("available", True)
     ), None)
     if not track:
-        raise ValueError("网页播放歌曲不在当前曲库")
+        settings = store.get("settings") or {}
+        section = str(settings.get("section") or "")
+        if (plex_factory is None or not section.isdigit()
+                or plex_factory(settings).track_section(track_id) != section):
+            raise ValueError("网页播放歌曲不在当前曲库")
     player_id = str(payload.get("player_id") or "")
     event_id = str(payload.get("event_id") or "")
     if not _ID.fullmatch(player_id):
@@ -87,7 +91,7 @@ def _seen_key(signal):
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-def apply_web_playback_event(base_store, registry, profile_id, payload, now=None):
+def apply_web_playback_event(base_store, registry, profile_id, payload, now=None, plex_factory=None):
     """Validate and record one browser signal for exactly one selected profile."""
     now = time.time() if now is None else float(now)
     profile_id = validate_profile_id(profile_id)
@@ -95,7 +99,7 @@ def apply_web_playback_event(base_store, registry, profile_id, payload, now=None
     if profile.get("enabled") is False:
         raise ValueError("Plex 档案已停用")
     store = ScopedStore(base_store, profile_id, registry=registry)
-    signal = _parse_payload(store, profile, payload)
+    signal = _parse_payload(store, profile, payload, plex_factory)
     if (store.get("product_settings", {}) or {}).get("behavior_enabled", True) is False:
         return {"status": "ignored", "reason": "disabled", "profile_id": profile_id, "active": 0}
 
@@ -166,13 +170,15 @@ def apply_web_playback_event(base_store, registry, profile_id, payload, now=None
     }
 
 
-def attach_web_playback_route(app, base_store, registry, body):
+def attach_web_playback_route(app, base_store, registry, body, runtime=None):
     from fastapi import Request
 
     async def web_playback_event(request: Request):
         payload = await body(request)
+        profile_id = registry.active_id()
         return apply_web_playback_event(
-            base_store, registry, registry.active_id(), payload,
+            base_store, registry, profile_id, payload,
+            plex_factory=runtime.engine(profile_id).plex_factory if runtime is not None else None,
         )
     web_playback_event.__annotations__["request"] = Request
     app.post("/api/playback/events")(web_playback_event)

@@ -226,7 +226,7 @@ for(const id of ['dailyAutomationEnabled','dailyAutomationHour','smartAutomation
 $('copyWebhook').onclick=()=>action(async()=>{await copyWebhookAddress();note('地址已复制。');});
 $('webhookHelpToggle').onclick=()=>{$('webhookHelp').hidden=!$('webhookHelp').hidden;};
 $('passwordForm').onsubmit=e=>{e.preventDefault();action(async()=>{const a=$('newPassword').value,b=$('confirmPassword').value;if(a!==b)throw Error('两次输入的新密码不一致');const r=await post('/api/auth/password',{current_password:$('currentPassword').value,new_password:a,confirm_password:b});$('currentPassword').value='';$('newPassword').value='';$('confirmPassword').value='';note(r.message+'，其它旧登录会话已退出。');});};
-async function boot(){const panel=location.hash.slice(1);if(panel==='learning')showSettingsPanel('accounts');else if(['accounts','playlists','recommend','automation','system'].includes(panel))showSettingsPanel(panel);try{await refresh();await resumePlexLogin();}catch(e){note(e.message,true);}startWebhookPolling();}
+async function boot(){const panel=location.hash.slice(1);if(panel==='learning')showSettingsPanel('accounts');else if(['accounts','system'].includes(panel))showSettingsPanel(panel);else showSettingsPanel('accounts');try{await refresh();await resumePlexLogin();}catch(e){note(e.message,true);}startWebhookPolling();}
 window.addEventListener('pch-auth-ready',boot);window.addEventListener('pch-auth-login',boot);window.addEventListener('pch-auth-logout',()=>{plexPin='';stopPlexPolling();});
 window.addEventListener('pagehide',()=>{stopPlexPolling();clearInterval(webhookTimer);webhookTimer=null;});
 window.addEventListener('visibilitychange',()=>{if(document.hidden)stopPlexPolling();else if(plexPin)schedulePlexPolling(0);});

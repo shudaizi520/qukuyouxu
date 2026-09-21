@@ -2,6 +2,12 @@
 'use strict';
 const EMBEDDED=window.self!==window.top||new URLSearchParams(location.search).get('embedded')==='1';
 if(EMBEDDED)document.documentElement.classList.add('pch-embedded');
+if(EMBEDDED&&window.parent!==window)document.addEventListener('click',event=>{
+ const link=event.target.closest('a[href][target="_top"]');if(!link)return;
+ const target=new URL(link.getAttribute('href'),location.href);
+ if(target.origin!==location.origin||!['/','/settings','/status','/library','/mixes','/daily','/external'].includes(target.pathname))return;
+ event.preventDefault();window.parent.postMessage({type:'pch-workspace-navigate',path:target.pathname+target.search},location.origin);
+},true);
 const $=id=>document.getElementById(id);
 let state={authenticated:false,username:null,setup_required:false};
 const PROFILE_KEY='pch-profile-id';

@@ -2,7 +2,7 @@
 'use strict';
 const $=id=>document.getElementById(id);
 const IMAGE_PAGE_ROWS=80;
-const PAGE_SIZE=100;
+const PAGE_SIZE=25;
 let sources=[];
 let current=null;
 let activeStatus='matched';
@@ -52,6 +52,7 @@ function renderSourceList(){
 async function loadSources(preferred=''){
  const result=await json('/api/external/sources');sources=Array.isArray(result.items)?result.items:[];
  $('sourceWorkspace').hidden=!sources.length;
+ if(sources.length)$('importCard').open=false;
  if(!sources.length){current=null;return;}
  const sourceId=preferred&&sources.some(row=>row.id===preferred)?preferred:selectSourceId();
  await openSource(sourceId,false);

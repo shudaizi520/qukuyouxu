@@ -172,11 +172,11 @@ class PlaylistInventoryTests(unittest.TestCase):
         self.assertEqual("10", failed_rows[-1]["playlist_id"])
         self.assertTrue(failed_rows[-1]["stale"])
 
-    def test_native_detail_filters_tracks_outside_the_scoped_catalog(self):
+    def test_native_detail_filters_tracks_outside_the_selected_plex_library(self):
         from helper.playlist_hub import playlist_detail
 
         store = _Store({
-            "settings": {},
+            "settings": {"section": "11"},
             "catalog": [{
                 "id": "10", "title": "曲库标题", "artist": "歌手",
                 "album": "专辑", "duration": 123, "available": True,
@@ -187,8 +187,8 @@ class PlaylistInventoryTests(unittest.TestCase):
             {"20": {
                 "id": "20", "title": "工作", "summary": "", "smart": False,
                 "items": [
-                    {"id": "10", "item_id": "1", "title": "Plex 标题"},
-                    {"id": "999", "item_id": "2", "title": "其他曲库"},
+                    {"id": "10", "item_id": "1", "title": "Plex 标题", "library_section_id": "11"},
+                    {"id": "999", "item_id": "2", "title": "其他曲库", "library_section_id": "22"},
                 ],
             }},
         )
