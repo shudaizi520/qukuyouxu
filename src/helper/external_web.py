@@ -205,7 +205,10 @@ def attach_external_routes(app, store, engine, runtime, profiles, body, ensure_i
         return Response(content, media_type=media_type, headers={"Content-Disposition": disposition})
 
     @app.get("/api/external/sources/{source_id}/tracks/{track_key}/audio")
-    def audition_track(source_id: str, track_key: str, request: Request, candidate: str = "", profile_id: str = ""):
+    def audition_track(
+        source_id: str, track_key: str, request: Request, candidate: str = "",
+        profile_id: str = "", offset: str = "0",
+    ):
         selected_profile = str(profile_id or store.profile_id)
         with profiles.fixed_active(selected_profile, enabled_only=True):
             current = runtime.engine(selected_profile).external
@@ -213,4 +216,5 @@ def attach_external_routes(app, store, engine, runtime, profiles, body, ensure_i
                 current.store, current.plex_factory, source_id, track_key,
                 str(request.headers.get("range") or ""),
                 str(request.cookies.get(COOKIE_NAME) or ""), candidate_id=candidate,
+                offset_seconds=offset,
             )

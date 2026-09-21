@@ -606,8 +606,8 @@ class PlaylistHubPageTests(unittest.TestCase):
         search = (STATIC / "playlist-search.js").read_text(encoding="utf-8")
         player = (STATIC / "playlist-player.js").read_text(encoding="utf-8")
         styles = (STATIC / "product.css").read_text(encoding="utf-8")
-        self.assertIn("audio.addEventListener('ended',playNext)", player)
-        self.assertIn("audio.addEventListener('timeupdate'", player)
+        self.assertIn("audio.onended", player)
+        self.assertIn("audio.ontimeupdate", player)
         self.assertIn("function playNext()", player)
         self.assertIn("function playPrevious()", player)
         self.assertIn("function playAt(items,index", player)
@@ -861,10 +861,57 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn("playerSeek", stop)
         self.assertIn("0:00", stop)
 
+    def test_metadata_duration_drives_unknown_transcode_timeline(self):
+        player = (STATIC / "playlist-player.js").read_text(encoding="utf-8")
+        self.assertIn("let sourceOffset=0", player)
+        self.assertIn("let trackDuration=0", player)
+        self.assertIn("function logicalPosition()", player)
+        timeline = player.split("function updateTimeline()", 1)[1].split(
+            "function bindSourceHandlers", 1
+        )[0]
+        self.assertIn("logicalPosition()", timeline)
+        self.assertIn("trackDuration", timeline)
+        self.assertIn("playerDuration", timeline)
+
+    def test_unknown_duration_seek_reloads_audio_with_target_offset(self):
+        player = (STATIC / "playlist-player.js").read_text(encoding="utf-8")
+        script = (STATIC / "playlists.js").read_text(encoding="utf-8")
+        seek = player.split("function seekTo(seconds)", 1)[1].split(
+            "function playNext", 1
+        )[0]
+        self.assertIn("Number.isFinite(audio.duration)", seek)
+        self.assertIn("replaceSource(target,true", seek)
+        self.assertIn("offsetSeconds", player)
+        self.assertIn("options={}", script.split("function mediaUrl", 1)[1].split(
+            "function playlistContext", 1
+        )[0])
+        self.assertIn("params.set('offset'", script)
+
+    def test_stale_source_media_events_are_generation_and_source_guarded(self):
+        player = (STATIC / "playlist-player.js").read_text(encoding="utf-8")
+        handlers = player.split("function bindSourceHandlers", 1)[1].split(
+            "function replaceSource", 1
+        )[0]
+        for event in ("onerror", "ontimeupdate", "onplaying", "onpause", "onended"):
+            self.assertIn("audio." + event, handlers)
+        self.assertGreaterEqual(handlers.count("generation!==playbackGeneration"), 5)
+        self.assertGreaterEqual(handlers.count("sourceMatches(source)"), 5)
+
+    def test_workspace_view_switch_keeps_player_instance_and_logical_timeline(self):
+        page = (STATIC / "playlists.html").read_text(encoding="utf-8")
+        script = (STATIC / "playlists.js").read_text(encoding="utf-8")
+        self.assertEqual(1, page.count('id="playerAudio"'))
+        open_workspace = script.split("function openWorkspacePage", 1)[1].split(
+            "function openTool", 1
+        )[0]
+        self.assertNotIn("playlistPlayer.stop()", open_workspace)
+        self.assertNotIn("playerAudio", open_workspace)
+
     def test_embedded_external_preview_uses_the_single_bottom_player(self):
         external = (STATIC / "external.js").read_text(encoding="utf-8")
         script = (STATIC / "playlists.js").read_text(encoding="utf-8")
         player = (STATIC / "playlist-player.js").read_text(encoding="utf-8")
+        external_web = (ROOT / "src/helper/external_web.py").read_text(encoding="utf-8")
 
         self.assertIn("pch-player-preview", external)
         self.assertIn("window.parent.postMessage", external)
@@ -872,7 +919,13 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn("playlistToolFrame", script)
         self.assertIn("event.origin!==location.origin", script)
         self.assertIn("playPreview", player)
-        self.assertIn("context.kind==='preview'&&track.source", player)
+        self.assertIn("context.kind!=='preview'||!track.source", player)
+        self.assertIn("return track.source", player)
+        audio_route = external_web.split(
+            '@app.get("/api/external/sources/{source_id}/tracks/{track_key}/audio")', 1
+        )[1]
+        self.assertIn('offset: str = "0"', audio_route)
+        self.assertIn("offset_seconds=offset", audio_route)
 
     def test_returning_from_a_tool_refreshes_the_playlist_inventory(self):
         script = (STATIC / "playlists.js").read_text(encoding="utf-8")

@@ -13,6 +13,8 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
  let activeTrackId='';
  let activeSource='';
  let playbackGeneration=0;
+ let sourceOffset=0;
+ let trackDuration=0;
  let retryCount=0;
  let recoveryPending=false;
  let resettingSource=false;
@@ -25,6 +27,22 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
  function currentSource(){return audio.currentSrc||audio.src||'';}
  function absoluteSource(value){
   try{return new URL(value,document.baseURI).href;}catch(_error){return value;}
+ }
+ function sourceMatches(value){return absoluteSource(value)===absoluteSource(activeSource);}
+ function boundedSeconds(value,maximum=86400){
+  const number=Number(value);return Number.isFinite(number)&&number>=0?Math.min(number,maximum):0;
+ }
+ function logicalPosition(){
+  const position=sourceOffset+boundedSeconds(audio.currentTime);
+  return trackDuration?Math.min(position,trackDuration):position;
+ }
+ function updateTimeline(){
+  const position=logicalPosition(),duration=trackDuration||(
+   Number.isFinite(audio.duration)&&audio.duration>0?sourceOffset+audio.duration:0
+  );
+  byId(document,'playerCurrent').textContent=formatTime(position);
+  byId(document,'playerDuration').textContent=formatTime(duration);
+  byId(document,'playerSeek').value=duration?String(Math.round(Math.min(1,position/duration)*1000)):'0';
  }
  function clearFeedback(){
   byId(document,'playerFeedback').hidden=true;
@@ -66,12 +84,7 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
    retryCount+=1;recoveryPending=true;
    retryTimer=setTimeout(()=>{
     if(generation!==playbackGeneration)return;
-    recoveryPending=false;resettingSource=true;
-    audio.pause();audio.removeAttribute('src');audio.load();audio.src=activeSource;
-    setTimeout(()=>{
-     if(generation!==playbackGeneration)return;
-     resettingSource=false;attemptPlay(generation);
-    },0);
+    recoveryPending=false;replaceSource(logicalPosition(),true,false);
    },260);
    return;
   }
@@ -86,18 +99,43 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
  function retryNow(){
   if(!activeSource)return;
   clearTimeout(retryTimer);recoveryPending=false;retryCount=1;clearFeedback();
-  audio.load();attemptPlay(playbackGeneration);
+  replaceSource(logicalPosition(),true,false);
+ }
+ function sourceFor(track,offsetSeconds){
+  if(context.kind!=='preview'||!track.source){
+   return mediaUrl('audio',track,context,{offsetSeconds});
+  }
+  if(!offsetSeconds)return track.source;
+  try{
+   const url=new URL(track.source,document.baseURI);url.searchParams.set('offset',String(offsetSeconds));
+   return url.origin===new URL(document.baseURI).origin?url.pathname+url.search+url.hash:url.href;
+  }catch(_error){return track.source;}
+ }
+ function bindSourceHandlers(generation,source){
+  audio.onerror=()=>{if(generation!==playbackGeneration||!sourceMatches(source))return;handleFailure(generation,audio.error,currentSource());};
+  audio.ontimeupdate=()=>{if(generation!==playbackGeneration||!sourceMatches(source))return;updateTimeline();};
+  audio.onplaying=()=>{if(generation!==playbackGeneration||!sourceMatches(source))return;clearFeedback();setPlaying(true);onStateChange();};
+  audio.onpause=()=>{if(generation!==playbackGeneration||!sourceMatches(source))return;setPlaying(false);onStateChange();};
+  audio.onended=()=>{if(generation!==playbackGeneration||!sourceMatches(source))return;playNext();};
+ }
+ function replaceSource(offsetSeconds=0,autoplay=true,resetRetry=true){
+  const track=queue[queueIndex];if(!track||!context)return;
+  const limit=trackDuration||86400,target=boundedSeconds(offsetSeconds,limit);
+  const generation=++playbackGeneration;
+  clearTimeout(retryTimer);recoveryPending=false;if(resetRetry)retryCount=0;
+  resettingSource=true;audio.pause();audio.removeAttribute('src');audio.load();
+  sourceOffset=target;activeSource=sourceFor(track,target);bindSourceHandlers(generation,activeSource);
+  audio.src=activeSource;resettingSource=false;updateTimeline();
+  if(autoplay)attemptPlay(generation);
  }
  function startQueueTrack(index,autoplay=true){
   const track=queue[index];if(!track||!context)return;
-  const generation=++playbackGeneration;clearTimeout(retryTimer);retryCount=0;recoveryPending=false;resettingSource=false;
-  queueIndex=index;activeTrackId=String(track.id);activeSource=context.kind==='preview'&&track.source?track.source:mediaUrl('audio',track,context);
-  clearFeedback();audio.pause();audio.onerror=()=>handleFailure(generation,audio.error,currentSource());audio.src=activeSource;
+  queueIndex=index;activeTrackId=String(track.id);trackDuration=boundedSeconds(track.duration);sourceOffset=0;
+  clearFeedback();
   byId(document,'playerTitle').textContent=track.title||'未知歌曲';
   byId(document,'playerArtist').textContent=track.artist||'未知歌手';
   byId(document,'playerQueue').textContent=(index+1)+' / '+queue.length;
-  updateArtwork(track);onStateChange();
-  if(autoplay)attemptPlay(playbackGeneration);
+  updateArtwork(track);onStateChange();replaceSource(0,autoplay,true);
  }
  function startQueue(items,index,candidate){
   queue=Array.isArray(items)?items.slice():[];context={...candidate};startQueueTrack(index,true);
@@ -110,17 +148,24 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
   }
   queue=items.slice();context={...candidate};startQueueTrack(index,autoplay);
  }
+ function seekTo(seconds){
+  const target=boundedSeconds(seconds,trackDuration||86400);
+  if(Number.isFinite(audio.duration)&&audio.duration>0&&sourceOffset===0){
+   audio.currentTime=Math.min(target,audio.duration);updateTimeline();return;
+  }
+  replaceSource(target,true,false);
+ }
  function playNext(){
   if(queueIndex+1<queue.length)startQueueTrack(queueIndex+1);
-  else{audio.pause();audio.currentTime=0;}
+  else{audio.pause();sourceOffset=0;audio.currentTime=0;updateTimeline();}
  }
  function playPrevious(){
-  if(audio.currentTime>5){audio.currentTime=0;return;}
+  if(logicalPosition()>5){seekTo(0);return;}
   if(queueIndex>0)startQueueTrack(queueIndex-1);
  }
  function stop(){
-  playbackGeneration+=1;clearTimeout(retryTimer);audio.onerror=null;audio.pause();audio.removeAttribute('src');audio.load();
-  queue=[];context=null;queueIndex=-1;activeTrackId='';activeSource='';retryCount=0;recoveryPending=false;resettingSource=false;
+  playbackGeneration+=1;clearTimeout(retryTimer);audio.onerror=null;audio.ontimeupdate=null;audio.onplaying=null;audio.onpause=null;audio.onended=null;audio.pause();audio.removeAttribute('src');audio.load();
+  queue=[];context=null;queueIndex=-1;activeTrackId='';activeSource='';sourceOffset=0;trackDuration=0;retryCount=0;recoveryPending=false;resettingSource=false;
   clearFeedback();updateArtwork(null);byId(document,'playerTitle').textContent='未播放';byId(document,'playerArtist').textContent='请选择歌曲';byId(document,'playerQueue').textContent='0 / 0';
   byId(document,'playerCurrent').textContent='0:00';byId(document,'playerDuration').textContent='0:00';byId(document,'playerSeek').value='0';setPlaying(false);onStateChange();
  }
@@ -133,14 +178,10 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
   byId(document,'playerPrevious').onclick=playPrevious;byId(document,'playerNext').onclick=playNext;
   byId(document,'playerRetry').onclick=retryNow;
   byId(document,'playerErrorNext').onclick=()=>{clearFeedback();playNext();};
-  byId(document,'playerSeek').oninput=()=>{if(Number.isFinite(audio.duration)&&audio.duration>0)audio.currentTime=audio.duration*Number(byId(document,'playerSeek').value)/1000;};
+  byId(document,'playerSeek').oninput=()=>{if(trackDuration)seekTo(trackDuration*Number(byId(document,'playerSeek').value)/1000);};
   playerVolume.oninput=()=>{audio.volume=Number(playerVolume.value);if(audio.volume>0)lastAudibleVolume=audio.volume;audio.muted=audio.volume===0;syncVolumeState();};
   playerMute.onclick=()=>{if(audio.muted||audio.volume===0){if(audio.volume===0){audio.volume=lastAudibleVolume;playerVolume.value=String(lastAudibleVolume);}audio.muted=false;}else audio.muted=true;syncVolumeState();};
   syncVolumeState();
-  audio.addEventListener('ended',playNext);
-  audio.addEventListener('timeupdate',()=>{const duration=Number.isFinite(audio.duration)?audio.duration:0;byId(document,'playerCurrent').textContent=formatTime(audio.currentTime);byId(document,'playerDuration').textContent=formatTime(duration);byId(document,'playerSeek').value=duration?String(Math.round(audio.currentTime/duration*1000)):'0';});
-  audio.addEventListener('playing',()=>{clearFeedback();setPlaying(true);onStateChange();});
-  audio.addEventListener('pause',()=>{setPlaying(false);onStateChange();});
  }
 
  return {
