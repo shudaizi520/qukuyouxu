@@ -1,6 +1,8 @@
 """Normalize assistant-owned and Plex-native playlists for one profile."""
 from __future__ import annotations
 
+import math
+
 
 def _truthy(value):
     return value is True or str(value or "").strip().lower() in {"1", "true", "yes"}
@@ -11,6 +13,14 @@ def _count(value):
         return max(0, int(value or 0))
     except (TypeError, ValueError):
         return 0
+
+
+def _number(value):
+    try:
+        number = float(value or 0)
+    except (TypeError, ValueError, OverflowError):
+        return 0.0
+    return number if math.isfinite(number) else 0.0
 
 
 def capabilities(*, source, smart):
@@ -61,7 +71,7 @@ def native_playlist_row(row):
         "playlist_id": playlist_id,
         "title": str(row.get("title") or "未命名歌单"),
         "count": _count(row.get("leafCount", row.get("count"))),
-        "updated_at": float(row.get("updatedAt") or row.get("updated_at") or 0),
+        "updated_at": _number(row.get("updatedAt") or row.get("updated_at")),
         "manage_url": "",
         "status": "已建立",
         "section": "custom",

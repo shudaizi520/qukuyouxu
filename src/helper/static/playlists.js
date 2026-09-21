@@ -133,9 +133,9 @@ function setPlaylistLoading(value){
  $('playlistManage').disabled=playlistLoading;$('playlistRename').disabled=playlistLoading;$('playlistRemove').disabled=playlistLoading;
  $('playlistPlayAll').disabled=playlistLoading||!tracks.length;
 }
-function restoreCurrentPlaylistSelection(){
+function restoreCurrentPlaylistSelection(fallbackSection='smart'){
  if(current){workspace.show({type:'playlist',kind:current.kind,key:current.key,panel:'playlist'});return;}
- workspace.show({type:'playlist',kind:'',key:'',panel:'playlist'});
+ playlistSections.renderSection(fallbackSection);workspace.show({type:'section',section:fallbackSection,panel:'section'});
 }
 async function openPlaylist(item){
  const requestId=++playlistRequest;
@@ -155,7 +155,7 @@ async function openPlaylist(item){
  return true;
  }catch(error){
   if(requestId!==playlistRequest)return false;
-  restoreCurrentPlaylistSelection();
+  restoreCurrentPlaylistSelection(item.section||'smart');
   throw error;
  }finally{if(requestId===playlistRequest)setPlaylistLoading(false);}
 }
@@ -191,6 +191,7 @@ function resetSession(){
 async function switchProfile(profileId,persist=true){
  profileId=String(profileId||'');if(!profileId||profileId===loadedProfileId)return;
  const requestId=++profileRequest;++playlistRequest;++likedRequest;likedRequests.clear();loadedProfileId=profileId;$('playlistProfile').value=profileId;
+ const renameDialog=$('playlistRenameDialog');if(renameDialog.open)renameDialog.close();
  playlistPlayer.stop();librarySearch.reset();tracks=[];filtered=[];playlists=[];unavailablePlaylists=new Set();setPlaylistLoading(false);resetPlaylistView();renderTracks();renderPlaylistList();
  if(persist&&PCHAuth.profile()!==profileId)PCHAuth.setProfile(profileId);
  await loadPlaylists(undefined,requestId);

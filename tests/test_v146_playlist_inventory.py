@@ -142,6 +142,17 @@ class PlaylistInventoryTests(unittest.TestCase):
         self.assertTrue(rows[2]["can_rename"])
         self.assertTrue(rows[2]["can_delete"])
 
+    def test_malformed_native_updated_time_does_not_hide_playlist(self):
+        from helper.playlist_inventory import normalize_native_playlist_rows
+
+        rows = normalize_native_playlist_rows([{
+            "ratingKey": "10", "title": "工作", "playlistType": "audio",
+            "smart": "0", "updatedAt": "unknown",
+        }])
+
+        self.assertEqual("10", rows[0]["playlist_id"])
+        self.assertEqual(0, rows[0]["updated_at"])
+
     def test_inventory_caches_only_successful_native_rows_and_marks_fallback_stale(self):
         from helper.playlist_hub import playlist_rows
 

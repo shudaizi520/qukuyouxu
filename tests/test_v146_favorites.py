@@ -86,6 +86,16 @@ class FavoritePlaylistTests(unittest.TestCase):
         self.assertEqual([True, True, False], [row["liked"] for row in rows])
         self.assertEqual([8, 10, 6], [row["user_rating"] for row in rows])
 
+    def test_malformed_legacy_rating_is_treated_as_not_liked(self):
+        from helper.playlist_hub import favorite_playlist_detail, search_library
+
+        store = _Store([{
+            "id": "1", "title": "旧数据", "artist": "甲",
+            "user_rating": "unknown", "available": True,
+        }])
+        self.assertEqual([], favorite_playlist_detail(store)["tracks"])
+        self.assertFalse(search_library(store, "旧数据")[0]["liked"])
+
     def test_client_rating_uses_plex_rate_endpoint_and_verified_metadata(self):
         from helper.clients import PlexClient
 

@@ -79,6 +79,20 @@ class PlaylistSectionUiTests(unittest.TestCase):
         self.assertIn("profileGeneration===profileRequest", liked)
         self.assertIn("track.liked=previous", liked)
 
+    def test_failed_playlist_open_returns_to_its_section(self):
+        script = (STATIC / "playlists.js").read_text(encoding="utf-8")
+        self.assertIn("function restoreCurrentPlaylistSelection(fallbackSection='smart')", script)
+        self.assertIn("restoreCurrentPlaylistSelection(item.section||'smart')", script)
+        self.assertIn("type:'section',section:fallbackSection,panel:'section'", script)
+
+    def test_profile_switch_closes_stale_rename_dialog(self):
+        script = (STATIC / "playlists.js").read_text(encoding="utf-8")
+        switch_profile = script.split("async function switchProfile", 1)[1].split(
+            "async function removeTrack", 1
+        )[0]
+        self.assertIn("playlistRenameDialog", switch_profile)
+        self.assertIn(".close()", switch_profile)
+
 
 if __name__ == "__main__":
     unittest.main()

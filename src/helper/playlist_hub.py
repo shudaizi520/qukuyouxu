@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import time
 import uuid
+import math
 from urllib.parse import quote
 
 from fastapi import Request
@@ -27,6 +28,14 @@ KIND_LABELS = {
 }
 
 MAX_ARTWORK_BYTES = 12 * 1024 * 1024
+
+
+def _safe_number(value, default=0.0):
+    try:
+        number = float(value or 0)
+    except (TypeError, ValueError, OverflowError):
+        return float(default)
+    return number if math.isfinite(number) else float(default)
 
 
 def _safe_key(value):
@@ -91,7 +100,7 @@ def assistant_playlist_rows(store):
 
     favorite_count = sum(
         isinstance(row, dict) and row.get("available", True)
-        and float(row.get("user_rating") or 0) >= 8
+        and _safe_number(row.get("user_rating")) >= 8
         for row in (store.get("catalog", []) or [])
     )
     rows.append({
@@ -403,7 +412,8 @@ def search_library(store, query, limit=40):
             item = {field: row.get(field) for field in (
                 "id", "title", "artist", "album", "duration", "thumb", "user_rating",
             )}
-            item["liked"] = float(row.get("user_rating") or 0) >= 8
+            item["user_rating"] = _safe_number(item.get("user_rating"))
+            item["liked"] = item["user_rating"] >= 8
             result.append(item)
         if len(result) >= max(1, min(int(limit), 100)):
             break
@@ -415,7 +425,7 @@ def favorite_playlist_detail(store):
     for row in store.get("catalog", []) or []:
         if not isinstance(row, dict) or not row.get("available", True):
             continue
-        rating = float(row.get("user_rating") or 0)
+        rating = _safe_number(row.get("user_rating"))
         if rating < 8:
             continue
         tracks.append({
@@ -492,8 +502,8 @@ def playlist_detail(engine, kind, key):
                 "album": str(playlist_row.get("album") or metadata.get("album") or ""),
                 "duration": float(playlist_row.get("duration") or metadata.get("duration") or 0),
                 "thumb": str(playlist_row.get("thumb") or metadata.get("thumb") or ""),
-                "user_rating": float(metadata.get("user_rating") or 0),
-                "liked": float(metadata.get("user_rating") or 0) >= 8,
+                "user_rating": _safe_number(metadata.get("user_rating")),
+                "liked": _safe_number(metadata.get("user_rating")) >= 8,
             })
         return {
             "kind": "plex", "key": key, "playlist_id": key,
@@ -527,8 +537,8 @@ def playlist_detail(engine, kind, key):
             "album": str(playlist_row.get("album") or metadata.get("album") or ""),
             "duration": float(playlist_row.get("duration") or metadata.get("duration") or 0),
             "thumb": str(playlist_row.get("thumb") or metadata.get("thumb") or ""),
-            "user_rating": float(metadata.get("user_rating") or 0),
-            "liked": float(metadata.get("user_rating") or 0) >= 8,
+            "user_rating": _safe_number(metadata.get("user_rating")),
+            "liked": _safe_number(metadata.get("user_rating")) >= 8,
         })
     return {
         "kind": str(kind), "key": str(key), "playlist_id": str(record["id"]),
