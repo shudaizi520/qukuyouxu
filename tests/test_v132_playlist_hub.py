@@ -356,6 +356,7 @@ class PlaylistHubPageTests(unittest.TestCase):
         show = workspace.split("function show(next)", 1)[1].split(
             "function openPage", 1
         )[0]
+        self.assertIn("playlistSectionView.hidden=current.panel!=='section'", show)
         self.assertIn("playlistView.hidden=current.panel!=='playlist'", show)
         self.assertIn("playlistSearchView.hidden=current.panel!=='search'", show)
         self.assertIn(
@@ -365,22 +366,18 @@ class PlaylistHubPageTests(unittest.TestCase):
 
     def test_playlist_sidebar_navigation_never_adds_button_pending_content(self):
         script = (STATIC / "playlists.js").read_text(encoding="utf-8")
+        sections = (STATIC / "playlist-sections.js").read_text(encoding="utf-8")
         styles = (STATIC / "product.css").read_text(encoding="utf-8")
 
         navigate = script.split("async function navigate(fn)", 1)[1].split(
             "async function json", 1
         )[0]
         self.assertNotIn("PCHUI.run", navigate)
-        playlist_list = script.split("function renderPlaylistList()", 1)[1].split(
-            "function setPlaylistLoading", 1
-        )[0]
-        click_handler = playlist_list.split("button.onclick=", 1)[1].split(
-            ";box.append(button)", 1
-        )[0]
-        self.assertIn("navigate(()=>openPlaylist(item))", click_handler)
-        self.assertNotIn("action(", click_handler)
+        self.assertIn("onOpenPlaylist:item=>", script)
+        self.assertIn("navigate(()=>openPlaylist(item))", script)
+        self.assertIn("button.onclick=()=>onOpenPlaylist(item)", sections)
         loading = script.split("async function openPlaylist", 1)[1].split(
-            "async function openFirstAvailable", 1
+            "function openSection", 1
         )[0]
         self.assertIn("setPlaylistLoading(true)", loading)
         self.assertIn("setPlaylistLoading(false)", loading)
@@ -482,24 +479,13 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn("[data-muted=true] .player-icon-mute-waves{display:none}", styles)
         self.assertIn("[data-muted=true] .player-icon-mute-cross{display:block}", styles)
 
-    def test_search_library_add_focuses_and_explains_next_step(self):
+    def test_global_search_replaces_the_redundant_playlist_add_button(self):
         page = (STATIC / "playlists.html").read_text(encoding="utf-8")
         search = (STATIC / "playlist-search.js").read_text(encoding="utf-8")
-        script = (STATIC / "playlists.js").read_text(encoding="utf-8")
-        self.assertIn('id="playlistAddTrack"', page)
-        add_button = page.split('id="playlistAddTrack"', 1)[1].split(
-            "</button>", 1
-        )[0]
-        self.assertIn("搜索全库添加", add_button)
-        focus = search.split("function focus()", 1)[1].split(
-            "function mount", 1
-        )[0]
-        self.assertIn("input.focus()", focus)
-        self.assertIn("input.select()", focus)
-        self.assertIn("输入歌名、歌手或专辑", focus)
-        self.assertIn("在结果中选择“添加到歌单”", focus)
-        self.assertIn("6000", focus)
-        self.assertIn("noticeTimer", script)
+        self.assertNotIn('id="playlistAddTrack"', page)
+        self.assertIn('id="librarySearchForm"', page)
+        self.assertIn("function openAddDialog(track)", search)
+        self.assertNotIn("function focus()", search)
 
     def test_track_header_and_rows_keep_song_artist_and_album_in_separate_columns(self):
         page = (STATIC / "playlists.html").read_text(encoding="utf-8")
@@ -568,7 +554,7 @@ class PlaylistHubPageTests(unittest.TestCase):
         navigation = workspace.split("function renderNavigation", 1)[1].split(
             "function show", 1
         )[0]
-        self.assertIn("#playlistList button,#playlistTools button,[data-workspace-url]", navigation)
+        self.assertIn("#smartHubButton,#libraryHubButton,#customPlaylistList button", navigation)
         self.assertIn("classList.toggle('active'", navigation)
 
     def test_workspace_switches_do_not_destroy_the_persistent_audio_element(self):
@@ -590,7 +576,9 @@ class PlaylistHubPageTests(unittest.TestCase):
     def test_home_is_a_single_management_and_playback_surface(self):
         page = (STATIC / "playlists.html").read_text(encoding="utf-8")
         self.assertIn('id="playlistProfile"', page)
-        self.assertIn('id="playlistList"', page)
+        self.assertIn('id="smartHubButton"', page)
+        self.assertIn('id="libraryHubButton"', page)
+        self.assertIn('id="customPlaylistList"', page)
         self.assertIn('id="playlistTracks"', page)
         self.assertIn('id="playlistPlayer"', page)
         self.assertIn('id="playerToggle"', page)
@@ -598,16 +586,14 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn('id="playerNext"', page)
         self.assertIn('id="playerSeek"', page)
         self.assertIn('id="playerArtwork"', page)
-        self.assertIn('id="playlistTools"', page)
         self.assertNotIn('data-tool-url="/daily"', page)
-        self.assertIn('data-tool-url="/mixes"', page)
         self.assertIn('data-tool-url="/external"', page)
-        self.assertIn('data-tool-url="/library"', page)
+        self.assertIn('id="playlistSectionView"', page)
         self.assertIn('id="playlistToolFrame"', page)
         self.assertIn('id="librarySearchDialog"', page)
         self.assertIn('id="librarySearchResults"', page)
         self.assertNotIn("不会删除音乐文件", page)
-        self.assertLessEqual(page.count('class="muted"'), 2)
+        self.assertLessEqual(page.count('class="muted"'), 3)
 
     def test_every_main_page_links_to_the_playlist_home_once(self):
         for name in (
@@ -720,8 +706,8 @@ class PlaylistHubPageTests(unittest.TestCase):
             "function updateArtwork", 1
         )[0]
         self.assertIn("(isPlaying?' playing':'')", render_tracks)
-        unbuilt = script.split("if(!item.playlist_id)", 1)[1].split("return;", 1)[0]
-        self.assertIn("navigation:{type:'playlist',kind:item.kind,key:item.key}", unbuilt)
+        unbuilt = script.split("if(!item.can_play)", 1)[1].split("throw Error", 1)[0]
+        self.assertIn("navigation:{type:'section',section:item.section}", unbuilt)
         self.assertIn("setPlaylistLoading(false)", unbuilt)
         self.assertNotIn("current=null", unbuilt)
         open_workspace = script.split("function openWorkspacePage", 1)[1].split(
@@ -806,13 +792,13 @@ class PlaylistHubPageTests(unittest.TestCase):
             "async function openPlaylist", 1
         )[0]
         for element_id in (
-            "playlistAddTrack", "playlistManage", "playlistRemove", "playlistPlayAll",
+            "playlistManage", "playlistRemove", "playlistPlayAll",
         ):
             self.assertIn(element_id, loading)
         self.assertIn(".disabled", loading)
         self.assertIn("$('playlistTracks').inert=playlistLoading", loading)
         open_playlist = script.split("async function openPlaylist", 1)[1].split(
-            "async function openFirstAvailable", 1
+            "function openSection", 1
         )[0]
         self.assertIn("return false", open_playlist)
         self.assertIn("return true", open_playlist)
@@ -857,18 +843,14 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn("onPlaylistChanged(kind,key,result.count)", search)
         self.assertIn("syncPlaylistCount(selected.kind,selected.key,result.count)", script)
 
-    def test_failed_automatic_open_cannot_override_later_manual_navigation(self):
+    def test_initial_inventory_opens_a_section_without_eager_playlist_reads(self):
         script = (STATIC / "playlists.js").read_text(encoding="utf-8")
-        open_playlist = script.split("async function openPlaylist", 1)[1].split(
-            "async function openFirstAvailable", 1
+        load = script.split("async function loadPlaylists", 1)[1].split(
+            "async function loadProfiles", 1
         )[0]
-        self.assertIn("catch(error)", open_playlist)
-        self.assertIn("if(requestId!==playlistRequest)return false", open_playlist)
-        fallback = script.split("async function openFirstAvailable", 1)[1].split(
-            "async function loadPlaylists", 1
-        )[0]
-        self.assertIn("const opened=await openPlaylist", fallback)
-        self.assertIn("if(!opened)return lastError", fallback)
+        self.assertNotIn("openFirstAvailable", script)
+        self.assertIn("openSection(preferred?.section||'smart')", load)
+        self.assertIn("if(selected&&selected.can_play)", load)
 
     def test_small_screen_sidebar_is_a_closed_drawer_with_one_toggle(self):
         page = (STATIC / "playlists.html").read_text(encoding="utf-8")

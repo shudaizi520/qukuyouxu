@@ -5,10 +5,12 @@ function normalizedPath(value){
 export function createPlaylistWorkspace({document}){
  let current={type:'playlist',kind:'',key:'',panel:'playlist'};
  const playlistView=document.getElementById('playlistView');
+ const playlistSectionView=document.getElementById('playlistSectionView');
  const playlistSearchView=document.getElementById('playlistSearchView');
  const playlistToolView=document.getElementById('playlistToolView');
 
  function matches(button,view){
+  if(button.dataset.section)return view.type==='section'&&button.dataset.section===view.section;
   if(button.dataset.kind){
    return view.type==='playlist'&&button.dataset.kind===view.kind&&button.dataset.key===view.key;
   }
@@ -22,13 +24,14 @@ export function createPlaylistWorkspace({document}){
  }
 
  function renderNavigation(){
-  document.querySelectorAll('#playlistList button,#playlistTools button,[data-workspace-url]').forEach(button=>{
+  document.querySelectorAll('#smartHubButton,#libraryHubButton,#customPlaylistList button,[data-tool-url],[data-workspace-url]').forEach(button=>{
    button.classList.toggle('active',matches(button,current));
   });
  }
 
  function show(next){
   current={panel:next.type,...next};
+  playlistSectionView.hidden=current.panel!=='section';
   playlistView.hidden=current.panel!=='playlist';
   playlistSearchView.hidden=current.panel!=='search';
   playlistToolView.hidden=!['tool','system'].includes(current.panel);
@@ -49,7 +52,7 @@ export function createPlaylistWorkspace({document}){
  function reset(){
   const frame=document.getElementById('playlistToolFrame');
   if(frame)frame.src='about:blank';
-  show({type:'playlist',kind:'',key:'',panel:'playlist'});
+  show({type:'section',section:'smart',panel:'section'});
  }
 
  return {show,openPage,reset,renderNavigation,current:()=>({...current})};

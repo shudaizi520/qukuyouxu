@@ -54,7 +54,9 @@ class HttpAndUiV047Tests(unittest.TestCase):
         settings_script = (static / "settings.js").read_text(encoding="utf-8")
         self.assertIn("/api/profiles/daily/batch-preview", settings_script)
         home = (static / "playlists.html").read_text(encoding="utf-8")
-        self.assertIn('data-tool-url="/mixes"', home)
+        sections = (static / "playlist-sections.js").read_text(encoding="utf-8")
+        self.assertIn('id="smartHubButton"', home)
+        self.assertIn("'/mixes'", sections)
         for name in ("daily.html", "home.html", "status.html", "settings.html", "mixes.html"):
             self.assertIn('href="/">我的歌单</a>', (static / name).read_text(encoding="utf-8"), name)
 

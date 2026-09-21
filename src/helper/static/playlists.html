@@ -29,26 +29,26 @@
   <button id="playlistSidebarBackdrop" class="playlist-sidebar-backdrop" type="button" aria-label="关闭歌单导航" hidden></button>
   <aside id="playlistSidebar" class="playlist-sidebar">
    <div class="playlist-profile-block"><label class="playlist-profile-label" for="playlistProfile">当前用户</label><select id="playlistProfile" class="playlist-profile"></select></div>
+   <nav class="playlist-fixed-nav" aria-label="歌单分类">
+    <button id="smartHubButton" type="button" data-section="smart"><span class="playlist-fixed-icon" aria-hidden="true">✦</span><span>智能歌单</span></button>
+    <button id="libraryHubButton" type="button" data-section="library"><span class="playlist-fixed-icon" aria-hidden="true">▦</span><span>曲库整理</span></button>
+   </nav>
    <div class="playlist-list-scroll">
-    <div class="playlist-side-heading"><h2>我的歌单</h2><span id="playlistCount">0</span></div>
-    <nav id="playlistList" class="playlist-side-list" aria-label="我的歌单"></nav>
-   </div>
-   <div class="playlist-tool-dock">
-    <div class="playlist-side-heading playlist-tool-heading"><h2>创建与整理</h2></div>
-    <nav id="playlistTools" class="playlist-side-list" aria-label="创建与整理">
-    <button type="button" data-tool-url="/mixes"><span class="playlist-side-icon">智</span><span>新建智能歌单</span></button>
-    <button type="button" data-tool-url="/external"><span class="playlist-side-icon">导</span><span>导入外部歌单</span></button>
-    <button type="button" data-tool-url="/library"><span class="playlist-side-icon">整</span><span>曲库整理</span></button>
-    </nav>
+    <div class="playlist-side-heading"><h2>自建歌单</h2><span class="playlist-side-heading-actions"><span id="customPlaylistCount">0</span><button id="customPlaylistImport" type="button" data-tool-url="/external" aria-label="导入外部歌单" title="导入外部歌单">＋</button><button id="customPlaylistRefresh" type="button" aria-label="刷新自建歌单" title="刷新自建歌单">↻</button></span></div>
+    <nav id="customPlaylistList" class="playlist-side-list" aria-label="自建歌单"></nav>
    </div>
   </aside>
   <section class="playlist-main">
    <div id="playlistNotice" class="notice" role="status" hidden></div>
+   <section id="playlistSectionView" class="playlist-section-view">
+    <header class="playlist-section-head"><span id="playlistSectionKind" class="playlist-kind">为你整理</span><h1 id="playlistSectionTitle">智能歌单</h1><p id="playlistSectionSummary" class="muted">每天打开就能直接听</p></header>
+    <div id="playlistSectionCards" class="playlist-section-cards"></div>
+   </section>
    <section id="playlistView">
     <div id="playlistStickyHead" class="playlist-sticky-head">
      <header class="playlist-hero">
       <div><span id="playlistKind" class="playlist-kind">我的歌单</span><h1 id="playlistTitle">选择一个歌单</h1><p id="playlistSummary" class="muted">0 首歌曲</p></div>
-      <div class="playlist-actions"><button id="playlistAddTrack" class="secondary" type="button" hidden>搜索全库添加</button><button id="playlistManage" class="secondary" type="button" hidden>管理</button><button id="playlistRemove" class="danger" type="button" hidden>删除歌单</button><button id="playlistPlayAll" class="primary" type="button" disabled>▶ 播放全部</button></div>
+      <div class="playlist-actions"><button id="playlistManage" class="secondary" type="button" hidden>管理</button><button id="playlistRemove" class="danger" type="button" hidden>删除歌单</button><button id="playlistPlayAll" class="primary" type="button" disabled>▶ 播放全部</button></div>
      </header>
      <div class="playlist-track-head"><span>#</span><span>歌曲</span><span>歌手</span><span>专辑</span><span>时长</span><span aria-hidden="true"></span></div>
     </div>
