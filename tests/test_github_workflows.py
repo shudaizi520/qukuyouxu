@@ -11,7 +11,7 @@ class GithubWorkflowTests(unittest.TestCase):
         self.assertIn("contents: read", workflow)
         self.assertIn('python-version: ["3.11", "3.12"]', workflow)
         self.assertIn("cache: pip", workflow)
-        self.assertIn("unittest discover -s tests -q", workflow)
+        self.assertIn("python -m pytest -q", workflow)
         self.assertIn("pip install -r requirements.lock", workflow)
         self.assertIn("pip install --no-deps -e .", workflow)
         self.assertIn("python -m pip check", workflow)
