@@ -69,7 +69,7 @@ class PlaylistHubRowsTests(unittest.TestCase):
             [row["kind"] for row in rows],
         )
         self.assertEqual(
-            ["每日推荐", "每周常听", "我的最爱", "开车精选", "百万收藏"],
+            ["每日推荐", "每周常听", "我喜欢", "开车精选", "百万收藏"],
             [row["title"] for row in rows],
         )
         self.assertEqual([30, 2, None, 3, 1], [row["count"] for row in rows])

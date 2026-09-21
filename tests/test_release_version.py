@@ -8,17 +8,17 @@ sys.path.insert(0, str(ROOT / "src"))
 
 
 class ReleaseVersionTests(unittest.TestCase):
-    def test_application_and_static_pages_use_release_1_4_13(self):
+    def test_application_and_static_pages_use_release_1_4_14(self):
         from helper import __version__
 
-        self.assertEqual("1.4.13", __version__)
+        self.assertEqual("1.4.14", __version__)
         pages = []
         for name in ("playlists.html", "daily.html", "home.html", "mixes.html", "external.html", "settings.html", "status.html"):
             with self.subTest(name=name):
                 html = (ROOT / "src/helper/static" / name).read_text(encoding="utf-8")
                 pages.append(html)
-                self.assertIn("?v=1.4.13", html)
-                self.assertIn(">v1.4.13<", html)
+                self.assertIn("?v=1.4.14", html)
+                self.assertIn(">v1.4.14<", html)
         self.assertNotIn("1.4.5", "".join(pages))
 
     def test_release_notes_describe_external_playlist_workflow_and_limits(self):
@@ -32,6 +32,7 @@ class ReleaseVersionTests(unittest.TestCase):
         self.assertIn("## 1.4.8 - 2026-09-21", changelog)
         self.assertIn("## 1.4.11 - 2026-09-21", changelog)
         self.assertIn("## 1.4.13 - 2026-09-21", changelog)
+        self.assertIn("## 1.4.14 - 2026-09-21", changelog)
         self.assertIn("## 1.4.9 - 2026-09-21", changelog)
         for phrase in ("Plex / Plexamp", "智能歌单", "曲库整理", "我的最爱", "爱心"):
             self.assertIn(phrase, changelog)
@@ -53,7 +54,7 @@ class ReleaseVersionTests(unittest.TestCase):
     def test_accepts_exact_v_prefixed_application_version(self):
         from tools.check_release_version import check_release_version
 
-        self.assertEqual("1.4.13", check_release_version("v1.4.13", "1.4.13"))
+        self.assertEqual("1.4.14", check_release_version("v1.4.14", "1.4.14"))
 
     def test_rejects_mismatched_or_malformed_tags(self):
         from tools.check_release_version import check_release_version

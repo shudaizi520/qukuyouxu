@@ -263,10 +263,10 @@ async function switchProfile(profileId,persist=true){
  try{
   const favorite=await json('/api/playlists/favorite/ensure','POST');
   if(requestId!==profileRequest)return;
-  if(favorite.status==='needs_review')notify('Plex“我的最爱”待核对：'+favorite.message,true);
+  if(favorite.status==='needs_review')notify('Plex“我喜欢”待核对：'+favorite.message,true);
  }catch(error){
   if(requestId!==profileRequest)return;
-  notify('Plex“我的最爱”暂未同步：'+(error.message||'请稍后重试'),true);
+  notify('Plex“我喜欢”暂未同步：'+(error.message||'请稍后重试'),true);
  }
  await loadPlaylists(undefined,requestId);
 }

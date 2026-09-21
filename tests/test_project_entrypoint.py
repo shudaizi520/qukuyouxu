@@ -9,7 +9,7 @@ class ProjectEntrypointTests(unittest.TestCase):
     def test_public_release_version_is_current(self):
         from helper import __version__
 
-        self.assertEqual("1.4.13", __version__)
+        self.assertEqual("1.4.14", __version__)
 
     def test_project_uses_one_modern_license_declaration(self):
         root = Path(__file__).resolve().parents[1]

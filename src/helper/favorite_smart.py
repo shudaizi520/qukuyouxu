@@ -8,25 +8,37 @@ from .clients import PlexNotFound, PlexWriteRejected
 
 
 def _favorite_title(value):
-    return re.sub(r"^[\s❤♥💖️]+", "", str(value or "")).strip() == "我的最爱"
+    return re.sub(r"^[\s❤♥💖️]+", "", str(value or "")).strip() == "我喜欢"
+
+
+def _content_rule(content, machine):
+    """Read Plex server/library URIs without accepting arbitrary external links."""
+    parsed = urlsplit(str(content or ""))
+    if parsed.fragment:
+        return "", ""
+    if parsed.scheme == "server" and parsed.netloc == machine:
+        match = re.fullmatch(r"/com\.plexapp\.plugins\.library/library/sections/(\d+)/all", unquote(parsed.path))
+        return (match.group(1), parsed.query) if match else ("", "")
+    if parsed.scheme == "library" and parsed.netloc and not parsed.query:
+        path = unquote(parsed.path)
+        if not path.startswith("/directory/"):
+            return "", ""
+        inner = urlsplit(path[len("/directory/"):])
+        match = re.fullmatch(r"/library/sections/(\d+)/all", inner.path)
+        return (match.group(1), inner.query) if match and not inner.fragment else ("", "")
+    return "", ""
 
 
 def _content_section(content, machine):
-    """Return the source section only for this Plex server's canonical URI."""
-    parsed = urlsplit(str(content or ""))
-    path = unquote(parsed.path)
-    match = re.fullmatch(r"/com\.plexapp\.plugins\.library/library/sections/(\d+)/all", path)
-    if parsed.scheme != "server" or parsed.netloc != machine or not match:
-        return ""
-    return match.group(1)
+    return _content_rule(content, machine)[0]
 
 
 def _rule_kind(content, section, machine):
     """Recognize only a pure rating rule; unknown filters must never be overwritten."""
-    if _content_section(content, machine) != section:
+    source_section, query = _content_rule(content, machine)
+    if source_section != section:
         return "unknown"
-    parsed = urlsplit(str(content or ""))
-    params = parse_qs(parsed.query, keep_blank_values=True)
+    params = parse_qs(query, keep_blank_values=True)
     if params.get("type") != ["10"]:
         return "unknown"
     rating = {key: value for key, value in params.items() if key != "type"}
@@ -41,7 +53,7 @@ def _rule_kind(content, section, machine):
 def _needs_review(store, previous, section, message):
     state = {"status": "needs_review", "playlist_id": str(previous.get("playlist_id") or ""),
              "section": section, "message": message}
-    store.set("favorite_smart_v1", state)
+    store.set("favorite_smart_v2", state)
     return state
 
 
@@ -57,7 +69,7 @@ def ensure_profile_favorites(engine):
         machine = str(plex.identity().get("machine") or "")
     if not machine:
         return {"status": "needs_review", "playlist_id": "", "message": "无法确认 Plex 服务器身份"}
-    previous = store.get("favorite_smart_v1") or {}
+    previous = store.get("favorite_smart_v2") or {}
     candidates = []
     for row in plex.playlists():
         if not _favorite_title(row.get("title")) or row.get("playlistType") != "audio":
@@ -86,13 +98,15 @@ def ensure_profile_favorites(engine):
     if candidates:
         info = candidates[0]
         pid = str(info["id"])
+        if not previous.get("playlist_id"):
+            return _needs_review(store, previous, section, "已有同名歌单，但无法确认由本程序创建")
         if previous.get("playlist_id") and str(previous["playlist_id"]) != pid:
             return _needs_review(store, previous, section, "已记录的歌单编号与现有歌单不一致")
         kind = _rule_kind(info.get("content"), section, machine)
         if kind == "unknown":
             return _needs_review(store, previous, section, "现有智能歌单包含无法确认的筛选规则")
         if kind == "five_star_only":
-            store.set("favorite_smart_previous_rule_v1", {"playlist_id": pid, "content": info["content"]})
+            store.set("favorite_smart_previous_rule_v2", {"playlist_id": pid, "content": info["content"]})
             info = plex.replace_favorite_smart_rule(
                 pid, section, expected_content=info["content"], expected_title=info["title"],
             )
@@ -115,7 +129,7 @@ def ensure_profile_favorites(engine):
                 return _needs_review(store, previous, section, "Plex 歌单列表与详情不一致")
         # Persist the intent *before* the network write. A timeout may happen
         # after Plex creates the playlist but before it returns its ID.
-        store.set("favorite_smart_v1", {"status": "pending", "playlist_id": "", "section": section})
+        store.set("favorite_smart_v2", {"status": "pending", "playlist_id": "", "section": section})
         try:
             info = plex.create_favorite_smart(section)
         except PlexWriteRejected:
@@ -126,5 +140,5 @@ def ensure_profile_favorites(engine):
         if str(info.get("section") or "") != section or _rule_kind(info.get("content"), section, machine) != "current":
             raise ValueError("新建 Plex 歌单规则回读不一致，请人工核对")
         state = {"status": "synced", "playlist_id": str(info["id"]), "section": section}
-    store.set("favorite_smart_v1", state)
+    store.set("favorite_smart_v2", state)
     return state

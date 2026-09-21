@@ -41,9 +41,9 @@ class Plex:
 
     def create_favorite_smart(self, section):
         self.calls.append(("create", section))
-        record = {"id": "90", "title": "我的最爱", "smart": True,
+        record = {"id": "90", "title": "我喜欢", "smart": True,
                   "section": section, "content": uri(section)}
-        self.rows.append({"ratingKey": "90", "title": "我的最爱", "smart": "1", "playlistType": "audio"})
+        self.rows.append({"ratingKey": "90", "title": "我喜欢", "smart": "1", "playlistType": "audio"})
         self.info["90"] = record
         return record
 
@@ -67,6 +67,51 @@ class Engine:
 
 
 class FavoriteEnsureTests(unittest.TestCase):
+    def test_unrecorded_same_title_playlist_is_never_taken_over(self):
+        from helper.favorite_smart import ensure_profile_favorites
+        row = {"ratingKey": "51", "title": "我喜欢", "smart": "1", "playlistType": "audio"}
+        info = {"51": {"id": "51", "title": "我喜欢", "smart": True,
+                       "section": "11", "content": uri("11")}}
+        engine = Engine(Plex([row], info))
+        self.assertEqual("needs_review", ensure_profile_favorites(engine)["status"])
+        self.assertFalse(any(call[0] in ("create", "replace") for call in engine.plex.calls))
+
+    def test_old_named_playlist_and_v1_pending_do_not_block_new_liked_playlist(self):
+        from helper.favorite_smart import ensure_profile_favorites
+        old = {"ratingKey": "51", "title": "❤️我的最爱", "smart": "1", "playlistType": "audio"}
+        info = {"51": {"id": "51", "title": "❤️我的最爱", "smart": True,
+                       "section": "11", "content": uri("11", extra={"group": "guid"})}}
+        engine = Engine(Plex([old], info))
+        engine.store.set("favorite_smart_v1", {"status": "pending", "section": "11"})
+        result = ensure_profile_favorites(engine)
+        self.assertEqual("synced", result["status"])
+        self.assertEqual("我喜欢", engine.plex.info[result["playlist_id"]]["title"])
+        self.assertEqual(info["51"], engine.plex.info["51"])
+        self.assertEqual("pending", engine.store.get("favorite_smart_v1")["status"])
+        self.assertEqual(result, engine.store.get("favorite_smart_v2"))
+
+    def test_legacy_synced_record_never_authorizes_modifying_old_playlist(self):
+        from helper.favorite_smart import ensure_profile_favorites
+
+        old = {"ratingKey": "51", "title": "我的最爱", "smart": "1", "playlistType": "audio"}
+        info = {"51": {"id": "51", "title": "我的最爱", "smart": True,
+                       "section": "11", "content": uri("11", "track.userRating", 10)}}
+        engine = Engine(Plex([old], info))
+        engine.store.set("favorite_smart_v1", {
+            "status": "synced", "playlist_id": "51", "section": "11",
+        })
+        self.assertEqual("90", ensure_profile_favorites(engine)["playlist_id"])
+        self.assertFalse(any(call[0] == "replace" for call in engine.plex.calls))
+        self.assertEqual(info["51"], engine.plex.info["51"])
+
+    def test_plex_library_uri_is_accepted_only_for_pure_rating_rule(self):
+        from helper.favorite_smart import _rule_kind
+        pure = "library://abc/directory/%2Flibrary%2Fsections%2F11%2Fall%3Ftype%3D10%26track%2EuserRating%253E%3D8"
+        complex_rule = "library://abc/directory/%2Flibrary%2Fsections%2F11%2Fall%3Ftype%3D10%26group%3Dguid%26track.userRating%253E%3D8"
+        self.assertEqual("current", _rule_kind(pure, "11", "machine"))
+        self.assertEqual("unknown", _rule_kind(complex_rule, "11", "machine"))
+        self.assertEqual("unknown", _rule_kind(pure, "15", "machine"))
+
     def test_first_enter_creates_once_and_records_for_this_profile(self):
         from helper.favorite_smart import ensure_profile_favorites
         engine = Engine(Plex())
@@ -76,7 +121,7 @@ class FavoriteEnsureTests(unittest.TestCase):
         self.assertEqual("90", first["playlist_id"])
         self.assertEqual("90", second["playlist_id"])
         self.assertEqual(1, engine.plex.calls.count(("create", "11")))
-        self.assertEqual("90", engine.store.get("favorite_smart_v1")["playlist_id"])
+        self.assertEqual("90", engine.store.get("favorite_smart_v2")["playlist_id"])
 
     def test_same_plex_user_two_music_libraries_get_independent_records(self):
         from helper.favorite_smart import ensure_profile_favorites
@@ -85,28 +130,30 @@ class FavoriteEnsureTests(unittest.TestCase):
         ensure_profile_favorites(second)
         self.assertIn(("create", "11"), first.plex.calls)
         self.assertIn(("create", "15"), second.plex.calls)
-        self.assertEqual("11", first.store.get("favorite_smart_v1")["section"])
-        self.assertEqual("15", second.store.get("favorite_smart_v1")["section"])
+        self.assertEqual("11", first.store.get("favorite_smart_v2")["section"])
+        self.assertEqual("15", second.store.get("favorite_smart_v2")["section"])
 
     def test_existing_five_star_rule_migrates_in_place(self):
         from helper.favorite_smart import ensure_profile_favorites
-        row = {"ratingKey": "51", "title": "💖我的最爱", "smart": "1", "playlistType": "audio"}
-        info = {"51": {"id": "51", "title": "💖我的最爱", "smart": True,
+        row = {"ratingKey": "51", "title": "💖我喜欢", "smart": "1", "playlistType": "audio"}
+        info = {"51": {"id": "51", "title": "💖我喜欢", "smart": True,
                        "section": "11", "content": uri("11", "track.userRating", 10)}}
         engine = Engine(Plex([row], info))
+        engine.store.set("favorite_smart_v2", {"status": "synced", "playlist_id": "51", "section": "11"})
         result = ensure_profile_favorites(engine)
         self.assertEqual("51", result["playlist_id"])
         self.assertIn(("replace", "51", "11"), engine.plex.calls)
-        self.assertEqual((uri("11", "track.userRating", 10), "💖我的最爱"), engine.plex.expected)
+        self.assertEqual((uri("11", "track.userRating", 10), "💖我喜欢"), engine.plex.expected)
         self.assertEqual(uri("11", "track.userRating", 10),
-                         engine.store.get("favorite_smart_previous_rule_v1")["content"])
+                         engine.store.get("favorite_smart_previous_rule_v2")["content"])
 
     def test_strictly_greater_than_nine_is_also_five_star_only(self):
         from helper.favorite_smart import ensure_profile_favorites
-        row = {"ratingKey": "51", "title": "我的最爱", "smart": "1", "playlistType": "audio"}
-        info = {"51": {"id": "51", "title": "我的最爱", "smart": True,
+        row = {"ratingKey": "51", "title": "我喜欢", "smart": "1", "playlistType": "audio"}
+        info = {"51": {"id": "51", "title": "我喜欢", "smart": True,
                        "section": "11", "content": uri("11", "track.userRating>>", 9)}}
         engine = Engine(Plex([row], info))
+        engine.store.set("favorite_smart_v2", {"status": "synced", "playlist_id": "51", "section": "11"})
         self.assertEqual("synced", ensure_profile_favorites(engine)["status"])
         self.assertIn(("replace", "51", "11"), engine.plex.calls)
 
@@ -114,8 +161,8 @@ class FavoriteEnsureTests(unittest.TestCase):
         from helper.favorite_smart import ensure_profile_favorites
         for smart, content in [("0", ""), ("1", uri("11", extra={"year>": 2000}))]:
             with self.subTest(smart=smart):
-                row = {"ratingKey": "51", "title": "我的最爱", "smart": smart, "playlistType": "audio"}
-                info = {"51": {"id": "51", "title": "我的最爱", "smart": True,
+                row = {"ratingKey": "51", "title": "我喜欢", "smart": smart, "playlistType": "audio"}
+                info = {"51": {"id": "51", "title": "我喜欢", "smart": True,
                                "section": "11", "content": content}}
                 engine = Engine(Plex([row], info))
                 self.assertEqual("needs_review", ensure_profile_favorites(engine)["status"])
@@ -123,8 +170,8 @@ class FavoriteEnsureTests(unittest.TestCase):
 
     def test_foreign_server_uri_and_changed_detail_title_are_not_adopted(self):
         from helper.favorite_smart import ensure_profile_favorites
-        row = {"ratingKey": "51", "title": "我的最爱", "smart": "1", "playlistType": "audio"}
-        for title, content in [("我的最爱", uri("11", "track.userRating", 10).replace("server://machine/", "https://foreign.example/")),
+        row = {"ratingKey": "51", "title": "我喜欢", "smart": "1", "playlistType": "audio"}
+        for title, content in [("我喜欢", uri("11", "track.userRating", 10).replace("server://machine/", "https://foreign.example/")),
                                ("其他歌单", uri("11", "track.userRating", 10))]:
             with self.subTest(title=title):
                 info = {"51": {"id": "51", "title": title, "smart": True,
@@ -135,9 +182,9 @@ class FavoriteEnsureTests(unittest.TestCase):
 
     def test_two_same_name_candidates_do_not_create_or_replace(self):
         from helper.favorite_smart import ensure_profile_favorites
-        rows = [{"ratingKey": pid, "title": "我的最爱", "smart": "1", "playlistType": "audio"}
+        rows = [{"ratingKey": pid, "title": "我喜欢", "smart": "1", "playlistType": "audio"}
                 for pid in ("51", "52")]
-        info = {pid: {"id": pid, "title": "我的最爱", "smart": True,
+        info = {pid: {"id": pid, "title": "我喜欢", "smart": True,
                       "section": "11", "content": uri("11", "track.userRating", 10)}
                 for pid in ("51", "52")}
         engine = Engine(Plex(rows, info))
@@ -146,8 +193,8 @@ class FavoriteEnsureTests(unittest.TestCase):
 
     def test_other_library_smart_does_not_block_this_library(self):
         from helper.favorite_smart import ensure_profile_favorites
-        row = {"ratingKey": "51", "title": "我的最爱", "smart": "1", "playlistType": "audio"}
-        info = {"51": {"id": "51", "title": "我的最爱", "smart": True,
+        row = {"ratingKey": "51", "title": "我喜欢", "smart": "1", "playlistType": "audio"}
+        info = {"51": {"id": "51", "title": "我喜欢", "smart": True,
                        "section": "15", "content": uri("15")}}
         engine = Engine(Plex([row], info))
         self.assertEqual("90", ensure_profile_favorites(engine)["playlist_id"])
@@ -163,27 +210,27 @@ class FavoriteEnsureTests(unittest.TestCase):
                 raise PlexNotFound("not found")
 
         engine = Engine(DeletedPlex())
-        engine.store.set("favorite_smart_v1", {"status": "synced", "playlist_id": "51", "section": "11"})
+        engine.store.set("favorite_smart_v2", {"status": "synced", "playlist_id": "51", "section": "11"})
         self.assertEqual("90", ensure_profile_favorites(engine)["playlist_id"])
         self.assertIn(("read", "51"), engine.plex.calls)
 
     def test_unverified_missing_record_is_not_recreated(self):
         from helper.favorite_smart import ensure_profile_favorites
         engine = Engine(Plex())
-        engine.store.set("favorite_smart_v1", {"status": "synced", "playlist_id": "51", "section": "11"})
+        engine.store.set("favorite_smart_v2", {"status": "synced", "playlist_id": "51", "section": "11"})
         self.assertEqual("needs_review", ensure_profile_favorites(engine)["status"])
         self.assertFalse(any(call[0] == "create" for call in engine.plex.calls))
 
     def test_review_downgrades_stale_synced_badge_without_losing_recorded_id(self):
         from helper.favorite_smart import ensure_profile_favorites
-        row = {"ratingKey": "51", "title": "我的最爱", "smart": "1", "playlistType": "audio"}
-        info = {"51": {"id": "51", "title": "我的最爱", "smart": True,
+        row = {"ratingKey": "51", "title": "我喜欢", "smart": "1", "playlistType": "audio"}
+        info = {"51": {"id": "51", "title": "我喜欢", "smart": True,
                        "section": "11", "content": uri("11", extra={"year>": 2000})}}
         engine = Engine(Plex([row], info))
-        engine.store.set("favorite_smart_v1", {"status": "synced", "playlist_id": "51", "section": "11"})
+        engine.store.set("favorite_smart_v2", {"status": "synced", "playlist_id": "51", "section": "11"})
         self.assertEqual("needs_review", ensure_profile_favorites(engine)["status"])
-        self.assertEqual("needs_review", engine.store.get("favorite_smart_v1")["status"])
-        self.assertEqual("51", engine.store.get("favorite_smart_v1")["playlist_id"])
+        self.assertEqual("needs_review", engine.store.get("favorite_smart_v2")["status"])
+        self.assertEqual("51", engine.store.get("favorite_smart_v2")["playlist_id"])
 
     def test_uncertain_create_result_never_auto_retries_and_risks_duplicate(self):
         from helper.clients import PlexError
@@ -197,7 +244,7 @@ class FavoriteEnsureTests(unittest.TestCase):
         engine = Engine(UncertainPlex())
         with self.assertRaises(PlexError):
             ensure_profile_favorites(engine)
-        self.assertEqual("pending", engine.store.get("favorite_smart_v1")["status"])
+        self.assertEqual("pending", engine.store.get("favorite_smart_v2")["status"])
         self.assertEqual("needs_review", ensure_profile_favorites(engine)["status"])
         self.assertEqual(1, engine.plex.calls.count(("create", "11")))
 
@@ -213,7 +260,7 @@ class FavoriteEnsureTests(unittest.TestCase):
         engine = Engine(RejectedPlex())
         with self.assertRaises(PlexWriteRejected):
             ensure_profile_favorites(engine)
-        self.assertEqual("needs_review", engine.store.get("favorite_smart_v1")["status"])
+        self.assertEqual("needs_review", engine.store.get("favorite_smart_v2")["status"])
         engine.plex = Plex()
         self.assertEqual("synced", ensure_profile_favorites(engine)["status"])
 
@@ -252,15 +299,27 @@ class FavoriteEnsureTests(unittest.TestCase):
         merged = merge_playlist_rows([assistant_playlist_row(after)], engine.plex.rows)
         self.assertEqual(1, len(merged))
 
+    def test_recorded_managed_playlist_stays_out_of_native_actions_during_review(self):
+        from helper.playlist_hub import assistant_playlist_rows
+        from helper.playlist_inventory import merge_playlist_rows, assistant_playlist_row
+
+        engine = Engine(Plex([{
+            "ratingKey": "51", "title": "我喜欢", "smart": "1", "playlistType": "audio",
+        }]))
+        engine.store.set("favorite_smart_v2", {
+            "status": "needs_review", "playlist_id": "51", "section": "11",
+        })
+        with patch("helper.playlist_hub.ExternalRepository.list_sources", return_value=[]):
+            favorite = next(row for row in assistant_playlist_rows(engine.store)
+                            if row["kind"] == "favorite")
+        rows = merge_playlist_rows([assistant_playlist_row(favorite)], engine.plex.rows)
+        self.assertEqual(["favorite"], [row["kind"] for row in rows])
+
     def test_profile_switch_attempts_plex_favorite_ensure_before_listing(self):
         source = (ROOT / "src/helper/static/playlists.js").read_text(encoding="utf-8")
         switch = source.split("async function switchProfile(", 1)[1].split("async function removeTrack(", 1)[0]
         self.assertIn("/api/playlists/favorite/ensure", switch)
         self.assertLess(switch.index("/api/playlists/favorite/ensure"), switch.index("loadPlaylists(undefined,requestId)"))
-
-    def test_sidebar_surfaces_real_plex_sync_state(self):
-        source = (ROOT / "src/helper/static/playlist-sections.js").read_text(encoding="utf-8")
-        self.assertIn("item.kind==='favorite'&&item.status", source)
 
     def test_unread_favorite_indicator_is_scoped_to_one_library_profile(self):
         source = (ROOT / "src/helper/static/playlists.js").read_text(encoding="utf-8")

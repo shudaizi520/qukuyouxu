@@ -16,7 +16,7 @@ from .plex_identity import (
 )
 
 PLEX_TV = "https://plex.tv"
-PROTECTED_TITLES = {"我的最爱", "My Favorites", "Favorites"}
+PROTECTED_TITLES = {"我的最爱", "我喜欢", "My Favorites", "Favorites"}
 
 
 def valid_plex_pin(code):
@@ -166,7 +166,7 @@ def remove_managed_playlist(engine, category_id, confirm_title):
         current = plex.playlist_state(record["id"])
         title = str(current.get("title") or "")
         if title in PROTECTED_TITLES:
-            raise SafetyError("“我的最爱”和收藏歌单受到永久保护")
+            raise SafetyError("“我的最爱”“我喜欢”等收藏歌单受到永久保护")
         if str(confirm_title or "") != title:
             raise SafetyError("歌单名称已经变化，请刷新后重新确认")
         if str(current.get("id")) != str(record.get("id")):

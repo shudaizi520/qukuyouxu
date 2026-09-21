@@ -469,31 +469,36 @@ class PlexClient:
                 f'library/sections/{section}/all?{query}')
 
     def create_favorite_smart(self, section):
+        from .favorite_smart import _rule_kind
         uri=self._favorite_smart_uri(section)
         root=self._xml('/playlists','POST',{
-            'title':'我的最爱','type':'audio','smart':1,'uri':uri,
+            'title':'我喜欢','type':'audio','smart':1,'uri':uri,
         })
         row=root.find('Playlist')
         pid=str(row.get('ratingKey') or '') if row is not None else ''
         if not pid.isdigit():
             raise PlexError('Plex 创建智能歌单未返回ID；不会自动重试创建')
         info=self.smart_playlist_info(pid)
-        if info['content']!=uri or info['section']!=str(section):
+        if (info['title']!='我喜欢' or info['section']!=str(section)
+                or _rule_kind(info['content'],str(section),self.machine)!='current'):
             raise PlexError(f'Plex 已创建歌单 {pid}，但规则回读不一致；请人工核对，勿重复创建')
         return info
 
     def replace_favorite_smart_rule(self, pid, section, expected_content=None, expected_title=None):
+        from .favorite_smart import _rule_kind
         pid=str(pid or '')
         if not pid.isdigit():raise PlexError('智能歌单ID无效')
+        if expected_content is None or expected_title is None:
+            raise PlexError('修改智能歌单必须提供原始名称和规则以核验归属')
         uri=self._favorite_smart_uri(section)
-        if expected_content is not None or expected_title is not None:
-            before=self.smart_playlist_info(pid)
-            if (before['section']!=str(section) or before['content']!=expected_content
-                    or before['title']!=expected_title):
-                raise PlexError('Plex 智能歌单名称或规则已变化，请刷新后核对')
+        before=self.smart_playlist_info(pid)
+        if (before['section']!=str(section) or before['content']!=expected_content
+                or before['title']!=expected_title):
+            raise PlexError('Plex 智能歌单名称或规则已变化，请刷新后核对')
         self._xml(f'/playlists/{pid}/items','PUT',{'uri':uri})
         info=self.smart_playlist_info(pid)
-        if info['content']!=uri or info['section']!=str(section):
+        if (info['section']!=str(section) or info['title']!=expected_title
+                or _rule_kind(info['content'],str(section),self.machine)!='current'):
             raise PlexError('Plex 智能歌单规则回读不一致；不会重复提交修改')
         return info
 

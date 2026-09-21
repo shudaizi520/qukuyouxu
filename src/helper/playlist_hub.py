@@ -25,7 +25,7 @@ from .profiles import profile_identity
 KIND_LABELS = {
     "daily": "每日推荐",
     "smart": "智能歌单",
-    "favorite": "我的最爱",
+    "favorite": "我喜欢",
     "category": "分类歌单",
     "external": "外部歌单",
 }
@@ -101,15 +101,15 @@ def assistant_playlist_rows(store):
             record.get("updated_at"), "/mixes",
         ))
 
-    favorite_state = store.get("favorite_smart_v1") or {}
+    favorite_state = store.get("favorite_smart_v2") or {}
     favorite_playlist_id = str(favorite_state.get("playlist_id") or "")
-    favorite_synced = (favorite_state.get("status") == "synced"
-                       and favorite_playlist_id.isdigit()
-                       and str(favorite_state.get("section") or "")
-                       == str((store.get("settings") or {}).get("section") or ""))
+    favorite_owned = (favorite_playlist_id.isdigit()
+                      and str(favorite_state.get("section") or "")
+                      == str((store.get("settings") or {}).get("section") or ""))
+    favorite_synced = favorite_owned and favorite_state.get("status") == "synced"
     rows.append({
         "kind": "favorite", "kind_label": KIND_LABELS["favorite"], "key": "liked",
-        "playlist_id": favorite_playlist_id if favorite_synced else "",
+        "playlist_id": favorite_playlist_id if favorite_owned else "",
         "title": KIND_LABELS["favorite"], "count": None,
         "updated_at": 0, "manage_url": "",
         "status": "上次已同步 Plex" if favorite_synced else "未同步 Plex",
@@ -491,7 +491,7 @@ def favorite_playlist_detail(store, catalog=None):
         })
     return {
         "kind": "favorite", "key": "liked", "playlist_id": "",
-        "title": "我的最爱", "count": len(tracks), "tracks": tracks,
+        "title": "我喜欢", "count": len(tracks), "tracks": tracks,
         "unavailable_count": 0,
     }
 
@@ -578,7 +578,7 @@ def favorite_playlist_detail_for_profiles(profiles, runtime, current_profile_id)
             tracks.append({**row, "profile_id": profile_id, "position": len(tracks) + 1})
     return {
         "kind": "favorite", "key": "liked", "playlist_id": "",
-        "title": "我的最爱", "count": len(tracks), "tracks": tracks,
+        "title": "我喜欢", "count": len(tracks), "tracks": tracks,
         "unavailable_count": 0,
     }
 

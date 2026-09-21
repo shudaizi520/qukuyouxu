@@ -124,6 +124,24 @@ class PlaylistInventoryTests(unittest.TestCase):
         plex = _WritablePlex()
         return _Engine(store, plex), plex
 
+    def test_existing_plex_smart_favorites_can_be_read_but_not_edited_per_song(self):
+        from helper.playlist_hub import edit_playlist_track, playlist_detail
+
+        engine, plex = self.writable_engine()
+        engine.store.values["settings"] = {"section": "11"}
+        plex.playlist_source_section = lambda _pid: "11"
+        plex.rows[1]["title"] = "❤️我的最爱"
+        plex.views["11"]["title"] = "❤️我的最爱"
+        plex.views["11"]["items"][0]["library_section_id"] = "11"
+        detail = playlist_detail(engine, "plex", "11")
+        self.assertEqual("❤️我的最爱", detail["title"])
+        self.assertEqual(["10"], [row["id"] for row in detail["tracks"]])
+        for track_id, operation in (("20", "add"), ("10", "remove")):
+            with self.subTest(operation=operation):
+                with self.assertRaisesRegex(ValueError, "智能歌单不能逐首"):
+                    edit_playlist_track(engine, "plex", "11", track_id, operation)
+        self.assertEqual([], plex.mutations)
+
     def test_assistant_rows_win_by_rating_key_and_native_rows_become_custom(self):
         from helper.playlist_inventory import merge_playlist_rows
 
@@ -152,10 +170,10 @@ class PlaylistInventoryTests(unittest.TestCase):
         self.assertTrue(rows[2]["can_rename"])
         self.assertTrue(rows[2]["can_delete"])
 
-    def test_rating_based_favorite_hides_only_duplicate_plex_smart_entry(self):
+    def test_user_created_plex_favorites_remain_visible_beside_managed_favorites(self):
         from helper.playlist_inventory import merge_playlist_rows
 
-        assistant = [{"kind": "favorite", "key": "liked", "title": "我的最爱", "playlist_id": ""}]
+        assistant = [{"kind": "favorite", "key": "liked", "title": "我喜欢", "playlist_id": ""}]
         plex = [
             {"ratingKey": "10", "title": "❤️我的最爱", "playlistType": "audio", "smart": "1"},
             {"ratingKey": "11", "title": "我的最爱", "playlistType": "audio", "smart": "0"},
@@ -164,7 +182,9 @@ class PlaylistInventoryTests(unittest.TestCase):
 
         rows = merge_playlist_rows(assistant, plex)
 
-        self.assertEqual(["liked", "11", "12"], [row["key"] for row in rows])
+        self.assertEqual(["liked", "10", "11", "12"], [row["key"] for row in rows])
+        self.assertFalse(rows[1]["can_add_tracks"])
+        self.assertFalse(rows[1]["can_remove_tracks"])
 
     def test_malformed_native_updated_time_does_not_hide_playlist(self):
         from helper.playlist_inventory import normalize_native_playlist_rows
@@ -196,18 +216,18 @@ class PlaylistInventoryTests(unittest.TestCase):
         self.assertEqual("10", failed_rows[-1]["playlist_id"])
         self.assertTrue(failed_rows[-1]["stale"])
 
-    def test_cached_native_favorites_stay_hidden_when_plex_is_offline(self):
+    def test_cached_native_favorites_stay_visible_when_plex_is_offline(self):
         from helper.playlist_hub import playlist_rows
 
         store = _Store({"settings": {}, "playlist_native_cache_v1": [{
             "playlist_id": "10", "title": "❤️我的最爱", "source": "plex",
             "smart": True, "count": 12,
         }]})
-        assistant = [{"kind": "favorite", "key": "liked", "title": "我的最爱", "playlist_id": ""}]
+        assistant = [{"kind": "favorite", "key": "liked", "title": "我喜欢", "playlist_id": ""}]
         with patch("helper.playlist_hub.assistant_playlist_rows", return_value=assistant):
             rows = playlist_rows(_Engine(store, _Plex([], error=RuntimeError("offline"))))
 
-        self.assertEqual(["liked"], [row["key"] for row in rows])
+        self.assertEqual(["liked", "10"], [row["key"] for row in rows])
 
     def test_native_detail_filters_tracks_outside_the_selected_plex_library(self):
         from helper.playlist_hub import playlist_detail
