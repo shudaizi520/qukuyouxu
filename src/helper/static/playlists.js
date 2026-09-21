@@ -16,6 +16,8 @@ let unavailablePlaylists=new Set();
 let loadedProfileId='';
 let playlistRequest=0;
 let profileRequest=0;
+let likedRequest=0;
+const likedRequests=new Map();
 let playlistLoading=false;
 let noticeTimer=0;
 const WEB_PLAYER_KEY='pch-web-player-id';
@@ -69,6 +71,32 @@ function mediaUrl(type,track,context=current){
 }
 function playlistContext(item=current){return item?{kind:item.kind,key:item.key,profileId:loadedProfileId}:null;}
 
+async function setLiked(track,liked){
+ const trackId=String(track.id),profileId=loadedProfileId,profileGeneration=profileRequest,requestId=++likedRequest,previous=!!track.liked;
+ likedRequests.set(trackId,requestId);
+ track.liked=liked;
+ for(const row of tracks){if(String(row.id)===String(track.id))row.liked=liked;}
+ renderTracks();playlistPlayer.syncLiked(track);librarySearch.updateLiked(track.id,liked,liked?10:0);
+ try{
+  const result=await json('/api/playlists/tracks/liked','POST',{track_id:String(track.id),liked,confirm:true});
+  if(profileId!==loadedProfileId||profileGeneration!==profileRequest||likedRequests.get(trackId)!==requestId)return;
+  track.liked=!!result.liked;track.user_rating=result.user_rating;
+  for(const row of tracks){if(String(row.id)===String(track.id)){row.liked=track.liked;row.user_rating=result.user_rating;}}
+  if(current?.kind==='favorite'&&!track.liked){tracks=tracks.filter(row=>String(row.id)!==String(track.id));filtered=tracks.slice();}
+  const favorite=playlists.find(row=>row.kind==='favorite'&&row.key==='liked');
+  if(favorite&&previous!==track.liked)favorite.count=Math.max(0,Number(favorite.count||0)+(track.liked?1:-1));
+  renderTracks();renderPlaylistList();playlistPlayer.syncLiked(track);librarySearch.updateLiked(track.id,track.liked,result.user_rating);
+  likedRequests.delete(trackId);
+ }catch(error){
+  if(profileId===loadedProfileId&&profileGeneration===profileRequest&&likedRequests.get(trackId)===requestId){
+   track.liked=previous;for(const row of tracks){if(String(row.id)===String(track.id))row.liked=previous;}
+   renderTracks();playlistPlayer.syncLiked(track);librarySearch.updateLiked(track.id,previous,track.user_rating);
+   likedRequests.delete(trackId);
+  }
+  throw error;
+ }
+}
+
 function renderTracks(){
  const box=$('playlistTracks');box.replaceChildren();$('playlistEmpty').hidden=!!filtered.length;
  filtered.forEach(track=>{
@@ -82,16 +110,19 @@ function renderTracks(){
   const artist=document.createElement('span');artist.className='playlist-track-artist';artist.textContent=track.artist||'未知歌手';
   const album=document.createElement('span');album.className='playlist-track-album';album.textContent=track.album||'—';
   const duration=document.createElement('span');duration.className='playlist-track-duration';duration.textContent=formatTime(track.duration);
-  const remove=document.createElement('button');remove.type='button';remove.className='playlist-track-remove';remove.textContent='移除';remove.setAttribute('aria-label','从歌单移除 '+(track.title||'歌曲'));
-  remove.onclick=event=>{event.stopPropagation();action(()=>removeTrack(track));};
-  row.append(number,identity,artist,album,duration,remove);box.append(row);
+  const actions=document.createElement('span');actions.className='playlist-track-actions';
+  const heart=document.createElement('button');heart.type='button';heart.className='playlist-heart';heart.textContent=track.liked?'♥':'♡';heart.setAttribute('aria-pressed',String(!!track.liked));heart.setAttribute('aria-label',(track.liked?'取消喜欢 ':'喜欢 ')+(track.title||'歌曲'));
+  heart.onclick=event=>{event.stopPropagation();action(()=>setLiked(track,!track.liked));};actions.append(heart);
+  if(current?.can_remove_tracks){const remove=document.createElement('button');remove.type='button';remove.className='playlist-track-remove';remove.textContent='移除';remove.setAttribute('aria-label','从歌单移除 '+(track.title||'歌曲'));remove.onclick=event=>{event.stopPropagation();action(()=>removeTrack(track));};actions.append(remove);}
+  row.append(number,identity,artist,album,duration,actions);box.append(row);
  });
 }
 
-const playlistPlayer=createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange:renderTracks,reportPlayback:reportWebPlayback});
+const playlistPlayer=createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange:renderTracks,reportPlayback:reportWebPlayback,onLikedChange:(track,liked)=>action(()=>setLiked(track,liked))});
 function playingFrom(item){return playlistPlayer.isContext(playlistContext(item));}
 function renderPlaylistList(){
  playlistSections.setItems(playlists);
+ const view=workspace.current();if(view.type==='section')playlistSections.renderSection(view.section);
  workspace.renderNavigation();
 }
 
@@ -99,7 +130,7 @@ function setPlaylistLoading(value){
  playlistLoading=!!value;
  $('playlistView').classList.toggle('is-loading',value);$('playlistView').setAttribute('aria-busy',String(value));
  $('playlistTracks').inert=playlistLoading;
- $('playlistManage').disabled=playlistLoading;$('playlistRemove').disabled=playlistLoading;
+ $('playlistManage').disabled=playlistLoading;$('playlistRename').disabled=playlistLoading;$('playlistRemove').disabled=playlistLoading;
  $('playlistPlayAll').disabled=playlistLoading||!tracks.length;
 }
 function restoreCurrentPlaylistSelection(){
@@ -118,9 +149,9 @@ async function openPlaylist(item){
  try{
   const detail=await json('/api/playlists/'+encoded(item.kind)+'/'+encoded(item.key));if(requestId!==playlistRequest)return false;
   current=item;tracks=Array.isArray(detail.tracks)?detail.tracks:[];filtered=tracks.slice();unavailablePlaylists.delete(item.kind+'\t'+item.key);
-  $('playlistKind').textContent=item.kind_label;$('playlistTitle').textContent=detail.title;$('playlistSummary').textContent=tracks.length+' 首歌曲';
+  $('playlistKind').textContent=item.kind_label;$('playlistTitle').textContent=detail.title;$('playlistSummary').textContent=tracks.length+' 首歌曲'+(item.smart?' · 歌曲由 Plex 规则生成':'');
   $('playlistManage').hidden=!item.manage_url;$('playlistManage').textContent=item.kind==='daily'?'更新与规则':'管理';
-  $('playlistRemove').hidden=!item.can_delete;$('playlistPlayAll').disabled=!tracks.length;$('playlistEmpty').textContent='歌单里还没有歌曲';renderTracks();
+  $('playlistRename').hidden=!item.can_rename;$('playlistRemove').hidden=!item.can_delete;$('playlistPlayAll').disabled=!tracks.length;$('playlistEmpty').textContent='歌单里还没有歌曲';renderTracks();
  return true;
  }catch(error){
   if(requestId!==playlistRequest)return false;
@@ -150,15 +181,16 @@ async function loadProfiles(){
 }
 function resetPlaylistView(){
  workspace.reset();current=null;$('playlistKind').textContent='我的歌单';$('playlistTitle').textContent='正在载入歌单';$('playlistSummary').textContent='';
- $('playlistManage').hidden=true;$('playlistRemove').hidden=true;$('playlistPlayAll').disabled=true;$('playlistEmpty').textContent='正在读取这个账户的歌单…';
+ $('playlistManage').hidden=true;$('playlistRename').hidden=true;$('playlistRemove').hidden=true;$('playlistPlayAll').disabled=true;$('playlistEmpty').textContent='正在读取这个账户的歌单…';
 }
 function resetSession(){
- ++profileRequest;++playlistRequest;loadedProfileId='';profiles=[];playlists=[];current=null;tracks=[];filtered=[];unavailablePlaylists=new Set();
+ ++profileRequest;++playlistRequest;++likedRequest;likedRequests.clear();loadedProfileId='';profiles=[];playlists=[];current=null;tracks=[];filtered=[];unavailablePlaylists=new Set();
+ const renameDialog=$('playlistRenameDialog');if(renameDialog.open)renameDialog.close();
  playlistPlayer.stop();librarySearch.reset();setPlaylistLoading(false);resetPlaylistView();renderTracks();renderPlaylistList();setSidebarOpen(false);
 }
 async function switchProfile(profileId,persist=true){
  profileId=String(profileId||'');if(!profileId||profileId===loadedProfileId)return;
- const requestId=++profileRequest;++playlistRequest;loadedProfileId=profileId;$('playlistProfile').value=profileId;
+ const requestId=++profileRequest;++playlistRequest;++likedRequest;likedRequests.clear();loadedProfileId=profileId;$('playlistProfile').value=profileId;
  playlistPlayer.stop();librarySearch.reset();tracks=[];filtered=[];playlists=[];unavailablePlaylists=new Set();setPlaylistLoading(false);resetPlaylistView();renderTracks();renderPlaylistList();
  if(persist&&PCHAuth.profile()!==profileId)PCHAuth.setProfile(profileId);
  await loadPlaylists(undefined,requestId);
@@ -166,8 +198,9 @@ async function switchProfile(profileId,persist=true){
 async function removeTrack(track){
  if(!current)return;
  if(!await PCHUI.confirm('从“'+current.title+'”移除“'+track.title+'”？',{confirmText:'移除歌曲'}))return;
- const selected={...current};if(playingFrom(selected)&&String(track.id)===playlistPlayer.trackId())playlistPlayer.stop();
+ const profileId=loadedProfileId,requestId=profileRequest,selected={...current};if(playingFrom(selected)&&String(track.id)===playlistPlayer.trackId())playlistPlayer.stop();
  const result=await json('/api/playlists/tracks/edit','POST',{kind:selected.kind,key:selected.key,track_id:String(track.id),operation:'remove',confirm:true});
+ if(profileId!==loadedProfileId||requestId!==profileRequest)return;
  syncPlaylistCount(selected.kind,selected.key,result.count);
  notify('已从歌单移除');await openPlaylist(selected);
 }
@@ -191,6 +224,21 @@ function openWorkspacePage(url,title,type='tool',navigation=null){
  librarySearch.reset();setSidebarOpen(false);++playlistRequest;setPlaylistLoading(false);workspace.openPage(url,title,{type,navigation});
 }
 function openTool(url,title='创建与整理'){openWorkspacePage(url,title,'tool');}
+function openRenameDialog(){
+ if(!current?.can_rename)return;
+ $('playlistRenameInput').value=current.title||'';$('playlistRenameDialog').showModal();$('playlistRenameInput').focus();$('playlistRenameInput').select();
+}
+async function confirmRename(){
+ if(!current?.can_rename)return;
+ const title=$('playlistRenameInput').value.trim();if(!title||title.length>80)throw Error('歌单名称需为 1—80 个字');
+ const selected=current,profileId=loadedProfileId,requestId=playlistRequest;
+ $('playlistRenameConfirm').disabled=true;
+ try{
+  const result=await json('/api/playlists/rename','POST',{kind:selected.kind,key:selected.key,title,confirm:true});
+  if(profileId!==loadedProfileId||requestId!==playlistRequest||current!==selected)return;
+  selected.title=result.title||title;$('playlistTitle').textContent=selected.title;$('playlistRenameDialog').close();renderPlaylistList();notify('歌单已重命名');
+ }finally{$('playlistRenameConfirm').disabled=false;}
+}
 
 function setSidebarOpen(value){
  const compact=compactSidebar.matches,open=compact&&!!value;
@@ -208,6 +256,7 @@ function openSearchWorkspace(query){
 const librarySearch=createLibrarySearch({
  document,requestJson:json,getProfileId:()=>loadedProfileId,getPlaylists:()=>playlists,getCurrentPlaylist:()=>current,
  onPlayQueue:playlistPlayer.startQueue,onSearchStart:openSearchWorkspace,onBack:restorePlaylistView,notify,
+ onLikedChange:(track,liked)=>action(()=>setLiked(track,liked)),
  onPlaylistChanged:async(kind,key,count)=>{syncPlaylistCount(kind,key,count);if(current?.kind===kind&&current?.key===key)await openPlaylist(current);},
 });
 
@@ -218,11 +267,12 @@ function mount(){
  compactSidebar.addEventListener('change',()=>setSidebarOpen(false));setSidebarOpen(false);
  $('playlistProfile').onchange=()=>action(()=>switchProfile($('playlistProfile').value,true));
  $('workspaceHome').onclick=()=>openSection('smart');$('playlistPlayAll').onclick=()=>playlistPlayer.playAt(tracks,0,playlistContext());
- $('playlistManage').onclick=()=>{if(current?.manage_url)openWorkspacePage(current.manage_url,'管理“'+current.title+'”','tool',{type:'playlist',kind:current.kind,key:current.key});};
+  $('playlistManage').onclick=()=>{if(current?.manage_url)openWorkspacePage(current.manage_url,'管理“'+current.title+'”','tool',{type:'playlist',kind:current.kind,key:current.key});};
+ $('playlistRename').onclick=openRenameDialog;$('playlistRenameConfirm').onclick=()=>action(confirmRename);
  $('playlistRemove').onclick=()=>action(async()=>{
-  if(!current||!await PCHUI.confirm('确认删除 Plex 歌单“'+current.title+'”？',{confirmText:'删除歌单'}))return;
-  const selected={kind:current.kind,key:current.key};if(playingFrom(selected))playlistPlayer.stop();
-  const result=await json('/api/playlists/remove','POST',{kind:selected.kind,key:selected.key,title:current.title,confirm:true});notify(result.message);current=null;await loadPlaylists();
+  if(!current?.can_delete||!await PCHUI.confirm('确认删除歌单“'+current.title+'”？\n只删除歌单，不删除音乐文件。',{confirmText:'删除歌单'}))return;
+  const profileId=loadedProfileId,requestId=profileRequest,selected={kind:current.kind,key:current.key,title:current.title};if(playingFrom(selected))playlistPlayer.stop();
+  const result=await json('/api/playlists/remove','POST',{kind:selected.kind,key:selected.key,title:selected.title,confirm:true});if(profileId!==loadedProfileId||requestId!==profileRequest)return;notify(result.message);current=null;await loadPlaylists({section:'smart'},requestId);
  });
  $('playlistToolBack').onclick=()=>action(returnFromWorkspace);
  $('smartHubButton').onclick=()=>openSection('smart');$('libraryHubButton').onclick=()=>openSection('library');

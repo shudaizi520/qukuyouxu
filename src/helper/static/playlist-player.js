@@ -1,12 +1,13 @@
 const byId=(document,id)=>document.getElementById(id);
 const PROGRESS_INTERVAL=15;
 
-export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange=()=>{},reportPlayback=()=>Promise.resolve()}){
+export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange=()=>{},reportPlayback=()=>Promise.resolve(),onLikedChange=()=>Promise.resolve()}){
  const audio=byId(document,'playerAudio');
  const artwork=byId(document,'playerArtwork');
  const player=byId(document,'playlistPlayer');
  const playerToggle=byId(document,'playerToggle');
  const playerMute=byId(document,'playerMute');
+ const playerLiked=byId(document,'playerLiked');
  const playerVolume=byId(document,'playerVolume');
  let queue=[];
  let context=null;
@@ -82,6 +83,13 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
  function syncVolumeState(){
   const muted=audio.muted||audio.volume===0;setMuted(muted);
  }
+ function syncLiked(track){
+  const trackId=String(track?.id||'');
+  if(trackId){for(const row of queue){if(String(row?.id||'')===trackId){row.liked=!!track.liked;row.user_rating=track.user_rating;}}}
+  const active=queue[queueIndex],liked=!!active?.liked,label=liked?'取消喜欢':'喜欢';
+  playerLiked.textContent=liked?'♥':'♡';playerLiked.setAttribute('aria-pressed',String(liked));playerLiked.setAttribute('aria-label',label);playerLiked.title=label;
+  playerLiked.disabled=!active||context?.kind==='preview'||!String(active.id||'').match(/^\d+$/);
+ }
  function showFeedback(message=''){
   const title=byId(document,'playerTitle').textContent||'这首歌';
   byId(document,'playerFeedbackMessage').textContent=message||'无法播放《'+title+'》，你可以重试或播放下一首。';
@@ -154,7 +162,7 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
   byId(document,'playerTitle').textContent=track.title||'未知歌曲';
   byId(document,'playerArtist').textContent=track.artist||'未知歌手';
   byId(document,'playerQueue').textContent=(index+1)+' / '+queue.length;
-  updateArtwork(track);onStateChange();replaceSource(autoplay,true);
+  updateArtwork(track);syncLiked(track);onStateChange();replaceSource(autoplay,true);
  }
  function startQueue(items,index,candidate){
   finishCurrent('stop');queue=Array.isArray(items)?items.slice():[];context={...candidate};startQueueTrack(index,true,false);
@@ -187,7 +195,7 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
   queue=[];context=null;queueIndex=-1;activeTrackId='';activeSource='';sourceOffset=0;trackDuration=0;retryCount=0;recoveryPending=false;resettingSource=false;
   hasReportedPlay=false;terminalReported=false;lastProgressReport=0;
   clearFeedback();updateArtwork(null);byId(document,'playerTitle').textContent='未播放';byId(document,'playerArtist').textContent='请选择歌曲';byId(document,'playerQueue').textContent='0 / 0';
-  byId(document,'playerCurrent').textContent='0:00';byId(document,'playerDuration').textContent='0:00';byId(document,'playerSeek').value='0';setPlaying(false);onStateChange();
+  byId(document,'playerCurrent').textContent='0:00';byId(document,'playerDuration').textContent='0:00';byId(document,'playerSeek').value='0';syncLiked(null);setPlaying(false);onStateChange();
  }
  function playPreview(track){
   if(!track?.source)return;
@@ -202,15 +210,16 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
   byId(document,'playerToggle').onclick=()=>{if(audio.paused)attemptPlay();else audio.pause();};
   byId(document,'playerPrevious').onclick=playPrevious;byId(document,'playerNext').onclick=playNext;
   byId(document,'playerRetry').onclick=retryNow;
+  playerLiked.onclick=()=>{const track=queue[queueIndex];if(track&&!playerLiked.disabled)onLikedChange(track,!track.liked);};
   byId(document,'playerErrorNext').onclick=()=>{clearFeedback();playNext();};
   byId(document,'playerSeek').oninput=()=>{if(trackDuration)seekTo(trackDuration*Number(byId(document,'playerSeek').value)/1000);};
   playerVolume.oninput=()=>{audio.volume=Number(playerVolume.value);if(audio.volume>0)lastAudibleVolume=audio.volume;audio.muted=audio.volume===0;syncVolumeState();};
   playerMute.onclick=()=>{if(audio.muted||audio.volume===0){if(audio.volume===0){audio.volume=lastAudibleVolume;playerVolume.value=String(lastAudibleVolume);}audio.muted=false;}else audio.muted=true;syncVolumeState();};
-  syncVolumeState();
+  syncLiked(null);syncVolumeState();
  }
 
  return {
-  mount,startQueue,playAt,playPreview,playNext,playPrevious,stop,flush,
+  mount,startQueue,playAt,playPreview,playNext,playPrevious,stop,flush,syncLiked,
   paused:()=>audio.paused,trackId:()=>activeTrackId,
   isContext:sameContext,
   isPlayingTrack:(track,candidate)=>sameContext(candidate)&&String(track?.id)===activeTrackId,

@@ -500,7 +500,9 @@ class PlaylistHubPageTests(unittest.TestCase):
         )[0]
         self.assertIn("artist.className='playlist-track-artist'", render_tracks)
         append = render_tracks.split("row.append(", 1)[1].split(")", 1)[0]
-        self.assertEqual("number,identity,artist,album,duration,remove", append)
+        self.assertEqual("number,identity,artist,album,duration,actions", append)
+        self.assertIn("actions.append(heart)", render_tracks)
+        self.assertIn("current?.can_remove_tracks", render_tracks)
 
     def test_track_columns_compact_before_the_sidebar_can_clip_the_action_column(self):
         styles = (STATIC / "product.css").read_text(encoding="utf-8")

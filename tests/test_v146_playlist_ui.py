@@ -1,5 +1,6 @@
 import sys
 import unittest
+import re
 from pathlib import Path
 
 
@@ -43,6 +44,40 @@ class PlaylistSectionUiTests(unittest.TestCase):
     def test_new_module_is_served_by_the_static_allowlist(self):
         web = (ROOT / "src/helper/web.py").read_text(encoding="utf-8")
         self.assertIn("'playlist-sections.js'", web)
+
+    def test_ui_has_one_binary_heart_and_no_rating_selector(self):
+        page = (STATIC / "playlists.html").read_text(encoding="utf-8")
+        script = (STATIC / "playlists.js").read_text(encoding="utf-8")
+        self.assertEqual(1, page.count('id="playerLiked"'))
+        self.assertIn("track.liked?'♥':'♡'", script)
+        self.assertIsNone(re.search(r"rating-slider|rating-select|playerStars", page + script))
+
+    def test_search_targets_only_accept_capable_playlists(self):
+        script = (STATIC / "playlist-search.js").read_text(encoding="utf-8")
+        self.assertIn("row=>row.playlist_id&&row.can_add_tracks", script)
+        self.assertIn("当前没有可添加歌曲的普通歌单", script)
+
+    def test_controls_follow_backend_capabilities_and_warn_before_delete(self):
+        page = (STATIC / "playlists.html").read_text(encoding="utf-8")
+        script = (STATIC / "playlists.js").read_text(encoding="utf-8")
+        self.assertEqual(1, page.count('id="playlistRename"'))
+        self.assertEqual(1, page.count('id="playlistRenameDialog"'))
+        self.assertIn("item.can_rename", script)
+        self.assertIn("item.can_delete", script)
+        self.assertIn("current?.can_remove_tracks", script)
+        self.assertIn("只删除歌单，不删除音乐文件", script)
+        self.assertIn("/api/playlists/rename", script)
+
+    def test_liked_responses_are_profile_and_generation_guarded_with_rollback(self):
+        script = (STATIC / "playlists.js").read_text(encoding="utf-8")
+        liked = script.split("async function setLiked(track,liked)", 1)[1].split(
+            "function renderTracks", 1
+        )[0]
+        self.assertIn("requestId=++likedRequest", liked)
+        self.assertGreaterEqual(liked.count("profileId===loadedProfileId"), 1)
+        self.assertIn("likedRequests.get(trackId)===requestId", liked)
+        self.assertIn("profileGeneration===profileRequest", liked)
+        self.assertIn("track.liked=previous", liked)
 
 
 if __name__ == "__main__":
