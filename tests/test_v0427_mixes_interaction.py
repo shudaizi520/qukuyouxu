@@ -83,8 +83,8 @@ class SmartMixInteractionV0427Tests(unittest.TestCase):
 
     def test_page_requests_the_new_script_and_styles_instead_of_cached_v0424_assets(self):
         page = (STATIC / "mixes.html").read_text(encoding="utf-8")
-        self.assertIn('/static/product.css?v=1.4.16', page)
-        self.assertIn('/static/mixes.js?v=1.4.16', page)
+        self.assertIn('/static/product.css?v=1.4.17', page)
+        self.assertIn('/static/mixes.js?v=1.4.17', page)
 
 
 if __name__ == "__main__":
