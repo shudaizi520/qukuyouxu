@@ -16,10 +16,13 @@ let loadedProfileId='';
 let playlistRequest=0;
 let profileRequest=0;
 let playlistLoading=false;
+let noticeTimer=0;
 
-function notify(message,error=false){
+function notify(message,error=false,timeout=0){
+ clearTimeout(noticeTimer);
  const node=$('playlistNotice');
  node.hidden=!message;node.textContent=message||'';node.className='notice'+(error?' error':'');
+ if(message&&timeout>0)noticeTimer=setTimeout(()=>{if(node.textContent===message){node.hidden=true;node.textContent='';}},timeout);
 }
 async function action(fn){
  try{return await (window.PCHUI?PCHUI.run(fn):fn());}
@@ -195,7 +198,7 @@ function setSidebarOpen(value){
  $('playlistSidebarToggle').setAttribute('aria-label',open?'关闭歌单导航':'打开歌单导航');
 }
 function openSearchWorkspace(query){
- setSidebarOpen(false);++playlistRequest;setPlaylistLoading(false);
+ notify('');setSidebarOpen(false);++playlistRequest;setPlaylistLoading(false);
  workspace.show({type:'search',query,panel:'search'});
 }
 

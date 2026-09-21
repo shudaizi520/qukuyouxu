@@ -86,7 +86,10 @@ export function createLibrarySearch({
   requestGeneration+=1;results=[];pendingTrack=null;byId(document,'librarySearchInput').value='';
   const dialog=byId(document,'librarySearchDialog');if(dialog.open)dialog.close();
  }
- function focus(){byId(document,'librarySearchInput').focus();byId(document,'librarySearchInput').select();}
+ function focus(){
+  const input=byId(document,'librarySearchInput');input.focus();input.select();
+  notify('输入歌名、歌手或专辑，在结果中选择“添加到歌单”。',false,6000);
+ }
  function mount(){
   byId(document,'librarySearchForm').onsubmit=event=>{event.preventDefault();run(byId(document,'librarySearchInput').value).catch(error=>notify(error.message||'搜索失败',true));};
   byId(document,'librarySearchBack').onclick=onBack;

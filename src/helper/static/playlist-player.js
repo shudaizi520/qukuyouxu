@@ -55,7 +55,8 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
   playerToggle.setAttribute('aria-label',value?'暂停':'播放');
  }
  function setMuted(value){
-  player.dataset.muted=String(value);playerMute.setAttribute('aria-label',value?'取消静音':'静音');
+  const label=value?'取消静音':'静音';player.dataset.muted=String(value);
+  playerMute.setAttribute('aria-label',label);playerMute.title=label;
  }
  function syncVolumeState(){
   const muted=audio.muted||audio.volume===0;setMuted(muted);

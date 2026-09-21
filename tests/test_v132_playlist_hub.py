@@ -464,6 +464,42 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn("const muted=audio.muted||audio.volume===0", sync)
         self.assertIn("setMuted(muted)", sync)
 
+    def test_mute_icon_has_cross_and_synced_accessible_state(self):
+        page = (STATIC / "playlists.html").read_text(encoding="utf-8")
+        player = (STATIC / "playlist-player.js").read_text(encoding="utf-8")
+        styles = (STATIC / "product.css").read_text(encoding="utf-8")
+        mute = page.split('id="playerMute"', 1)[1].split("</button>", 1)[0]
+        self.assertIn('class="player-icon-mute-waves"', mute)
+        self.assertIn('class="player-icon-mute-cross"', mute)
+        set_muted = player.split("function setMuted(value)", 1)[1].split(
+            "function syncVolumeState", 1
+        )[0]
+        self.assertIn("player.dataset.muted=String(value)", set_muted)
+        self.assertIn("playerMute.setAttribute('aria-label',label)", set_muted)
+        self.assertIn("playerMute.title=label", set_muted)
+        self.assertIn(".player-icon-mute-cross{display:none}", styles)
+        self.assertIn("[data-muted=true] .player-icon-mute-waves{display:none}", styles)
+        self.assertIn("[data-muted=true] .player-icon-mute-cross{display:block}", styles)
+
+    def test_search_library_add_focuses_and_explains_next_step(self):
+        page = (STATIC / "playlists.html").read_text(encoding="utf-8")
+        search = (STATIC / "playlist-search.js").read_text(encoding="utf-8")
+        script = (STATIC / "playlists.js").read_text(encoding="utf-8")
+        self.assertIn('id="playlistAddTrack"', page)
+        add_button = page.split('id="playlistAddTrack"', 1)[1].split(
+            "</button>", 1
+        )[0]
+        self.assertIn("搜索全库添加", add_button)
+        focus = search.split("function focus()", 1)[1].split(
+            "function mount", 1
+        )[0]
+        self.assertIn("input.focus()", focus)
+        self.assertIn("input.select()", focus)
+        self.assertIn("输入歌名、歌手或专辑", focus)
+        self.assertIn("在结果中选择“添加到歌单”", focus)
+        self.assertIn("6000", focus)
+        self.assertIn("noticeTimer", script)
+
     def test_track_header_and_rows_keep_song_artist_and_album_in_separate_columns(self):
         page = (STATIC / "playlists.html").read_text(encoding="utf-8")
         script = (STATIC / "playlists.js").read_text(encoding="utf-8")
