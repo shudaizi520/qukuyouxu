@@ -176,11 +176,10 @@ def playlist_rows(engine, hidden_playlist_ids=()):
             if section and row.get("smart") and str(row.get("source_section") or "") != section:
                 continue
             cached.append({**row, "stale": True})
-        owned = {
-            str(row.get("playlist_id")) for row in assistant
-            if str(row.get("playlist_id") or "")
-        }
-        return [*assistant, *(row for row in cached if str(row.get("playlist_id")) not in owned)]
+        return [
+            {**row, "stale": True} if row.get("source") == "plex" else row
+            for row in merge_playlist_rows(assistant, cached)
+        ]
 
 
 def _native_playlist(plex, playlist_id, section="", hidden_playlist_ids=()):
@@ -532,7 +531,10 @@ def create_manual_playlist(engine, title):
         raise ValueError("歌单名称需为 1—80 个字，且不能包含控制字符")
     store = engine.store
     plex = engine.plex_factory(store.get("settings"))
-    state = plex.create_blank(title)
+    try:
+        state = plex.create_blank(title, (store.get("settings") or {}).get("section"))
+    except PlexError as exc:
+        raise SafetyError(str(exc)[:300]) from None
     playlist_id = str(state.get("id") or "")
     if not playlist_id.isdigit() or state.get("smart") or state.get("items"):
         raise SafetyError("Plex 创建结果需要核对；不会自动重试创建")
@@ -812,6 +814,7 @@ def _remove_daily(engine, confirm_title, now=None):
         store.set_many({
             "daily_managed": None, "daily_plan": None, "daily_published_view": None,
             "daily_settings": settings, "daily_auto_suspension": None,
+            "daily_auto_opt_out": True,
         })
         store.log("已从首页删除每日推荐歌单：" + title)
         return {"message": "已从 Plex 删除该歌单；音乐文件未删除。"}

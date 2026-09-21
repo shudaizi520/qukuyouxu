@@ -164,7 +164,7 @@ class ManualPlaylistTests(unittest.TestCase):
             def __init__(self):
                 self.created = []
 
-            def create_blank(self, title):
+            def create_blank(self, title, section):
                 self.created.append(title)
                 return {"id": "721", "title": title, "smart": False, "items": []}
 
@@ -206,7 +206,7 @@ class ManualPlaylistTests(unittest.TestCase):
             self.assertEqual({"kind": "plex", "key": "721", "title": "周末听歌"}, json.loads(payload))
             self.assertEqual(["周末听歌"], plex.created)
 
-    def test_plex_blank_creation_does_not_attach_an_arbitrary_song(self):
+    def test_plex_blank_creation_removes_its_temporary_seed_track(self):
         from xml.etree import ElementTree as ET
         from helper.clients import PlexClient
 
@@ -217,13 +217,46 @@ class ManualPlaylistTests(unittest.TestCase):
 
         def request(path, method="GET", params=None):
             calls.append((path, method, params))
-            return ET.fromstring('<MediaContainer><Playlist ratingKey="721"/></MediaContainer>')
+            if path == "/playlists" and method == "POST":
+                if not params.get("uri"):
+                    raise AssertionError("this Plex server rejects missing uri")
+                return ET.fromstring('<MediaContainer><Playlist ratingKey="721"/></MediaContainer>')
+            return ET.fromstring('<MediaContainer><Track ratingKey="10"/></MediaContainer>')
 
         client._xml = request
-        client.playlist_state = lambda _playlist_id: self.fail("must retain the returned ID without an immediate read")
-        result = create_blank(client, "周末听歌")
+        client._uri = lambda ids: "server://test/metadata/" + ",".join(ids)
+        client.read_playlist_until = lambda _id, predicate: {
+            "id": "721", "title": "周末听歌", "smart": False,
+            "items": [] if any(call[1] == "DELETE" for call in calls)
+            else [{"id": "10", "item_id": "100"}],
+        }
+        result = create_blank(client, "周末听歌", "11")
         self.assertEqual("721", result["id"])
-        self.assertEqual([("/playlists", "POST", {"title": "周末听歌", "type": "audio", "smart": 0})], calls)
+        self.assertEqual([], result["items"])
+        self.assertEqual("server://test/metadata/10", next(
+            params["uri"] for path, method, params in calls
+            if path == "/playlists" and method == "POST"
+        ))
+        self.assertIn(("/playlists/721/items", "DELETE", None), calls)
+
+    def test_plex_rejection_of_create_is_reported_without_generic_500(self):
+        from helper.clients import PlexError
+        from helper.engine import SafetyError
+        from helper.playlist_hub import create_manual_playlist
+
+        class Plex:
+            def create_blank(self, title, section):
+                raise PlexError("Plex返回HTTP 400，空歌单创建失败")
+
+        class Engine:
+            def __init__(self):
+                self.store = type("Store", (), {"get": lambda _self, _key: {"section": "11"}})()
+
+            def plex_factory(self, _settings):
+                return Plex()
+
+        with self.assertRaisesRegex(SafetyError, "Plex返回HTTP 400"):
+            create_manual_playlist(Engine(), "周末听歌")
 
     def test_blank_plex_playlist_is_created_and_scoped_to_its_profile(self):
         from helper import playlist_hub
@@ -236,7 +269,7 @@ class ManualPlaylistTests(unittest.TestCase):
             def __init__(self):
                 self.titles = []
 
-            def create_blank(self, title):
+            def create_blank(self, title, section):
                 self.titles.append(title)
                 return {"id": "721", "title": title, "smart": False, "items": []}
 
@@ -269,7 +302,7 @@ class ManualPlaylistTests(unittest.TestCase):
         class Plex:
             creates = 0
 
-            def create_blank(self, title):
+            def create_blank(self, title, section):
                 self.creates += 1
                 return {"id": "721", "title": title, "smart": False, "items": []}
 

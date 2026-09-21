@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 import sys
+from html.parser import HTMLParser
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -414,6 +415,38 @@ class PlaylistHubPageTests(unittest.TestCase):
             self.assertNotIn(f"textContent='{glyph}'", player_script)
         self.assertIn("playerToggle.dataset.state='playing'", player_script)
         self.assertIn("playerToggle.dataset.state='paused'", player_script)
+
+    def test_volume_control_sits_with_center_playback_buttons(self):
+        class Parents(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.stack = []
+                self.ancestors = []
+
+            def handle_starttag(self, tag, attrs):
+                attributes = dict(attrs)
+                if attributes.get("id") == "playerMute":
+                    self.ancestors = [node.get("class", "") for node in self.stack]
+                if tag not in {"input", "img", "br", "hr", "meta", "link"}:
+                    self.stack.append(attributes)
+
+            def handle_endtag(self, tag):
+                if self.stack:
+                    self.stack.pop()
+
+        parser = Parents()
+        parser.feed((STATIC / "playlists.html").read_text(encoding="utf-8"))
+        self.assertIn("playlist-player-center", parser.ancestors)
+        self.assertNotIn("playlist-player-tools", parser.ancestors)
+
+    def test_dragging_seek_does_not_outline_the_whole_rail(self):
+        styles = (STATIC / "product.css").read_text(encoding="utf-8")
+        selector = ".playlist-player .playlist-progress-rail input[type=range]:focus{"
+        self.assertIn("outline:none", styles.split(selector, 1)[1].split("}", 1)[0])
+        self.assertIn(
+            ".playlist-progress-rail input[type=range]:focus-visible::-webkit-slider-thumb",
+            styles,
+        )
 
     def test_volume_panel_opens_for_pointer_hover_and_keyboard_focus(self):
         styles = (STATIC / "product.css").read_text(encoding="utf-8")

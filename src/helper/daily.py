@@ -28,6 +28,22 @@ def active_daily_blocks(plan):
     return [reason for reason in (plan.get('blocked') or []) if reason != OBSOLETE_SAME_NAME_BLOCK]
 
 
+def claimed_by_another_profile(store, playlist_id, machine):
+    registry = getattr(store, 'registry', None)
+    base = getattr(store, 'base', None)
+    if registry is None or base is None:
+        return False
+    from .scoped_store import ScopedStore
+    for profile in registry.list_public(enabled_only=False):
+        if profile['id'] == store.profile_id:
+            continue
+        record = ScopedStore(base, profile['id']).get('daily_managed') or {}
+        if (str(record.get('id') or '') == str(playlist_id)
+                and (not record.get('machine') or record.get('machine') == machine)):
+            return True
+    return False
+
+
 def rolling_preserve_ids(before, tracks, behavior_events, published_at, history=None,
                          max_consecutive=2):
     """Keep current playlist members that have no play/skip signal after publish."""
@@ -157,11 +173,29 @@ class DailyMixin:
             except Exception as exc:
                 blocked.append(safe_error(exc))
         else:
-            same_name = next((row for row in p.playlists() if row.get('title') == target_title), None)
+            playlists = p.playlists()
+            same_name = next((row for row in playlists if row.get('title') == target_title), None)
             same_name_id = str((same_name or {}).get('id') or (same_name or {}).get('ratingKey') or '')
+            derived_target = False
+            if (same_name_id and not self.store.get('daily_playlist_target')
+                    and claimed_by_another_profile(self.store, same_name_id, identity['machine'])):
+                # One Plex account can expose several music libraries. Keep the
+                # first library's existing list and give this library a stable,
+                # distinct target instead of adopting the other library's list.
+                target_title = '每日推荐·曲库' + str(cfg['section'])
+                self.store.set('daily_playlist_target', {
+                    'title': target_title, 'scope': self.daily_scope(),
+                    'machine': identity['machine'],
+                })
+                derived_target = True
+                same_name = next((row for row in playlists if row.get('title') == target_title), None)
+                same_name_id = str((same_name or {}).get('id') or (same_name or {}).get('ratingKey') or '')
             if same_name_id:
                 candidate = p.playlist_state(same_name_id)
-                if (self.marker(DAILY_CID) in candidate.get('summary', '')
+                if (derived_target or claimed_by_another_profile(
+                        self.store, same_name_id, identity['machine'])):
+                    blocked.append('同名每日推荐已由其他曲库管理，不会接管或覆盖')
+                elif (self.marker(DAILY_CID) in candidate.get('summary', '')
                         or legacy_pch_marker(candidate.get('summary', ''), DAILY_CID)):
                     before = candidate
                 else:
@@ -257,6 +291,8 @@ class DailyMixin:
         before = plan['before']
         managed = self.store.get('daily_managed')
         if before:
+            if claimed_by_another_profile(self.store, before['id'], plan['machine']):
+                raise SafetyError('这张每日歌单已由其他曲库管理，不会接管或覆盖')
             current = p.playlist_state(before['id'])
             if fingerprint(current) != fingerprint(before):
                 raise SafetyError('每日歌单在预览后被修改，不覆盖')
@@ -314,7 +350,7 @@ class DailyMixin:
                 original = {str(row.get('id')): row for row in plan.get('items', []) or []}
                 plan['items'] = [dict(original.get(track_id) or by_id.get(track_id) or {'id': track_id}) for track_id in ids]
             published = published_daily_view(plan, after, now)
-            self.store.set_many({'daily_managed': record, 'daily_history': history[-90:], 'daily_plan': plan, 'daily_published_view': published, 'daily_auto_suspension': None})
+            self.store.set_many({'daily_managed': record, 'daily_history': history[-90:], 'daily_plan': plan, 'daily_published_view': published, 'daily_auto_suspension': None, 'daily_auto_opt_out': False})
             self.store.log('每日推荐已发布：' + str(len(ids)) + '首；歌单ID保留用于后续更新')
             return plan['result']
         except Exception as exc:
@@ -476,7 +512,7 @@ class DailyMixin:
                     'retry_at': number_time(self.store.get('daily_last_attempt')) + 1800,
                 }
             scheduled_ready = bool(
-                scheduled and daily['enabled'] and self.store.get('daily_managed')
+                scheduled and daily['enabled'] and not self.store.get('daily_auto_opt_out')
                 and self.store.get('daily_auto_checked_date') != day_at(now)
             )
             if not scheduled_ready and not self.daily_due(now, schedule=schedule):
@@ -495,6 +531,6 @@ class DailyMixin:
             if plan.get('rolling', {}).get('unchanged'):
                 self.store.set('daily_plan', None)
                 return {'message': '没有新的播放进度，今日推荐保持不变', 'unchanged': True}
-            return self._publish_daily(plan['id'], time.time())
+            return self._publish_daily(plan['id'], now)
 from .restart import daily_target_title, validate_daily_target
 from .rotation import recommend_rotating, save_rotating_plan

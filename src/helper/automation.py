@@ -18,7 +18,7 @@ DEFAULT_AUTOMATION = {
     "version": 1,
     "revision": 1,
     "migrated": True,
-    "daily": {"enabled": False, "hour": 6},
+    "daily": {"enabled": True, "hour": 6},
     "smart": {"enabled": False, "interval_days": 7, "hour": 3},
     "library": {"enabled": False, "hour": 0},
 }
@@ -36,7 +36,7 @@ def _legacy_settings(registry, runtime):
     active_id = registry.active_id()
     active = runtime.engine(active_id).store
     active_daily = dict(active.get("daily_settings", {}) or {})
-    daily_enabled = False
+    daily_enabled = True
     smart_enabled = False
     library_enabled = False
     for profile in profiles:
@@ -59,6 +59,13 @@ def automation_settings(base_store, registry, runtime, now=None):
     saved = base_store.get(AUTOMATION_KEY)
     if not isinstance(saved, dict) or saved.get("version") != 1:
         saved = _legacy_settings(registry, runtime)
+        base_store.set(AUTOMATION_KEY, saved)
+    elif saved.get("revision") == 1 and not (saved.get("daily") or {}).get("enabled"):
+        # The original untouched schedule defaulted to off, even though every
+        # profile showed a daily entry. Explicit user changes increment revision.
+        saved = copy.deepcopy(saved)
+        saved["daily"]["enabled"] = True
+        saved["revision"] = 2
         base_store.set(AUTOMATION_KEY, saved)
     return _public(saved)
 
@@ -106,7 +113,7 @@ def save_automation_settings(base_store, payload, now=None):
     del now
     values = _validated_payload(payload)
     previous = base_store.get(AUTOMATION_KEY, {}) or {}
-    revision = max(0, int(previous.get("revision") or 0)) + 1
+    revision = max(1, int(previous.get("revision") or 0)) + 1
     saved = {"version": 1, "revision": revision, "migrated": True, **values}
     base_store.set(AUTOMATION_KEY, saved)
     return _public(saved)
@@ -147,7 +154,19 @@ def ensure_profile_schedule(store, settings, now):
             tasks[task] = {"config": config, "next_at": next_at, "slot": next_at}
         else:
             tasks[task] = {**previous, "config": config}
-    state = {"revision": settings["revision"], "tasks": tasks}
+    profile = store.get("settings", {}) or {}
+    bootstrap_scheduled = bool(state.get("daily_bootstrap_scheduled"))
+    if (settings["daily"]["enabled"] and not bootstrap_scheduled
+            and not store.get("daily_managed")
+            and not store.get("daily_auto_opt_out")
+            and not store.get("daily_last_attempt")
+            and profile.get("plex_url") and profile.get("plex_token")
+            and profile.get("section")):
+        tasks["daily"]["next_at"] = float(now)
+        tasks["daily"]["slot"] = float(now)
+        bootstrap_scheduled = True
+    state = {"revision": settings["revision"], "tasks": tasks,
+             "daily_bootstrap_scheduled": bootstrap_scheduled}
     store.set(PROFILE_STATE_KEY, state)
     return state
 

@@ -229,9 +229,21 @@ class ProfileRuntime:
                 for record in managed.values()
             )
             return own_categories or ExternalRepository(engine.store).has_managed(profile_id)
+        if task == "daily":
+            if engine.store.get("daily_auto_opt_out"):
+                return False
+            if engine.store.get("daily_managed"):
+                return True
+            if any(row.get("kind") == "daily_remove" and row.get("status") == "applied"
+                   for row in engine.store.get("snapshots", []) or [] if isinstance(row, dict)):
+                return False
+            settings = engine.store.get("settings", {}) or {}
+            return bool(
+                settings.get("plex_url") and settings.get("plex_token")
+                and settings.get("section")
+            )
         keys = {
             "smart": "smart_mix_managed",
-            "daily": "daily_managed",
         }
         if engine.store.get(keys[task], {}) or {}:
             return True

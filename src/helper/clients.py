@@ -519,15 +519,38 @@ class PlexClient:
         self.append(pid,ids[100:])
         return self.playlist_state(pid)
 
-    def create_blank(self,title):
-        """Create an empty ordinary Plex playlist without borrowing a library track."""
-        root=self._xml('/playlists','POST',{'title':title,'type':'audio','smart':0})
+    def create_blank(self,title,section):
+        """Create an ordinary playlist and verify its temporary seed is removed."""
+        section=str(section or '')
+        if not section.isdigit():raise PlexError('先选择一个 Plex 音乐资料库')
+        root=self._xml(f'/library/sections/{section}/all',params={
+            'type':10,'X-Plex-Container-Start':0,'X-Plex-Container-Size':1,
+        })
+        track=root.find('Track')
+        seed_id=str(track.get('ratingKey') or '') if track is not None else ''
+        if not seed_id.isdigit():raise PlexError('当前曲库没有可用于创建歌单的歌曲')
+        root=self._xml('/playlists','POST',{
+            'title':title,'type':'audio','smart':0,'uri':self._uri([seed_id]),
+        })
         el=root.find('Playlist')
         if el is None or not str(el.get('ratingKey') or '').isdigit():
             raise PlexError('创建歌单未返回ID，请核对 Plex；不会自动重试创建')
-        # Keep the returned ID even when Plex has not made the new playlist readable yet.
-        return {'id':str(el.get('ratingKey')),'title':el.get('title') or title,
-                'smart':el.get('smart')=='1','items':[]}
+        pid=str(el.get('ratingKey'))
+        try:
+            seeded=self.read_playlist_until(pid,lambda row:
+                row.get('title')==title and not row.get('smart')
+                and [str(item.get('id')) for item in row.get('items',[])]==[seed_id])
+            if (seeded.get('title')!=title or seeded.get('smart')
+                    or [str(item.get('id')) for item in seeded.get('items',[])]!=[seed_id]):
+                raise PlexError('Plex 创建结果与预期不符')
+            self._xml(f'/playlists/{pid}/items','DELETE')
+            empty=self.read_playlist_until(pid,lambda row:row.get('title')==title
+                                         and not row.get('smart') and not row.get('items'))
+            if empty.get('title')!=title or empty.get('smart') or empty.get('items'):
+                raise PlexError('Plex 没有确认歌单已清空')
+            return empty
+        except PlexError as exc:
+            raise PlexError(f'Plex 已创建歌单 {pid}，但清空未确认：{exc}；请在 Plex 中核对，勿重复创建') from None
 
     def append(self,pid,ids):
         for i in range(0,len(ids),100):self._xml(f'/playlists/{pid}/items','PUT',{'uri':self._uri(ids[i:i+100])})

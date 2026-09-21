@@ -142,6 +142,20 @@ class PlaylistInventoryTests(unittest.TestCase):
         self.assertTrue(rows[2]["can_rename"])
         self.assertTrue(rows[2]["can_delete"])
 
+    def test_rating_based_favorite_hides_only_duplicate_plex_smart_entry(self):
+        from helper.playlist_inventory import merge_playlist_rows
+
+        assistant = [{"kind": "favorite", "key": "liked", "title": "我的最爱", "playlist_id": ""}]
+        plex = [
+            {"ratingKey": "10", "title": "❤️我的最爱", "playlistType": "audio", "smart": "1"},
+            {"ratingKey": "11", "title": "我的最爱", "playlistType": "audio", "smart": "0"},
+            {"ratingKey": "12", "title": "最爱现场", "playlistType": "audio", "smart": "1"},
+        ]
+
+        rows = merge_playlist_rows(assistant, plex)
+
+        self.assertEqual(["liked", "11", "12"], [row["key"] for row in rows])
+
     def test_malformed_native_updated_time_does_not_hide_playlist(self):
         from helper.playlist_inventory import normalize_native_playlist_rows
 
@@ -171,6 +185,19 @@ class PlaylistInventoryTests(unittest.TestCase):
         self.assertEqual(cached, store.get("playlist_native_cache_v1"))
         self.assertEqual("10", failed_rows[-1]["playlist_id"])
         self.assertTrue(failed_rows[-1]["stale"])
+
+    def test_cached_native_favorites_stay_hidden_when_plex_is_offline(self):
+        from helper.playlist_hub import playlist_rows
+
+        store = _Store({"settings": {}, "playlist_native_cache_v1": [{
+            "playlist_id": "10", "title": "❤️我的最爱", "source": "plex",
+            "smart": True, "count": 12,
+        }]})
+        assistant = [{"kind": "favorite", "key": "liked", "title": "我的最爱", "playlist_id": ""}]
+        with patch("helper.playlist_hub.assistant_playlist_rows", return_value=assistant):
+            rows = playlist_rows(_Engine(store, _Plex([], error=RuntimeError("offline"))))
+
+        self.assertEqual(["liked"], [row["key"] for row in rows])
 
     def test_native_detail_filters_tracks_outside_the_selected_plex_library(self):
         from helper.playlist_hub import playlist_detail

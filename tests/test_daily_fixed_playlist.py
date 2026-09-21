@@ -201,6 +201,64 @@ class DailyFixedPlaylistTests(unittest.TestCase):
         self.assertTrue(any("同名" in message for message in plan["blocked"]))
         self.assertIsNone(plan["before"])
 
+    def test_new_profile_uses_own_daily_title_when_another_library_owns_default(self):
+        from helper.profiles import ProfileRegistry
+        from helper.scoped_store import ScopedStore
+
+        root = tempfile.TemporaryDirectory()
+        self.addCleanup(root.cleanup)
+        base = Store(Path(root.name))
+        registry = ProfileRegistry(base)
+        registry.create(name="第二曲库", kind="owner", profile_id="other",
+                        token="other-token", library={"id": "22"})
+        owner = ScopedStore(base, "default", registry=registry)
+        owner.set("daily_managed", {"id": "900", "machine": "machine-a"})
+        other = ScopedStore(base, "other", registry=registry)
+        settings = other.get("settings")
+        settings.update(plex_url="http://plex:32400", plex_token="other-token", section="22")
+        other.set("settings", settings)
+        plex = _DailyPlex(existing=True)
+        engine = LibraryEngine(other, plex_factory=lambda _settings: plex)
+
+        with patch("helper.daily.recommend_rotating", side_effect=_recommendation):
+            plan = engine.preview_daily(now=1_800_000_000)
+
+        self.assertEqual([], plan["blocked"])
+        self.assertIsNone(plan["before"])
+        self.assertEqual("每日推荐·曲库22", other.get("daily_playlist_target")["title"])
+        result = engine.publish_daily(plan["id"], now=1_800_000_010)
+        self.assertEqual("901", result["playlist_id"])
+        self.assertEqual("每日推荐·曲库22", plex.playlist_state("901")["title"])
+        self.assertEqual("每日推荐", plex.playlist_state("900")["title"])
+
+    def test_previewed_daily_cannot_be_adopted_after_another_library_claims_it(self):
+        from helper.engine import SafetyError
+        from helper.profiles import ProfileRegistry
+        from helper.scoped_store import ScopedStore
+
+        root = tempfile.TemporaryDirectory()
+        self.addCleanup(root.cleanup)
+        base = Store(Path(root.name))
+        registry = ProfileRegistry(base)
+        registry.create(name="第二曲库", kind="owner", profile_id="other",
+                        token="other-token", library={"id": "22"})
+        owner = ScopedStore(base, "default", registry=registry)
+        other = ScopedStore(base, "other", registry=registry)
+        settings = other.get("settings")
+        settings.update(plex_url="http://plex:32400", plex_token="other-token", section="22")
+        other.set("settings", settings)
+        plex = _DailyPlex(existing=True)
+        engine = LibraryEngine(other, plex_factory=lambda _settings: plex)
+
+        with patch("helper.daily.recommend_rotating", side_effect=_recommendation):
+            plan = engine.preview_daily(now=1_800_000_000)
+        self.assertEqual([], plan["blocked"])
+        owner.set("daily_managed", {"id": "900", "machine": "machine-a"})
+
+        with self.assertRaisesRegex(SafetyError, "其他曲库"):
+            engine.publish_daily(plan["id"], now=1_800_000_010)
+        self.assertEqual(0, plex.create_calls)
+
     def test_publish_replaces_existing_same_name_playlist_in_place(self):
         plex = _DailyPlex(existing=True)
         store, engine = self.make_engine(plex)
@@ -286,6 +344,18 @@ class DailyFixedPlaylistTests(unittest.TestCase):
         self.assertEqual("901", result["playlist_id"])
         self.assertEqual(1, plex.create_calls)
         self.assertEqual(["1", "2"], [row["id"] for row in plex.playlist_state("901")["items"]])
+
+    def test_scheduled_daily_creates_first_playlist_for_new_profile(self):
+        plex = _DailyPlex(existing=False)
+        store, engine = self.make_engine(plex)
+        with patch("helper.daily.recommend_rotating", side_effect=_recommendation):
+            result = engine.daily_auto(
+                schedule={"enabled": True, "hour": 6}, scheduled=True, now=1_800_000_000,
+            )
+
+        self.assertEqual("901", result["playlist_id"])
+        self.assertEqual("901", store.get("daily_managed")["id"])
+        self.assertEqual(1, plex.create_calls)
 
     def test_later_publish_keeps_updating_the_same_adopted_playlist(self):
         plex = _DailyPlex(existing=True)

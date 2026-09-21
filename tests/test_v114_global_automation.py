@@ -30,6 +30,8 @@ class _Engine:
 
     def daily_auto(self, schedule=None, scheduled=False, now=None):
         self.calls.append((self.store.profile_id, "daily"))
+        if now is not None:
+            self.store.set("daily_last_attempt", now)
         return {**self.daily_result, "schedule": schedule, "scheduled": scheduled, "now": now}
 
 
@@ -65,7 +67,7 @@ def test_default_global_schedule_has_three_jobs():
     finally:
         temp.cleanup()
 
-    assert result["daily"] == {"enabled": False, "hour": 6}
+    assert result["daily"] == {"enabled": True, "hour": 6}
     assert result["smart"] == {"enabled": False, "interval_days": 7, "hour": 3}
     assert result["library"] == {"enabled": False, "hour": 0}
 
@@ -81,6 +83,42 @@ def test_legacy_profile_switches_migrate_to_global_enabled_state():
         temp.cleanup()
 
     assert result["daily"] == {"enabled": True, "hour": 8}
+
+
+def test_old_untouched_disabled_daily_schedule_is_enabled_once():
+    from helper.automation import AUTOMATION_KEY, automation_settings
+
+    temp, base, registry, runtime, _scoped, _calls = _configured_runtime()
+    try:
+        base.set(AUTOMATION_KEY, {
+            "version": 1, "revision": 1, "migrated": True,
+            "daily": {"enabled": False, "hour": 6},
+            "smart": {"enabled": False, "interval_days": 7, "hour": 3},
+            "library": {"enabled": False, "hour": 0},
+        })
+        result = automation_settings(base, registry, runtime)
+        saved = base.get(AUTOMATION_KEY)
+    finally:
+        temp.cleanup()
+
+    assert result["daily"]["enabled"]
+    assert saved["revision"] == 2
+
+
+def test_explicitly_disabled_daily_schedule_stays_disabled():
+    from helper.automation import automation_settings, save_automation_settings
+
+    temp, base, registry, runtime, _scoped, _calls = _configured_runtime()
+    try:
+        save_automation_settings(base, {
+            "daily": {"enabled": False, "hour": 7},
+            "smart": {"enabled": False, "interval_days": 7, "hour": 3},
+            "library": {"enabled": False, "hour": 0},
+        })
+        result = automation_settings(base, registry, runtime)
+    finally:
+        temp.cleanup()
+    assert result["daily"] == {"enabled": False, "hour": 7}
 
 
 def test_same_time_jobs_run_library_then_smart_then_daily():
@@ -174,7 +212,7 @@ def _set_due(scoped, saved, task, now):
     })
 
 
-def test_ineligible_profile_is_skipped_without_blocking_eligible_profile():
+def test_new_connected_profile_gets_daily_schedule_without_manual_publish():
     from helper.automation import save_automation_settings
 
     temp, base, registry, runtime, owner, calls = _configured_runtime()
@@ -194,7 +232,76 @@ def test_ineligible_profile_is_skipped_without_blocking_eligible_profile():
     finally:
         temp.cleanup()
 
-    assert calls == [("eligible", "daily")]
+    assert calls == [("default", "daily"), ("eligible", "daily")]
+
+
+def test_new_connected_profile_receives_first_daily_without_waiting_until_next_morning():
+    from helper.automation import save_automation_settings
+
+    temp, base, _registry, runtime, owner, calls = _configured_runtime()
+    now = datetime(2027, 1, 10, 12, tzinfo=BEIJING).timestamp()
+    try:
+        owner.set("daily_managed", None)
+        save_automation_settings(base, {
+            "daily": {"enabled": True, "hour": 6},
+            "smart": {"enabled": False, "interval_days": 7, "hour": 3},
+            "library": {"enabled": False, "hour": 0},
+        })
+        runtime.run_due(now)
+        runtime.run_due(now + 1)
+    finally:
+        temp.cleanup()
+
+    assert calls == [("default", "daily")]
+
+
+def test_first_daily_schedule_does_not_reset_a_deferred_retry_every_poll():
+    from helper.automation import PROFILE_STATE_KEY, ensure_profile_schedule, save_automation_settings
+
+    temp, base, _registry, _runtime, owner, _calls = _configured_runtime()
+    now = datetime(2027, 1, 10, 12, tzinfo=BEIJING).timestamp()
+    try:
+        owner.set("daily_managed", None)
+        saved = save_automation_settings(base, {
+            "daily": {"enabled": True, "hour": 6},
+            "smart": {"enabled": False, "interval_days": 7, "hour": 3},
+            "library": {"enabled": False, "hour": 0},
+        })
+        first = ensure_profile_schedule(owner, saved, now)
+        first["tasks"]["daily"]["next_at"] = now + 300
+        owner.set(PROFILE_STATE_KEY, first)
+        second = ensure_profile_schedule(owner, saved, now + 60)
+    finally:
+        temp.cleanup()
+
+    assert second["tasks"]["daily"]["next_at"] == now + 300
+
+
+def test_deleted_daily_playlist_stays_opted_out_of_automatic_recreation():
+    from helper.profile_runtime import ProfileRuntime
+
+    temp, _base, _registry, runtime, owner, _calls = _configured_runtime()
+    try:
+        owner.set_many({"daily_managed": None, "daily_auto_opt_out": True})
+        eligible = ProfileRuntime._eligible_for_task(runtime.engine("default"), "daily")
+    finally:
+        temp.cleanup()
+    assert not eligible
+
+
+def test_preupgrade_deleted_daily_playlist_is_not_recreated():
+    from helper.profile_runtime import ProfileRuntime
+
+    temp, _base, _registry, runtime, owner, _calls = _configured_runtime()
+    try:
+        owner.set_many({
+            "daily_managed": None,
+            "snapshots": [{"kind": "daily_remove", "status": "applied"}],
+        })
+        eligible = ProfileRuntime._eligible_for_task(runtime.engine("default"), "daily")
+    finally:
+        temp.cleanup()
+    assert not eligible
 
 
 def test_one_profile_failure_does_not_stop_remaining_profiles():

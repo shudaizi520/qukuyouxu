@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+import re
 
 
 def _truthy(value):
@@ -100,4 +101,11 @@ def merge_playlist_rows(assistant_rows, plex_rows):
         if str(row.get("playlist_id") or "")
     }
     native = normalize_native_playlist_rows(plex_rows)
-    return [*assistant_rows, *(row for row in native if row["playlist_id"] not in owned)]
+    has_rating_favorites = any(row.get("kind") == "favorite" for row in assistant_rows)
+    return [
+        *assistant_rows,
+        *(row for row in native
+          if row["playlist_id"] not in owned
+          and not (has_rating_favorites and row["smart"]
+                   and re.sub(r"^[\s❤♥💖️]+", "", row["title"]).strip() == "我的最爱")),
+    ]

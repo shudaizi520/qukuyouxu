@@ -8,17 +8,17 @@ sys.path.insert(0, str(ROOT / "src"))
 
 
 class ReleaseVersionTests(unittest.TestCase):
-    def test_application_and_static_pages_use_release_1_4_6(self):
+    def test_application_and_static_pages_use_release_1_4_10(self):
         from helper import __version__
 
-        self.assertEqual("1.4.9", __version__)
+        self.assertEqual("1.4.10", __version__)
         pages = []
         for name in ("playlists.html", "daily.html", "home.html", "mixes.html", "external.html", "settings.html", "status.html"):
             with self.subTest(name=name):
                 html = (ROOT / "src/helper/static" / name).read_text(encoding="utf-8")
                 pages.append(html)
-                self.assertIn("?v=1.4.9", html)
-                self.assertIn(">v1.4.9<", html)
+                self.assertIn("?v=1.4.10", html)
+                self.assertIn(">v1.4.10<", html)
         self.assertNotIn("1.4.5", "".join(pages))
 
     def test_release_notes_describe_external_playlist_workflow_and_limits(self):
@@ -30,6 +30,7 @@ class ReleaseVersionTests(unittest.TestCase):
         self.assertIn("## 1.4.4 - 2026-09-20", changelog)
         self.assertIn("## 1.4.5 - 2026-09-21", changelog)
         self.assertIn("## 1.4.8 - 2026-09-21", changelog)
+        self.assertIn("## 1.4.10 - 2026-09-21", changelog)
         self.assertIn("## 1.4.9 - 2026-09-21", changelog)
         for phrase in ("Plex / Plexamp", "智能歌单", "曲库整理", "我的最爱", "爱心"):
             self.assertIn(phrase, changelog)
@@ -42,7 +43,7 @@ class ReleaseVersionTests(unittest.TestCase):
         self.assertIn("可靠匹配", changelog)
         self.assertIn("不是直接写入", changelog)
         self.assertIn("分析曲库", readme)
-        self.assertIn("自动任务", readme)
+        self.assertIn("每天自动更新", readme)
         self.assertIn("北京时间", readme)
         self.assertIn("外部歌单", readme)
         self.assertIn("不会下载外部音频", readme)
@@ -51,7 +52,7 @@ class ReleaseVersionTests(unittest.TestCase):
     def test_accepts_exact_v_prefixed_application_version(self):
         from tools.check_release_version import check_release_version
 
-        self.assertEqual("1.4.9", check_release_version("v1.4.9", "1.4.9"))
+        self.assertEqual("1.4.10", check_release_version("v1.4.10", "1.4.10"))
 
     def test_rejects_mismatched_or_malformed_tags(self):
         from tools.check_release_version import check_release_version
