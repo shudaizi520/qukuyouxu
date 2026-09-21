@@ -4,9 +4,9 @@
  <meta charset="utf-8">
  <meta name="viewport" content="width=device-width,initial-scale=1">
  <title>曲库有序 · 我的歌单</title>
- <link rel="stylesheet" href="/static/product.css?v=1.4.10">
- <script defer src="/static/auth.js?v=1.4.10"></script>
- <script type="module" src="/static/playlists.js?v=1.4.10"></script>
+ <link rel="stylesheet" href="/static/product.css?v=1.4.11">
+ <script defer src="/static/auth.js?v=1.4.11"></script>
+ <script type="module" src="/static/playlists.js?v=1.4.11"></script>
 </head>
 <body data-view="playlists" data-auth-state="checking">
 <div id="bootScreen" class="auth-boot"><div class="boot-mark">♫</div><strong>曲库有序</strong><span>正在进入你的音乐库…</span></div>
@@ -21,7 +21,7 @@
 <div id="workspace" hidden>
  <header class="topbar">
   <button id="playlistSidebarToggle" class="playlist-sidebar-toggle" type="button" aria-label="打开歌单导航" aria-controls="playlistSidebar" aria-expanded="false">☰</button>
-  <button class="brand" id="workspaceHome" type="button"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v1.4.10</small></span></button>
+  <button class="brand" id="workspaceHome" type="button"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v1.4.11</small></span></button>
   <form id="librarySearchForm" class="playlist-global-search" role="search"><span class="playlist-search-icon" aria-hidden="true"></span><input id="librarySearchInput" type="search" placeholder="搜索全库歌曲、歌手或专辑" autocomplete="off"><button type="submit">搜索</button></form>
   <nav><button type="button" data-workspace-url="/status">运行状态</button><button id="openSettings" type="button">设置</button></nav><button class="logout" data-auth-logout hidden>退出</button>
  </header>
@@ -32,9 +32,10 @@
    <nav class="playlist-fixed-nav" aria-label="歌单分类">
     <button id="smartHubButton" type="button" data-section="smart"><span class="playlist-fixed-icon" aria-hidden="true">✦</span><span>智能歌单</span></button>
     <button id="libraryHubButton" type="button" data-section="library"><span class="playlist-fixed-icon" aria-hidden="true">▦</span><span>曲库整理</span></button>
+    <button id="importHubButton" type="button" data-tool-url="/external"><span class="playlist-fixed-icon" aria-hidden="true">⇩</span><span>导入歌单</span></button>
    </nav>
    <div class="playlist-list-scroll">
-    <div class="playlist-side-heading"><h2>自建歌单</h2><span class="playlist-side-heading-actions"><button id="customPlaylistCreate" type="button" aria-label="新建歌单" title="新建歌单">＋</button><button id="customPlaylistImport" type="button" data-tool-url="/external" aria-label="导入外部歌单" title="导入外部歌单">↓</button><button id="customPlaylistRefresh" type="button" aria-label="刷新自建歌单" title="刷新自建歌单">↻</button></span></div>
+    <div class="playlist-side-heading"><h2>自建歌单</h2><span class="playlist-side-heading-actions"><button id="customPlaylistCreate" type="button" aria-label="新建歌单" title="新建歌单">＋</button><button id="customPlaylistRefresh" type="button" aria-label="刷新自建歌单" title="刷新自建歌单">↻</button></span></div>
     <nav id="customPlaylistList" class="playlist-side-list" aria-label="自建歌单"></nav>
    </div>
    <div class="playlist-sidebar-footer"><button id="mobileSettings" type="button">设置</button></div>

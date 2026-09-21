@@ -26,7 +26,7 @@ const unseenFavoriteKey=()=>{
  const account=String(profile?.account?.id||profileId);
  const server=String(profile?.server?.machine||profileId);
  const username=String(PCHAuth.status()?.username||'user');
- return `pch-favorite-unseen:${username}:${account}:${server}`;
+ return `pch-favorite-unseen:${username}:${account}:${server}:${profileId}`;
 };
 function markFavoriteUnseen(value){
  try{if(value)localStorage.setItem(unseenFavoriteKey(),'1');else localStorage.removeItem(unseenFavoriteKey());}catch(_error){}
@@ -181,6 +181,11 @@ function renderPlaylistList(){
  const view=workspace.current();if(view.type==='section')playlistSections.renderSection(view.section);
  workspace.renderNavigation();
 }
+async function refreshPlaylistSidebar(){
+ const requestId=profileRequest,data=await json('/api/playlists');
+ if(requestId!==profileRequest)return;
+ playlists=Array.isArray(data.items)?data.items:[];renderPlaylistList();
+}
 
 function setPlaylistLoading(value){
  playlistLoading=!!value;
@@ -209,7 +214,7 @@ async function openPlaylist(item){
   if(item.kind==='favorite'){item.count=tracks.length;markFavoriteUnseen(false);renderPlaylistList();}
   $('playlistKind').textContent=item.kind_label;$('playlistTitle').textContent=detail.title;$('playlistSummary').textContent=tracks.length+' 首歌曲'+(item.smart?' · 歌曲由 Plex 规则生成':'');
   $('playlistManage').hidden=!item.manage_url;$('playlistManage').textContent=item.kind==='external'?'整理导入来源':'调整此歌单';
-  $('playlistRename').hidden=!item.can_rename;$('playlistRemove').hidden=!item.can_delete;$('playlistPlayAll').disabled=!tracks.length;$('playlistEmpty').textContent='歌单里还没有歌曲';renderTracks();
+  $('playlistRename').hidden=!item.can_rename;$('playlistRemove').hidden=!item.can_delete;$('playlistPlayAll').disabled=!tracks.length;$('playlistEmpty').textContent=item.kind==='plex'?'已在 Plex 创建，歌单里还没有歌曲。可搜索歌曲后添加。':'歌单里还没有歌曲';renderTracks();
  return true;
  }catch(error){
   if(requestId!==playlistRequest)return false;
@@ -254,6 +259,14 @@ async function switchProfile(profileId,persist=true){
  const createDialog=$('playlistCreateDialog');if(createDialog.open)createDialog.close();
  playlistPlayer.stop();librarySearch.reset();tracks=[];filtered=[];playlists=[];unavailablePlaylists=new Set();setPlaylistLoading(false);resetPlaylistView();renderTracks();renderPlaylistList();
  if(persist&&PCHAuth.profile()!==profileId)PCHAuth.setProfile(profileId);
+ try{
+  const favorite=await json('/api/playlists/favorite/ensure','POST');
+  if(requestId!==profileRequest)return;
+  if(favorite.status==='needs_review')notify('Plex“我的最爱”待核对：'+favorite.message,true);
+ }catch(error){
+  if(requestId!==profileRequest)return;
+  notify('Plex“我的最爱”暂未同步：'+(error.message||'请稍后重试'),true);
+ }
  await loadPlaylists(undefined,requestId);
 }
 async function removeTrack(track){
@@ -313,7 +326,7 @@ async function confirmCreate(){
  try{
   const result=await json('/api/playlists/create','POST',{title,confirm:true});
   if(profileId!==loadedProfileId||requestId!==profileRequest)return;
-  $('playlistCreateDialog').close();notify('已在 Plex 新建歌单');
+  $('playlistCreateDialog').close();notify('已在当前 Plex 账户创建歌单，可直接添加歌曲，无需再次发布');
   await loadPlaylists({kind:result.kind,key:result.key},requestId);
  }finally{button.disabled=false;}
 }
@@ -373,6 +386,12 @@ function mount(){
  window.addEventListener('message',event=>{
   if(event.origin!==location.origin||event.source!==$('playlistToolFrame').contentWindow)return;
   if(event.data?.type==='pch-auth-logout'){PCHAuth.expire();return;}
+  if(event.data?.type==='pch-playlists-changed'){action(refreshPlaylistSidebar);return;}
+  if(event.data?.type==='pch-open-playlist'){
+   const item=playlists.find(row=>row.kind===event.data.kind&&String(row.key)===String(event.data.key));
+   if(item)action(()=>openPlaylist(item));else action(async()=>{await refreshPlaylistSidebar();const fresh=playlists.find(row=>row.kind===event.data.kind&&String(row.key)===String(event.data.key));if(fresh)await openPlaylist(fresh);});
+   return;
+  }
   if(event.data?.type==='pch-workspace-navigate'){
    const target=new URL(String(event.data.path||''),location.origin);
    if(target.origin!==location.origin)return;

@@ -25,16 +25,7 @@ def _matches_logout_hover(selector):
         return False
     if any(token in selector for token in (" nav ", " a", ".primary", ".secondary", ".danger")):
         return False
-    required = []
-    if ".topbar" in selector:
-        required.append(True)
-    if ".logout" in selector:
-        required.append(True)
-    if "button" in selector:
-        required.append(True)
-    if ":hover" in selector:
-        required.append(True)
-    return bool(required) and all(required)
+    return all(token in selector for token in (".topbar", ".logout", ":hover"))
 
 
 def _logout_hover_colors(css):

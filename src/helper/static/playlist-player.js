@@ -47,7 +47,9 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
   );
   byId(document,'playerCurrent').textContent=formatTime(position);
   byId(document,'playerDuration').textContent=formatTime(duration);
-  byId(document,'playerSeek').value=duration?String(Math.round(Math.min(1,position/duration)*1000)):'0';
+  const seek=byId(document,'playerSeek');
+  seek.value=duration?String(Math.round(Math.min(1,position/duration)*1000)):'0';
+  seek.style.setProperty('--playlist-played',String(Number(seek.value)/10)+'%');
  }
  function report(event,{keepalive=false}={}){
   const track=queue[queueIndex];
@@ -195,7 +197,7 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
   queue=[];context=null;queueIndex=-1;activeTrackId='';activeSource='';sourceOffset=0;trackDuration=0;retryCount=0;recoveryPending=false;resettingSource=false;
   hasReportedPlay=false;terminalReported=false;lastProgressReport=0;
   clearFeedback();updateArtwork(null);byId(document,'playerTitle').textContent='未播放';byId(document,'playerArtist').textContent='请选择歌曲';byId(document,'playerQueue').textContent='0 / 0';
-  byId(document,'playerCurrent').textContent='0:00';byId(document,'playerDuration').textContent='0:00';byId(document,'playerSeek').value='0';syncLiked(null);setPlaying(false);onStateChange();
+  byId(document,'playerCurrent').textContent='0:00';byId(document,'playerDuration').textContent='0:00';byId(document,'playerSeek').value='0';updateTimeline();syncLiked(null);setPlaying(false);onStateChange();
  }
  function playPreview(track){
   if(!track?.source)return;
@@ -212,7 +214,7 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
   byId(document,'playerRetry').onclick=retryNow;
   playerLiked.onclick=()=>{const track=queue[queueIndex];if(track&&!playerLiked.disabled)onLikedChange(track,!track.liked);};
   byId(document,'playerErrorNext').onclick=()=>{clearFeedback();playNext();};
-  byId(document,'playerSeek').oninput=()=>{if(trackDuration)seekTo(trackDuration*Number(byId(document,'playerSeek').value)/1000);};
+  byId(document,'playerSeek').oninput=()=>{const seek=byId(document,'playerSeek');seek.style.setProperty('--playlist-played',String(Number(seek.value)/10)+'%');if(trackDuration)seekTo(trackDuration*Number(seek.value)/1000);};
   playerVolume.oninput=()=>{audio.volume=Number(playerVolume.value);if(audio.volume>0)lastAudibleVolume=audio.volume;audio.muted=audio.volume===0;syncVolumeState();};
   playerMute.onclick=()=>{if(audio.muted||audio.volume===0){if(audio.volume===0){audio.volume=lastAudibleVolume;playerVolume.value=String(lastAudibleVolume);}audio.muted=false;}else audio.muted=true;syncVolumeState();};
   syncLiked(null);syncVolumeState();

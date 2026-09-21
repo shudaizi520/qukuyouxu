@@ -6,7 +6,7 @@ import math
 import re
 import time
 import uuid
-from urllib.parse import urlsplit, parse_qs, unquote
+from urllib.parse import urlsplit, parse_qs, unquote, urlencode
 from xml.etree import ElementTree as ET
 import requests
 from .plex_identity import plex_headers
@@ -14,6 +14,7 @@ from .plex_identity import plex_headers
 class SourceError(RuntimeError): pass
 class PlexError(RuntimeError): pass
 class PlexNotFound(PlexError): pass
+class PlexWriteRejected(PlexError): pass
 
 QQ_HOSTS={'y.qq.com','i.y.qq.com','c.y.qq.com','u.y.qq.com'}
 
@@ -256,6 +257,8 @@ class PlexClient:
         if not path.startswith('/') or path.startswith('//'):raise PlexError('拒绝异常Plex路径')
         try:
             with self.session.request(method,self.base+path,params=params,timeout=(5,25),allow_redirects=False,stream=True) as r:
+                if method=='POST' and r.status_code in (400,401,403,404,422):
+                    raise PlexWriteRejected(f'Plex返回HTTP {r.status_code}，请核对地址、Token和权限')
                 if r.status_code==404:raise PlexNotFound('Plex 中没有这个项目')
                 if r.status_code not in (200,201,204):raise PlexError(f'Plex返回HTTP {r.status_code}，请核对地址、Token和权限')
                 chunks=[];size=0
@@ -442,6 +445,57 @@ class PlexClient:
         content=unquote(str(rows[0].get('content') or ''))
         match=re.search(r'/library/sections/(\d+)/',content)
         return match.group(1) if match else None
+
+    def smart_playlist_info(self, pid):
+        pid=str(pid or '')
+        if not pid.isdigit():raise PlexError('智能歌单ID无效')
+        rows=self._xml(f'/playlists/{pid}').findall('Playlist')
+        if len(rows)!=1 or str(rows[0].get('ratingKey') or '')!=pid:
+            raise PlexError('智能歌单回读ID不一致')
+        row=rows[0]
+        content=str(row.get('content') or '')
+        if row.get('playlistType')!='audio' or row.get('smart')!='1' or not content:
+            raise PlexError('不是可验证的音乐智能歌单')
+        match=re.search(r'/library/sections/(\d+)/all',unquote(content))
+        return {'id':pid,'title':str(row.get('title') or ''),'smart':True,
+                'content':content,'section':match.group(1) if match else ''}
+
+    def _favorite_smart_uri(self, section):
+        section=str(section or '')
+        if not section.isdigit():raise PlexError('音乐曲库ID无效')
+        if not self.machine:self.identity()
+        query=urlencode({'type':10,'track.userRating>':8})
+        return (f'server://{self.machine}/com.plexapp.plugins.library/'
+                f'library/sections/{section}/all?{query}')
+
+    def create_favorite_smart(self, section):
+        uri=self._favorite_smart_uri(section)
+        root=self._xml('/playlists','POST',{
+            'title':'我的最爱','type':'audio','smart':1,'uri':uri,
+        })
+        row=root.find('Playlist')
+        pid=str(row.get('ratingKey') or '') if row is not None else ''
+        if not pid.isdigit():
+            raise PlexError('Plex 创建智能歌单未返回ID；不会自动重试创建')
+        info=self.smart_playlist_info(pid)
+        if info['content']!=uri or info['section']!=str(section):
+            raise PlexError(f'Plex 已创建歌单 {pid}，但规则回读不一致；请人工核对，勿重复创建')
+        return info
+
+    def replace_favorite_smart_rule(self, pid, section, expected_content=None, expected_title=None):
+        pid=str(pid or '')
+        if not pid.isdigit():raise PlexError('智能歌单ID无效')
+        uri=self._favorite_smart_uri(section)
+        if expected_content is not None or expected_title is not None:
+            before=self.smart_playlist_info(pid)
+            if (before['section']!=str(section) or before['content']!=expected_content
+                    or before['title']!=expected_title):
+                raise PlexError('Plex 智能歌单名称或规则已变化，请刷新后核对')
+        self._xml(f'/playlists/{pid}/items','PUT',{'uri':uri})
+        info=self.smart_playlist_info(pid)
+        if info['content']!=uri or info['section']!=str(section):
+            raise PlexError('Plex 智能歌单规则回读不一致；不会重复提交修改')
+        return info
 
     def playlist_view(self,pid):
         if not str(pid).isdigit():raise PlexError('歌单ID无效')

@@ -60,7 +60,9 @@
    actions.append(button('移除歌单','danger',async()=>{if(!await PCHUI.confirm('从 Plex 移除助手创建的“'+row.title+'”（'+row.count+' 首）？\\n\\n只删除这张歌单，不删除歌曲；操作前会保存恢复快照。'))return;await action(async()=>{const r=await post('/api/managed/remove',{confirm:true,category_id:row.category_id,title:row.title});note(r.message);await loadManaged(true);await refresh();});},!row.safe_to_remove));
    if(!row.safe_to_remove)actions.lastChild.title='歌单被手动修改或管理标记不符时，为保护内容不能移除';
    if(row.safe_to_forget){actions.lastChild.remove();actions.lastChild.title='只清除助手本地历史记录，不访问 Plex 删除接口';}
-   line.append(info,actions);box.append(line);
+   const open=button('打开','managed-playlist-open',()=>{if(window.parent!==window)window.parent.postMessage({type:'pch-open-playlist',kind:'category',key:String(row.category_id)},location.origin);else location.assign('/');});
+   const more=document.createElement('details');more.className='managed-playlist-more';const summary=document.createElement('summary');summary.textContent='更多';more.append(summary,actions);
+   line.append(info,open,more);box.append(line);
   }
   const retired=get('retiredPlaylists'),disclosure=get('retiredDisclosure');retired.replaceChildren();
   disclosure.hidden=!retiredRows.length;get('retiredCount').textContent=retiredRows.length?retiredRows.length+' 个':'';

@@ -10,7 +10,7 @@ STATIC = ROOT / "src/helper/static"
 class ExternalPlaylistUiV130Tests(unittest.TestCase):
     def test_external_page_keeps_primary_and_missing_actions_distinct(self):
         page = (STATIC / "external.html").read_text(encoding="utf-8")
-        self.assertIn("创建 Plex 歌单", page)
+        self.assertIn('aria-label="Plex 歌单设置"', page)
         self.assertIn("缺失歌曲", page)
         self.assertNotIn("发送到 QQ 音乐", page)
         self.assertNotIn("发送到网易云音乐", page)
@@ -37,7 +37,7 @@ class ExternalPlaylistUiV130Tests(unittest.TestCase):
     def test_replenishment_actions_are_explicit_and_never_claim_platform_writes(self):
         page = (STATIC / "external.html").read_text(encoding="utf-8")
         script = (STATIC / "external.js").read_text(encoding="utf-8")
-        for label in ("复制歌单内容", "下载歌单长图", "更多格式", "复制清单页面链接"):
+        for label in ("复制清单", "下载长图", "其他格式", "复制清单链接"):
             self.assertIn(label, page)
         self.assertIn("查看链接已复制", script)
         self.assertIn("去 QQ 音乐搜索", script)
@@ -71,8 +71,8 @@ class ExternalPlaylistUiV130Tests(unittest.TestCase):
         self.assertIn("render_versioned_html((STATIC / 'external.html')", source)
         self.assertIn("'external.js'", source)
         page = (STATIC / "external.html").read_text(encoding="utf-8")
-        self.assertEqual(1, page.count('id="version">v1.4.10</small>'))
-        self.assertIn('/static/external.js?v=1.4.10', page)
+        self.assertEqual(1, page.count('id="version">v1.4.11</small>'))
+        self.assertIn('/static/external.js?v=1.4.11', page)
 
 
 if __name__ == "__main__":

@@ -103,6 +103,16 @@ class _WritablePlex(_Plex):
 
 
 class PlaylistInventoryTests(unittest.TestCase):
+    def test_generated_playlists_are_not_manual_add_targets(self):
+        from helper.playlist_inventory import assistant_playlist_row
+
+        for kind in ("daily", "smart", "category"):
+            with self.subTest(kind=kind):
+                row = assistant_playlist_row({"kind": kind, "playlist_id": "90", "key": kind})
+                self.assertFalse(row["can_add_tracks"])
+        external = assistant_playlist_row({"kind": "external", "playlist_id": "91", "key": "external"})
+        self.assertTrue(external["can_add_tracks"])
+
     def writable_engine(self):
         store = _Store({
             "settings": {},

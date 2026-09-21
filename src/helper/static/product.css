@@ -615,3 +615,85 @@ body[data-view=library][data-library-shared=true] .compact-diagnostics,
 body[data-view=library][data-library-shared=true] .page-footer{display:none}
 .library-share-panel{max-width:850px}.library-share-panel .panel-title{margin-bottom:8px}.library-share-rows{display:grid;margin-top:12px}.library-share-row{display:grid;grid-template-columns:minmax(0,1fr) 88px auto;align-items:center;gap:12px;padding:12px 0;border-top:1px solid #e5efed}.library-share-row strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.library-share-row button{justify-self:end}.library-share-row:not(:has(button)){grid-template-columns:minmax(0,1fr) 88px}
 @media(max-width:620px){.library-share-row{grid-template-columns:minmax(0,1fr) auto}.library-share-row button{grid-column:1/-1;justify-self:start}}
+
+/* The import workspace uses one document scroll; controls stay above the results. */
+body[data-view=external] .external-shell{max-width:1100px;padding-top:30px}
+body[data-view=external] .external-page-title{margin-bottom:22px}
+body[data-view=external] .external-page-title h1{font-size:30px}
+body[data-view=external] .external-import-card{margin:0;border:0;border-top:1px solid #dce8e5;border-radius:0;padding:14px 0;background:transparent;box-shadow:none}
+body[data-view=external] .external-import-form{grid-template-columns:minmax(0,1fr) auto auto;gap:14px;align-items:center}
+body[data-view=external] .external-url-field{display:grid;grid-template-columns:110px minmax(0,1fr);align-items:center;gap:16px}
+body[data-view=external] .external-url-field>span,body[data-view=external] .external-command-bar>label:first-child{font-weight:700;font-size:14px}
+body[data-view=external] .external-url-field input,body[data-view=external] .external-command-bar input:not([type=checkbox]),body[data-view=external] .external-command-bar select{min-width:0;height:41px;padding:8px 12px;border:0;border-bottom:1px solid #cbdeda;border-radius:0;background:transparent;color:#17323a;box-shadow:none}
+body[data-view=external] .external-file-action,body[data-view=external] .external-text-action{display:inline-flex;align-items:center;justify-content:center;min-height:38px;border:0;border-radius:0;padding:5px 8px;background:transparent;color:#0b706d;font-weight:700;text-decoration:none;cursor:pointer;white-space:nowrap}
+body[data-view=external] .external-file-action:hover,body[data-view=external] .external-text-action:hover{background:#edf7f5}
+body[data-view=external] .external-file-name{display:block;margin:0 0 6px;padding-left:126px;font-size:12px;color:#58716f}
+body[data-view=external] .external-file-name[hidden]{display:none}
+body[data-view=external] .external-workspace{display:block;min-width:0;border-top:1px solid #dce8e5}
+body[data-view=external] .external-workspace[hidden]{display:none}
+body[data-view=external] .external-command-bar{display:flex;align-items:center;gap:14px;min-height:70px;padding:10px 0;border-bottom:1px solid #dce8e5;min-width:0}
+body[data-view=external] .external-command-bar[hidden]{display:none}
+body[data-view=external] .external-command-bar>label:first-child{flex:0 0 110px}
+body[data-view=external] #sourceSelector{flex:1 1 290px;max-width:440px}
+body[data-view=external] #plexPlaylistTitle{flex:1 1 240px;max-width:420px}
+body[data-view=external] .external-state{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:#718783}
+body[data-view=external] .external-follow-label{display:flex;align-items:center;gap:6px;white-space:nowrap;font-size:13px}
+body[data-view=external] .external-follow-label[hidden]{display:none}
+body[data-view=external] .external-follow-label input{width:16px;height:16px}
+body[data-view=external] .external-command-bar .primary,body[data-view=external] .external-import-form .primary{min-height:40px;padding:8px 17px;border-radius:8px;white-space:nowrap}
+body[data-view=external] .external-command-bar .danger-text{color:#9a4e3d}
+body[data-view=external] #replenishmentCard strong{flex:0 0 110px}
+body[data-view=external] #missingSummary{flex:1 1 auto;color:#58716f}
+body[data-view=external] .external-more>div{z-index:5}
+body[data-view=external] .external-detail-card{padding:20px 0 0;border:0;border-radius:0;background:transparent;box-shadow:none}
+body[data-view=external] .external-detail-head h2{margin:2px 0 4px;font-size:21px}
+body[data-view=external] .external-counts{display:flex;gap:28px;margin:12px 0 0;border-bottom:1px solid #dce8e5}
+body[data-view=external] .external-count-tab{gap:5px;border:0;border-bottom:2px solid transparent;border-radius:0;padding:8px 0;background:transparent;color:#58716f}
+body[data-view=external] .external-count-tab strong{font-size:15px;color:inherit}
+body[data-view=external] .external-count-tab.active{border-color:#0f817e;background:transparent;color:#0b706d}
+body[data-view=external] .external-track-list{max-height:none;overflow:visible;border:0}
+body[data-view=external] .external-track-row{padding:10px 0;border-top:0;border-bottom:1px solid #e5efed}
+body[data-view=external] .external-track-row .bucket{background:transparent;padding:0;font-weight:500}
+body[data-view=external] .external-track-row .song-actions button,body[data-view=external] .external-track-row .song-actions a{border:0;background:transparent;color:#0b706d;white-space:nowrap}
+body[data-view=external] .external-paging{padding:14px 0 24px}
+.playlist-progress-rail input[type=range]::-webkit-slider-runnable-track{background:linear-gradient(to right,var(--playlist-accent) 0,var(--playlist-accent) var(--playlist-played,0%),var(--playlist-line) var(--playlist-played,0%),var(--playlist-line) 100%)}
+.playlist-progress-rail input[type=range]::-moz-range-progress{height:3px;border-radius:999px;background:var(--playlist-accent)}
+.mix-automation-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 22px;border:1px solid var(--line);border-radius:12px;background:#fff}.mix-automation-row>strong{font-size:15px}.mix-automation-row .contextual-automation{margin:0}
+body[data-view=mixes] .contextual-settings-card>.contextual-automation{margin:0 0 14px}
+.playlist-global-search{width:min(420px,38vw);height:38px;gap:9px;padding:0 13px;border:1px solid transparent;border-radius:9px;background:var(--playlist-surface-soft)}
+.playlist-global-search:focus-within{border-color:var(--playlist-accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--playlist-accent) 12%,transparent)}
+.playlist-global-search input{height:36px;padding:0;border:0;background:transparent;box-shadow:none}
+.playlist-global-search input:focus{outline:none;box-shadow:none}
+.playlist-global-search button{display:none}
+.playlist-player-center .playlist-volume-control{display:flex;align-items:center;justify-content:center;align-self:center}
+.playlist-player-center .playlist-volume-control button{display:grid;place-items:center;width:32px;height:32px;color:var(--playlist-text)}
+.playlist-player-center .playlist-volume-control .player-icon{margin:auto}
+body[data-view=library] .library-automation-line{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:15px 0;margin-bottom:18px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+body[data-view=library] .library-automation-line .contextual-automation{margin:0}
+body[data-view=library] .managed-playlists-card,body[data-view=library] .library-result{border-radius:10px;box-shadow:none}
+body[data-view=library] .managed-playlist-row{position:relative;min-height:58px}
+body[data-view=library] .managed-playlist-row>div:first-child{min-width:0;flex:1}
+body[data-view=library] .managed-playlist-open,body[data-view=library] .managed-playlist-more summary{border:0;background:transparent;color:var(--brand);font-weight:700;cursor:pointer;white-space:nowrap}
+body[data-view=library] .managed-playlist-more summary{list-style:none;padding:8px}
+body[data-view=library] .managed-playlist-more summary::-webkit-details-marker{display:none}
+body[data-view=library] .managed-playlist-more .managed-playlist-actions{position:absolute;right:0;top:calc(100% - 4px);z-index:4;display:flex;flex-direction:column;min-width:150px;padding:8px;border:1px solid var(--line);border-radius:9px;background:#fff;box-shadow:0 10px 25px rgba(24,54,50,.14)}
+body[data-view=library] .managed-playlist-more:not([open]) .managed-playlist-actions{display:none}
+body[data-view=library] .managed-playlist-more .managed-playlist-actions button{width:100%;text-align:left}
+@media(max-width:720px){.mix-automation-row{align-items:flex-start;flex-direction:column}}
+@media(max-width:720px){body[data-view=library] .library-automation-line{align-items:flex-start;flex-direction:column}body[data-view=library] .managed-playlist-row{align-items:center;flex-direction:row}}
+@media(max-width:700px){.playlist-global-search{width:auto;min-width:0;flex:1}}
+
+/* One heart language for player, playlists, and full-library search. */
+body[data-view=playlists]{--playlist-heart:#d84d5b}
+.playlist-heart{width:34px;height:34px;border-radius:50%;background:transparent;color:var(--playlist-text);font-size:26px;line-height:1;transition:color .15s ease}
+.playlist-track-identity .playlist-heart,.playlist-search-title-line .playlist-heart{flex:none;width:34px;height:34px;font-size:26px}
+.playlist-now-info{grid-template-columns:minmax(0,1fr) 36px}
+.playlist-now-info #playerLiked{width:36px;height:36px;font-size:26px;color:var(--playlist-text)}
+.playlist-heart:not([aria-pressed=true]):hover{color:var(--playlist-heart);background:transparent}
+.playlist-now-info #playerLiked:not([aria-pressed=true]):hover{color:var(--playlist-heart)}
+.playlist-heart[aria-pressed=true]{color:var(--playlist-heart);background:transparent}
+.playlist-heart[aria-pressed=true]:hover{color:var(--playlist-heart);background:transparent}
+.playlist-now-info #playerLiked[aria-pressed=true],.playlist-now-info #playerLiked[aria-pressed=true]:hover{color:var(--playlist-heart);background:transparent}
+.playlist-heart:focus-visible{outline:2px solid var(--playlist-heart);outline-offset:2px}
+@media(max-width:700px){.playlist-now-info #playerLiked{width:36px;height:36px}}
+@media(max-width:720px){body[data-view=external] .external-import-form{grid-template-columns:1fr auto}body[data-view=external] .external-url-field{grid-column:1/-1;grid-template-columns:1fr;gap:3px}body[data-view=external] .external-command-bar{flex-wrap:wrap;gap:6px 12px}body[data-view=external] .external-command-bar>label:first-child,body[data-view=external] #replenishmentCard strong{flex:0 0 100%}body[data-view=external] #sourceSelector,body[data-view=external] #plexPlaylistTitle{flex:1 1 100%;max-width:none}body[data-view=external] .external-state{flex-basis:100%}body[data-view=external] .external-file-name{padding-left:0}body[data-view=external] .external-track-row{grid-template-columns:minmax(0,1fr) auto}body[data-view=external] .external-track-row .bucket{display:none}}

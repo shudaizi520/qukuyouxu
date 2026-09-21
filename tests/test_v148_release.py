@@ -60,8 +60,8 @@ class PlaylistNavigationTests(unittest.TestCase):
 
     def test_sidebar_create_and_import_are_distinct_actions(self):
         page = (ROOT / "src/helper/static/playlists.html").read_text(encoding="utf-8")
-        for token in ('id="customPlaylistCreate"', 'id="customPlaylistImport"',
-                      'aria-label="新建歌单"', 'aria-label="导入外部歌单"',
+        for token in ('id="customPlaylistCreate"', 'id="importHubButton"',
+                      'aria-label="新建歌单"', 'data-tool-url="/external"',
                       'id="playlistCreateDialog"'):
             self.assertTrue(token in page, token)
 

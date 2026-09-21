@@ -16,6 +16,7 @@ from .engine import SafetyError, fingerprint
 from .external_audio import stream_track_audio
 from .external_playlist_sync import external_marker
 from .external_store import ExternalRepository
+from .favorite_smart import ensure_profile_favorites
 from .playlist_inventory import assistant_playlist_row, merge_playlist_rows
 from .playlist_ownership import legacy_external_marker, legacy_pch_marker, replace_marker
 from .profiles import profile_identity
@@ -100,10 +101,18 @@ def assistant_playlist_rows(store):
             record.get("updated_at"), "/mixes",
         ))
 
+    favorite_state = store.get("favorite_smart_v1") or {}
+    favorite_playlist_id = str(favorite_state.get("playlist_id") or "")
+    favorite_synced = (favorite_state.get("status") == "synced"
+                       and favorite_playlist_id.isdigit()
+                       and str(favorite_state.get("section") or "")
+                       == str((store.get("settings") or {}).get("section") or ""))
     rows.append({
         "kind": "favorite", "kind_label": KIND_LABELS["favorite"], "key": "liked",
-        "playlist_id": "", "title": KIND_LABELS["favorite"], "count": None,
-        "updated_at": 0, "manage_url": "", "status": "已建立",
+        "playlist_id": favorite_playlist_id if favorite_synced else "",
+        "title": KIND_LABELS["favorite"], "count": None,
+        "updated_at": 0, "manage_url": "",
+        "status": "上次已同步 Plex" if favorite_synced else "未同步 Plex",
     })
 
     groups = {
@@ -372,6 +381,8 @@ def edit_playlist_track(engine, kind, key, track_id, operation, hidden_playlist_
     kind, key, track_id = str(kind or ""), _safe_key(key), str(track_id or "")
     if operation not in ("add", "remove") or not track_id.isdigit():
         raise ValueError("歌曲调整请求无效")
+    if operation == "add" and kind in {"daily", "smart", "category"}:
+        raise ValueError("自动生成的歌单不能手动添加歌曲，请调整生成规则")
     catalog = {
         str(row.get("id")): row for row in (engine.store.get("catalog", []) or [])
         if isinstance(row, dict) and row.get("available", True)
@@ -493,15 +504,10 @@ def favorite_playlist_detail_live(engine):
 
 
 def related_favorite_profile_ids(profiles, current_profile_id):
-    current = profiles.get(current_profile_id)
-    identity = profile_identity(current)[:3]
-    if not identity[1] or not identity[2]:
-        return [current_profile_id]
-    related = [
-        row["id"] for row in profiles.list_public(enabled_only=True)
-        if profile_identity(row)[:3] == identity
-    ]
-    return [current_profile_id, *(profile_id for profile_id in related if profile_id != current_profile_id)]
+    # An app profile is one Plex user *and* one music library. Favorites from
+    # another library must never leak into this profile's virtual playlist.
+    profiles.get(current_profile_id)
+    return [current_profile_id]
 
 
 def sibling_owned_playlist_ids(profiles, runtime, current_profile_id):
@@ -559,7 +565,7 @@ def create_manual_playlist(engine, title):
 def resolve_favorite_profile_id(profiles, current_profile_id, requested_profile_id):
     target = str(requested_profile_id or current_profile_id)
     if target not in related_favorite_profile_ids(profiles, current_profile_id):
-        raise ValueError("只能修改同一 Plex 账户的已启用曲库中的喜欢状态")
+        raise ValueError("只能修改当前曲库的喜欢状态")
     return target
 
 
@@ -888,6 +894,13 @@ def attach_playlist_hub_routes(app, store, runtime, profiles, body, ensure_idle)
         target = fixed_engine()
         with target.exclusive():
             return create_manual_playlist(target, data.get("title"))
+
+    @app.post("/api/playlists/favorite/ensure")
+    def ensure_favorite_playlist():
+        ensure_idle()
+        target = fixed_engine()
+        with target.exclusive():
+            return ensure_profile_favorites(target)
 
     @app.get("/api/playlists/library/tracks/{track_id}/audio")
     def library_audio(

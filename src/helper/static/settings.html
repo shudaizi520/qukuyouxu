@@ -4,9 +4,9 @@
  <meta charset="utf-8">
  <meta name="viewport" content="width=device-width,initial-scale=1">
  <title>曲库有序 · 设置</title>
- <link rel="stylesheet" href="/static/product.css?v=1.4.10">
- <script defer src="/static/auth.js?v=1.4.10"></script>
- <script defer src="/static/settings.js?v=1.4.10"></script>
+ <link rel="stylesheet" href="/static/product.css?v=1.4.11">
+ <script defer src="/static/auth.js?v=1.4.11"></script>
+ <script defer src="/static/settings.js?v=1.4.11"></script>
 </head>
 <body data-view="settings" data-auth-state="checking">
 <div id="bootScreen" class="auth-boot"><div class="boot-mark">♫</div><strong>曲库有序</strong><span>正在进入你的音乐库…</span></div>
@@ -21,7 +21,7 @@
 
 <div id="workspace" hidden>
  <header class="topbar">
-  <a class="brand" href="/" target="_top"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v1.4.10</small></span></a>
+  <a class="brand" href="/" target="_top"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v1.4.11</small></span></a>
   <nav><a href="/" target="_top">我的歌单</a><a href="/status" target="_top">运行状态</a><a class="active" href="/settings" target="_top">设置</a></nav>
   <button class="logout" data-auth-logout hidden>退出</button>
  </header>
@@ -87,14 +87,14 @@
     <div class="settings-page-head"><h2>自动任务</h2></div>
     <section class="settings-section automation-list">
      <div id="dailyAutomation" class="automation-row"><strong>每日推荐</strong><div class="automation-controls"><span>每天</span><select id="dailyAutomationHour" class="automation-hour" aria-label="每日推荐执行时间"></select><input id="dailyAutomationEnabled" class="toggle" type="checkbox" aria-label="启用每日推荐"></div></div>
-     <div id="smartAutomation" class="automation-row"><strong>智能歌单</strong><div class="automation-controls"><select id="smartIntervalDays" aria-label="智能歌单更新周期"><option value="3">每 3 天</option><option value="5">每 5 天</option><option value="7">每 7 天</option><option value="10">每 10 天</option><option value="14">每 14 天</option><option value="20">每 20 天</option></select><select id="smartAutomationHour" class="automation-hour" aria-label="智能歌单执行时间"></select><input id="smartAutomationEnabled" class="toggle" type="checkbox" aria-label="启用智能歌单"></div></div>
+     <div id="smartAutomation" class="automation-row"><strong>智能歌单</strong><div class="automation-controls"><select id="smartIntervalDays" aria-label="智能歌单更新周期"><option value="1">每 1 天</option><option value="3">每 3 天</option><option value="5">每 5 天</option><option value="7">每 7 天</option><option value="10">每 10 天</option><option value="14">每 14 天</option><option value="20">每 20 天</option></select><select id="smartAutomationHour" class="automation-hour" aria-label="智能歌单执行时间"></select><input id="smartAutomationEnabled" class="toggle" type="checkbox" aria-label="启用智能歌单"></div></div>
      <div id="libraryAutomation" class="automation-row"><strong>新增歌曲整理</strong><div class="automation-controls"><span>每天</span><select id="libraryAutomationHour" class="automation-hour" aria-label="新增歌曲整理执行时间"></select><input id="libraryAutomationEnabled" class="toggle" type="checkbox" aria-label="启用新增歌曲整理"></div></div>
     </section>
    </section>
 
    <section id="settings-system" class="settings-panel" hidden>
     <div class="settings-page-head"><h2>系统</h2></div>
-    <section class="settings-section settings-form-rows"><div class="settings-row"><span>QQ 曲库资料</span><a class="secondary button" href="/library" target="_top">管理授权</a></div><div class="settings-row"><span>运行状态</span><a class="secondary button" href="/status" target="_top">查看</a></div><div class="settings-row"><span>软件版本</span><strong id="systemVersion" class="settings-static-value">1.4.10</strong></div></section>
+    <section class="settings-section settings-form-rows"><div class="settings-row"><span>QQ 曲库资料</span><a class="secondary button" href="/library" target="_top">管理授权</a></div><div class="settings-row"><span>运行状态</span><a class="secondary button" href="/status" target="_top">查看</a></div><div class="settings-row"><span>软件版本</span><strong id="systemVersion" class="settings-static-value">1.4.11</strong></div></section>
     <details id="passwordTools" class="settings-section settings-expander"><summary><span>登录密码</span><span id="accountName">admin</span></summary><div class="settings-expander-body"><form id="passwordForm" class="form-grid"><div class="field"><label for="currentPassword">当前密码</label><input id="currentPassword" type="password" autocomplete="current-password"></div><div class="field"><label for="newPassword">新密码</label><input id="newPassword" type="password" autocomplete="new-password" minlength="8"></div><div class="field"><label for="confirmPassword">确认新密码</label><input id="confirmPassword" type="password" autocomplete="new-password" minlength="8"></div><div class="field full"><button class="primary" type="submit">修改密码</button></div></form></div></details>
    </section>
   </div>

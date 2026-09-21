@@ -12,6 +12,17 @@ sys.path.insert(0, str(ROOT / "src"))
 BEIJING = timezone(timedelta(hours=8))
 
 
+def test_smart_automation_allows_every_day():
+    from helper.automation import _validated_payload
+
+    result = _validated_payload({
+        "daily": {"enabled": True, "hour": 6},
+        "smart": {"enabled": True, "interval_days": 1, "hour": 3},
+        "library": {"enabled": True, "hour": 0},
+    })
+    assert result["smart"]["interval_days"] == 1
+
+
 class _Engine:
     def __init__(self, store, calls):
         self.store = store

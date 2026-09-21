@@ -13,7 +13,7 @@ AUTOMATION_KEY = "automation_settings_v1"
 PROFILE_STATE_KEY = "automation_schedule_v1"
 BEIJING = timezone(timedelta(hours=8))
 TASK_ORDER = ("library", "smart", "daily")
-SMART_INTERVALS = frozenset({3, 5, 7, 10, 14, 20})
+SMART_INTERVALS = frozenset({1, 3, 5, 7, 10, 14, 20})
 DEFAULT_AUTOMATION = {
     "version": 1,
     "revision": 1,

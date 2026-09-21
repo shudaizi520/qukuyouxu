@@ -336,18 +336,17 @@ class PlaylistHubPlaybackTests(unittest.TestCase):
         self.assertEqual("applied", self.store.get("snapshots")[-1]["status"])
         self.assertIn("音乐文件未删除", result["message"])
 
-    def test_manual_add_and_remove_update_fingerprint_and_persistent_overrides(self):
+    def test_generated_playlist_rejects_manual_add_but_keeps_existing_removal(self):
         from helper.playlist_hub import edit_playlist_track
 
         added = edit_playlist_track(self.engine, "daily", "daily", "20", "remove")
         self.assertEqual(["10"], [row["id"] for row in self.state["items"]])
         self.assertEqual(["20"], self.store.get("playlist_manual_edits")["daily:daily"]["exclude"])
         self.assertTrue(added["message"])
-        edit_playlist_track(self.engine, "daily", "daily", "20", "add")
-        self.assertEqual(["10", "20"], [row["id"] for row in self.state["items"]])
-        edits = self.store.get("playlist_manual_edits")["daily:daily"]
-        self.assertEqual(["20"], edits["include"])
-        self.assertEqual([], edits["exclude"])
+        with self.assertRaisesRegex(ValueError, "自动生成"):
+            edit_playlist_track(self.engine, "daily", "daily", "20", "add")
+        self.assertEqual(["10"], [row["id"] for row in self.state["items"]])
+        self.assertEqual(["20"], self.store.get("playlist_manual_edits")["daily:daily"]["exclude"])
 
     def test_manual_overrides_keep_additions_and_exclusions_during_regeneration(self):
         from helper.playlist_hub import apply_manual_edits
@@ -1090,7 +1089,7 @@ class ExternalPlaylistPreviewUiTests(unittest.TestCase):
     def test_external_page_uses_clear_primary_sections_without_instruction_blocks(self):
         page = (STATIC / "external.html").read_text(encoding="utf-8")
         self.assertIn("导入歌单", page)
-        self.assertIn("创建 Plex 歌单", page)
+        self.assertIn("Plex 歌单", page)
         self.assertIn("缺失歌曲", page)
         self.assertNotIn("external-trust-note", page)
         self.assertNotIn("publishExplanation", page)
@@ -1102,14 +1101,14 @@ class ExternalPlaylistPreviewUiTests(unittest.TestCase):
         hub_script = (STATIC / "playlists.js").read_text(encoding="utf-8")
         styles = (STATIC / "product.css").read_text(encoding="utf-8")
         self.assertIn("external-page-title", page)
-        self.assertIn("external-source-strip", page)
+        self.assertIn('id="sourceSelector"', page)
         self.assertIn("function showPreviewError", script)
         self.assertNotIn("ResizeObserver", script)
         self.assertNotIn("pch-tool-height", script)
         self.assertNotIn("pch-tool-height", hub_script)
         self.assertNotIn("player.play().catch(()=>notify('浏览器暂时无法播放", script)
         self.assertIn(".pch-embedded body[data-view=external] .external-shell", styles)
-        self.assertIn(".external-source-list{display:flex", styles)
+        self.assertIn(".external-track-list{max-height:none;overflow:visible", styles)
         self.assertNotIn("is-auto-height", styles)
 
 

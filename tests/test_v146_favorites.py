@@ -63,6 +63,17 @@ class FavoritePlaylistTests(unittest.TestCase):
         self.assertTrue(all(row["liked"] for row in detail["tracks"]))
         self.assertEqual(("favorite", "liked"), (detail["kind"], detail["key"]))
 
+    def test_plexamp_one_star_mode_uses_full_rating_not_five_star_one(self):
+        from helper.playlist_hub import favorite_playlist_detail, search_library
+
+        store = _Store([
+            {"id": "1", "title": "单星模式已点星", "user_rating": 10, "available": True},
+            {"id": "2", "title": "五星模式一星", "user_rating": 2, "available": True},
+            {"id": "3", "title": "五星模式四星", "user_rating": 8, "available": True},
+        ])
+        self.assertEqual(["1", "3"], [row["id"] for row in favorite_playlist_detail(store)["tracks"]])
+        self.assertEqual([True, False, True], [row["liked"] for row in search_library(store, "星")])
+
     def test_like_writes_ten_and_commits_only_verified_readback(self):
         from helper.playlist_hub import set_track_liked
 
@@ -122,7 +133,7 @@ class FavoritePlaylistTests(unittest.TestCase):
         self.assertEqual("1", calls[0][2]["key"])
         self.assertEqual(10.0, calls[0][2]["rating"])
 
-    def test_favorites_include_other_enabled_library_of_same_plex_account(self):
+    def test_favorites_do_not_merge_other_library_of_same_plex_account(self):
         from helper.playlist_hub import favorite_playlist_detail_for_profiles
 
         profiles = _FavoriteProfiles([
@@ -141,10 +152,10 @@ class FavoritePlaylistTests(unittest.TestCase):
 
         detail = favorite_playlist_detail_for_profiles(profiles, runtime, "default")
 
-        self.assertEqual([("1", "default"), ("2", "second")],
+        self.assertEqual([("1", "default")],
                          [(row["id"], row["profile_id"]) for row in detail["tracks"]])
-        self.assertEqual([1, 2], [row["position"] for row in detail["tracks"]])
-        self.assertEqual(2, detail["count"])
+        self.assertEqual([1], [row["position"] for row in detail["tracks"]])
+        self.assertEqual(1, detail["count"])
 
     def test_favorite_mutation_rejects_unrelated_or_disabled_profile(self):
         from helper.playlist_hub import resolve_favorite_profile_id
@@ -155,10 +166,12 @@ class FavoritePlaylistTests(unittest.TestCase):
             _profile("other", "owner", "account-b", "server-a", "16"),
             _profile("disabled", "owner", "account-a", "server-a", "17", enabled=False),
         ])
-        self.assertEqual("second", resolve_favorite_profile_id(profiles, "default", "second"))
-        with self.assertRaisesRegex(ValueError, "同一 Plex 账户"):
+        self.assertEqual("default", resolve_favorite_profile_id(profiles, "default", "default"))
+        with self.assertRaisesRegex(ValueError, "当前曲库"):
+            resolve_favorite_profile_id(profiles, "default", "second")
+        with self.assertRaisesRegex(ValueError, "当前曲库"):
             resolve_favorite_profile_id(profiles, "default", "other")
-        with self.assertRaisesRegex(ValueError, "同一 Plex 账户"):
+        with self.assertRaisesRegex(ValueError, "当前曲库"):
             resolve_favorite_profile_id(profiles, "default", "disabled")
 
     def test_sibling_managed_playlist_ids_are_hidden_from_native_inventory(self):
@@ -180,7 +193,7 @@ class FavoritePlaylistTests(unittest.TestCase):
 
         self.assertEqual({"20", "25"}, hidden)
 
-    def test_favorite_api_lists_and_updates_same_account_other_library(self):
+    def test_favorite_api_lists_and_updates_only_current_library(self):
         from fastapi import FastAPI
         from helper.playlist_hub import attach_playlist_hub_routes
 
@@ -205,15 +218,15 @@ class FavoritePlaylistTests(unittest.TestCase):
             attach_playlist_hub_routes(app, stores["default"], runtime, profiles, body, lambda: None)
             route = lambda path: next(row.endpoint for row in app.routes if row.path == path)
             self.assertEqual(1, route("/api/playlists")()["items"][0]["count"])
-            self.assertEqual(["1", "2"], [row["id"] for row in
+            self.assertEqual(["1"], [row["id"] for row in
                              route("/api/playlists/{kind}/{key}")("favorite", "liked")["tracks"]])
             request = type("Request", (), {"payload": {
                 "track_id": "2", "liked": False, "profile_id": "second", "confirm": True,
             }})()
-            response = asyncio.run(route("/api/playlists/tracks/liked")(request))
+            with self.assertRaisesRegex(ValueError, "当前曲库"):
+                asyncio.run(route("/api/playlists/tracks/liked")(request))
 
-        self.assertFalse(response["liked"])
-        self.assertEqual(0, stores["second"].get("catalog")[0]["user_rating"])
+        self.assertEqual(8, stores["second"].get("catalog")[0]["user_rating"])
         self.assertEqual(10, stores["default"].get("catalog")[0]["user_rating"])
 
     def test_native_remove_route_rejects_playlist_owned_by_sibling_library(self):

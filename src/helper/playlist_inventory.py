@@ -48,6 +48,8 @@ def assistant_playlist_row(row):
     )
     result.update(section=section, source=source, smart=False, stale=False)
     result.update(capabilities(source=source, smart=False))
+    if kind in {"daily", "smart", "category"}:
+        result["can_add_tracks"] = False
     if kind == "favorite":
         result.update(
             can_play=True, can_rename=False, can_add_tracks=False,
