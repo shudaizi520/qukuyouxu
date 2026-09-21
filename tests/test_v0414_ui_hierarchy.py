@@ -50,9 +50,7 @@ class UIHierarchyV0414Tests(unittest.TestCase):
                 self.assertNotIn("open", attrs)
         tag, _attrs = page.elements["webhookTools"]
         self.assertEqual("div", tag)
-        self.assertIn("webhookHelpToggle", page.elements)
-        _tag, help_attrs = page.elements["webhookHelp"]
-        self.assertIn("hidden", help_attrs)
+        self.assertIn("openPlexWebhooks", page.elements)
         for control_id in (
             "dailySize",
             "dailyAutomationHour",

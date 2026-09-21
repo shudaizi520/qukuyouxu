@@ -212,11 +212,11 @@ class ExternalPlaylistService:
         source = self.repository.get_source(self.profile_id, source_id)
         _plex, tracks, revision = self._catalog()
         rows = self.repository.list_matches(self.profile_id, source["id"])
-        review_keys = {row["source_track_key"] for row in rows if row.get("status") == "review"}
         if any(row.get("catalog_revision") != revision for row in rows):
             previous = {row["source_track_key"]: row for row in rows if row.get("manual")}
             source_tracks = self.repository.list_tracks(self.profile_id, source["id"])
             rows = match_external_tracks(source_tracks, tracks, previous, revision)
+        review_keys = {row["source_track_key"] for row in rows if row.get("status") == "review"}
         by_key = {row["source_track_key"]: row for row in rows}
         catalog = Catalog(tracks)
         confirmed = {}

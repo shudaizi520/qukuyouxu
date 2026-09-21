@@ -4,9 +4,9 @@
  <meta charset="utf-8">
  <meta name="viewport" content="width=device-width,initial-scale=1">
  <title>曲库有序 · 设置</title>
- <link rel="stylesheet" href="/static/product.css?v=1.4.14">
- <script defer src="/static/auth.js?v=1.4.14"></script>
- <script defer src="/static/settings.js?v=1.4.14"></script>
+ <link rel="stylesheet" href="/static/product.css?v=1.4.15">
+ <script defer src="/static/auth.js?v=1.4.15"></script>
+ <script defer src="/static/settings.js?v=1.4.15"></script>
 </head>
 <body data-view="settings" data-auth-state="checking">
 <div id="bootScreen" class="auth-boot"><div class="boot-mark">♫</div><strong>曲库有序</strong><span>正在进入你的音乐库…</span></div>
@@ -21,24 +21,18 @@
 
 <div id="workspace" hidden>
  <header class="topbar">
-  <a class="brand" href="/" target="_top"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v1.4.14</small></span></a>
+  <a class="brand" href="/" target="_top"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v1.4.15</small></span></a>
   <nav><a href="/" target="_top">我的歌单</a><a href="/status" target="_top">运行状态</a><a class="active" href="/settings" target="_top">设置</a></nav>
   <button class="logout" data-auth-logout hidden>退出</button>
  </header>
 
  <main class="settings-shell">
   <div id="notice" class="notice" hidden></div>
-  <aside class="settings-nav" aria-label="设置分类">
-   <button class="settings-nav-item active" type="button" data-settings-target="accounts">账户与成员</button>
-   <button class="settings-nav-item" type="button" data-settings-target="system">系统</button>
-  </aside>
-
   <div class="settings-workspace">
    <section id="settings-accounts" class="settings-panel">
-    <div class="settings-page-head"><h2>账户与成员</h2><span id="plexState" class="connection-state">未检测</span></div>
     <section id="currentUser" class="settings-section">
-     <div class="settings-section-title"><h3>当前账户</h3><div class="settings-actions"><button class="primary compact-button" type="button" id="connectPlex">连接 Plex</button><button class="danger compact-button" type="button" id="disconnectPlex" hidden>断开 Plex</button></div></div>
-     <label id="profileSwitcher" class="settings-row account-selector-row"><span>当前用户</span><select id="plexProfile" aria-label="当前用户"></select></label>
+     <div class="settings-section-title"><h3>Plex 连接</h3><span id="plexState" class="connection-state">未检测</span><div class="settings-actions"><button class="primary compact-button" type="button" id="connectPlex">连接 Plex</button><button class="danger compact-button" type="button" id="disconnectPlex" hidden>断开 Plex</button></div></div>
+     <label id="profileSwitcher" class="settings-row account-selector-row"><span>Plex 用户</span><select id="plexProfile" aria-label="Plex 用户"></select></label>
      <div id="plexSavedSummary" class="connection-summary" hidden>
       <span><b id="savedAccount">Plex 账户</b></span><span><b id="savedServer">Plex 服务器</b></span><span><b id="savedLibrary">尚未选择</b></span><span id="savedHealth">连接资料已保存</span>
      </div>
@@ -53,23 +47,13 @@
     <section id="people" class="settings-section">
      <div class="settings-section-title"><h3>每日推荐用户</h3><button class="primary compact-button" type="button" id="openAddUser">添加用户</button></div>
      <div id="managedUserList" class="settings-user-list" aria-live="polite"></div>
-     <div id="webhookTools" class="profile-webhook-tools"><div class="settings-section-title"><h3>Plex 播放事件</h3><span id="webhookMessage" aria-live="polite">正在检查</span></div><div class="webhook-setup-action"><code id="webhookUrl" aria-label="Plex Webhook 地址"></code><span class="webhook-action-buttons"><button id="copyWebhook" class="secondary" type="button">复制地址</button><button id="webhookHelpToggle" class="secondary" type="button">设置帮助</button></span></div><p id="webhookHelp" class="settings-status-line" hidden>在你使用的 Plex 应用中打开 Webhooks 设置，添加上方地址，然后播放一首歌。此帮助不需要连接外部网站。</p><p id="webhookLast" class="settings-status-line"></p></div>
+     <div id="webhookTools" class="profile-webhook-tools"><div class="settings-section-title"><h3>Plex 播放事件</h3><span id="webhookMessage" aria-live="polite">正在检查</span></div><div class="webhook-setup-action"><code id="webhookUrl" aria-label="Plex Webhook 地址"></code><span class="webhook-action-buttons"><button id="copyWebhook" class="secondary" type="button">复制地址</button><a id="openPlexWebhooks" class="secondary button" href="https://app.plex.tv/desktop/#!/settings/webhooks" target="_blank" rel="noopener noreferrer">打开 Webhook</a></span></div><p id="webhookLast" class="settings-status-line"></p></div>
      <div id="batchDailyTools" class="settings-row batch-daily-tools" hidden><strong>批量每日推荐</strong><div class="settings-actions"><button id="batchPreview" class="secondary" type="button">生成预览</button><button id="batchPublish" class="primary" type="button" disabled>发布</button></div></div>
      <div id="batchResults" class="batch-results compact-results" hidden></div>
     </section>
    </section>
 
-   <section id="settings-playlists" class="settings-panel" hidden>
-    <div class="settings-page-head"><h2>歌单与曲库</h2></div>
-    <p class="muted">这里集中管理生成规则与曲库整理；播放页只显示当前歌单的快捷调整。</p>
-    <div class="settings-section settings-form-rows">
-     <div class="settings-row"><span>每日推荐：生成、发布与规则</span><a class="secondary button" href="/daily" target="_top">管理每日推荐</a></div>
-     <div class="settings-row"><span>智能歌单：生成与调整</span><a class="secondary button" href="/mixes" target="_top">管理智能歌单</a></div>
-     <div class="settings-row"><span>曲库整理：分类与新增歌曲</span><a class="secondary button" href="/library" target="_top">管理曲库整理</a></div>
-    </div>
-   </section>
-
-   <section id="settings-recommend" class="settings-panel" hidden>
+   <section id="settings-recommend" class="settings-panel">
     <div class="settings-page-head"><h2>推荐规则</h2></div>
     <form id="dailyForm" class="settings-section settings-form-rows">
      <label class="settings-row"><span>每日推荐数量</span><input id="dailySize" type="number" value="30" min="10" max="100"></label>
@@ -82,7 +66,7 @@
     </form>
    </section>
 
-   <section id="settings-automation" class="settings-panel" hidden>
+   <section id="settings-automation" class="settings-panel">
     <div class="settings-page-head"><h2>自动任务</h2></div>
     <section class="settings-section automation-list">
      <div id="dailyAutomation" class="automation-row"><strong>每日推荐</strong><div class="automation-controls"><span>每天</span><select id="dailyAutomationHour" class="automation-hour" aria-label="每日推荐执行时间"></select><input id="dailyAutomationEnabled" class="toggle" type="checkbox" aria-label="启用每日推荐"></div></div>
@@ -91,9 +75,9 @@
     </section>
    </section>
 
-   <section id="settings-system" class="settings-panel" hidden>
-    <div class="settings-page-head"><h2>系统</h2></div>
-    <section class="settings-section settings-form-rows"><div class="settings-row"><span>QQ 曲库资料</span><a class="secondary button" href="/library" target="_top">管理授权</a></div><div class="settings-row"><span>运行状态</span><a class="secondary button" href="/status" target="_top">查看</a></div><div class="settings-row"><span>软件版本</span><strong id="systemVersion" class="settings-static-value">1.4.14</strong></div></section>
+   <section id="settings-system" class="settings-panel">
+    <h2 class="sr-only">系统</h2>
+    <section class="settings-section settings-form-rows"><div class="settings-row"><span>QQ 曲库资料</span><a class="secondary button" href="/library" target="_top">管理授权</a></div><div class="settings-row"><span>运行状态</span><a class="secondary button" href="/status" target="_top">查看</a></div><div class="settings-row"><span>软件版本</span><strong id="systemVersion" class="settings-static-value">1.4.15</strong></div></section>
     <details id="passwordTools" class="settings-section settings-expander"><summary><span>登录密码</span><span id="accountName">admin</span></summary><div class="settings-expander-body"><form id="passwordForm" class="form-grid"><div class="field"><label for="currentPassword">当前密码</label><input id="currentPassword" type="password" autocomplete="current-password"></div><div class="field"><label for="newPassword">新密码</label><input id="newPassword" type="password" autocomplete="new-password" minlength="8"></div><div class="field"><label for="confirmPassword">确认新密码</label><input id="confirmPassword" type="password" autocomplete="new-password" minlength="8"></div><div class="field full"><button class="primary" type="submit">修改密码</button></div></form></div></details>
    </section>
   </div>

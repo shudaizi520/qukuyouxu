@@ -206,6 +206,24 @@ class ExternalServiceV130Tests(unittest.TestCase):
         self.assertEqual(1, len(revisions))
         self.assertNotIn(previous_revision, revisions)
 
+    def test_batch_confirmation_accepts_a_track_that_becomes_review_after_catalog_rematch(self):
+        imported = self.service.import_source(value=QQ_URL)
+        self.plex.catalog = [
+            row for row in self.plex.catalog if row["id"] != "10"
+        ] + [
+            local("12", "已有一", "歌手甲", album="A"),
+            local("13", "已有一", "歌手甲", album="B"),
+        ]
+
+        result = self.service.confirm_many(imported["id"], [
+            {"track_key": "a", "choice": {"status": "matched", "plex_track_id": "12"}},
+        ])
+
+        confirmed = next(row for row in result["tracks"] if row["source_track_key"] == "a")
+        self.assertEqual("matched", confirmed["status"])
+        self.assertEqual("12", confirmed["plex_track_id"])
+        self.assertTrue(confirmed["manual"])
+
     def test_batch_confirmation_stale_catalog_invalid_choice_is_atomic(self):
         imported = self.service.import_source(value=QQ_URL)
         before = self.service.repository.list_matches("default", imported["id"])

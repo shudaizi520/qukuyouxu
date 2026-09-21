@@ -28,12 +28,15 @@ class _SettingsLinks(HTMLParser):
 
 
 class SettingsPlaylistAccessTests(unittest.TestCase):
-    def test_settings_keeps_music_tools_in_their_own_hubs(self):
+    def test_settings_does_not_duplicate_main_music_hub_links(self):
         document = _SettingsLinks()
         document.feed((ROOT / "src/helper/static/settings.html").read_text())
 
-        self.assertEqual({"accounts", "system"}, document.navigation)
-        self.assertEqual({"/daily", "/mixes", "/library"}, set(document.links))
+        self.assertEqual(set(), document.navigation)
+        self.assertEqual({}, document.links)
+        workspace = (ROOT / "src/helper/static/playlists.html").read_text()
+        for hub in ("smartHubButton", "libraryHubButton", "importHubButton"):
+            self.assertIn('id="' + hub + '"', workspace)
 
 
 if __name__ == "__main__":

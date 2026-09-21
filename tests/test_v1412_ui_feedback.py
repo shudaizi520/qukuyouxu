@@ -54,3 +54,42 @@ def test_import_mobile_actions_override_old_full_width_file_control():
     css = (STATIC / "product.css").read_text()
     assert "body[data-view=external] .external-command-actions .external-file-action{width:auto}" in css
     assert "body[data-view=external] .external-import-form>.external-command-actions{flex-wrap:wrap;justify-content:flex-start;padding-left:0}" in css
+
+
+def test_review_uses_candidate_selection_then_one_global_confirmation():
+    """A selected candidate is batch-confirmable without a second row action."""
+    script = (STATIC / "external.js").read_text()
+    review_actions = script.split("function renderReviewActions", 1)[1].split(
+        "function auditionButton", 1
+    )[0]
+    assert "check.checked=true" in review_actions
+    assert "confirm.textContent='确认'" not in review_actions
+    assert "missing.value='__missing__'" in review_actions
+    assert "标记为缺失" in review_actions
+    assert "select.value==='__missing__'" in review_actions
+    assert "const checks=[...document.querySelectorAll('#trackList .external-review-check')]" in script
+
+
+def test_download_menu_closes_when_focus_leaves_it_or_escape_is_pressed():
+    html = (STATIC / "external.html").read_text()
+    script = (STATIC / "external.js").read_text()
+    assert 'id="downloadMenu"' in html
+    assert "function closeDownloadMenu" in script
+    assert "pointerdown" in script
+    assert "event.key==='Escape'" in script
+    assert "$('downloadImage').onclick=()=>{closeDownloadMenu();" in script
+
+
+def test_confirming_the_last_review_page_reloads_a_valid_page():
+    """A batch confirmation may shrink the result set below the current page."""
+    script = (STATIC / "external.js").read_text()
+    open_source = script.split("async function openSource", 1)[1].split(
+        "function renderDetail", 1
+    )[0]
+    assert "const lastPage=Math.max(1,Math.ceil(current.total/PAGE_SIZE))" in open_source
+    assert "if(page>lastPage){" in open_source
+    assert "page=lastPage;" in open_source
+    batch_confirm = script.split("$('confirmSelected').onclick", 1)[1].split(
+        "$('previousTracks')", 1
+    )[0]
+    assert "await openSource(current.id,false);" in batch_confirm

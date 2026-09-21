@@ -785,3 +785,22 @@ body[data-view=external] .external-track-missing .external-track-identity span{m
 @media(max-width:950px){body[data-view=external] .external-track-column-head,body[data-view=external] .external-track-row,body[data-view=external] .external-detail-card[data-status=review] .external-track-column-head,body[data-view=external] .external-detail-card[data-status=review] .external-track-row{grid-template-columns:32px minmax(150px,1.5fr) minmax(85px,1fr) minmax(210px,1fr)}body[data-view=external] .external-track-column-head span:nth-child(4),body[data-view=external] .external-track-column-head span:nth-child(5),body[data-view=external] .external-track-album,body[data-view=external] .external-track-duration{display:none}body[data-view=external] .external-track-missing{grid-template-columns:32px minmax(0,1fr)!important}}
 @media(max-width:640px){body[data-view=external] .external-track-column-head,body[data-view=external] .external-track-row,body[data-view=external] .external-detail-card[data-status=review] .external-track-column-head,body[data-view=external] .external-detail-card[data-status=review] .external-track-row{grid-template-columns:28px minmax(0,1fr) auto;gap:8px}body[data-view=external] .external-track-column-head span:nth-child(3),body[data-view=external] .external-track-artist{display:none}body[data-view=external] .external-detail-card[data-status=review] .external-track-row{grid-template-columns:28px minmax(0,1fr)}body[data-view=external] .external-detail-card[data-status=review] .external-track-actions{grid-column:2;flex-wrap:wrap}body[data-view=external] .external-review-toolbar{flex-wrap:wrap;gap:8px;padding:8px 0}body[data-view=external] .external-track-missing{grid-template-columns:28px minmax(0,1fr)!important}body[data-view=external] .external-command-actions{flex-wrap:wrap}}
 @media(max-width:640px){body[data-view=external] .external-detail-card[data-status=review] .external-track-column-head{grid-template-columns:28px minmax(0,1fr)}body[data-view=external] .external-detail-card[data-status=review] .external-track-column-head span:nth-child(6){display:none}}
+
+/* Keep settings and import actions within readable, consistently aligned columns. */
+body[data-view=settings] .settings-shell,
+.pch-embedded body[data-view=settings] .settings-shell{width:100%;max-width:780px;margin:0 auto;padding:22px 24px 56px;grid-template-columns:minmax(0,1fr);gap:0}
+body[data-view=settings] .settings-workspace,
+.pch-embedded body[data-view=settings] .settings-workspace{max-width:none}
+body[data-view=external] .external-import-card,
+body[data-view=external] .external-command-bar{width:100%;max-width:920px;margin:0 auto}
+body[data-view=external] .external-more>div{min-width:140px;gap:2px;padding:5px}
+body[data-view=external] .external-more>div>a,
+body[data-view=external] .external-more>div>button{display:flex;align-items:center;justify-content:flex-start;width:100%;min-height:36px;padding:7px 10px;border:0;border-radius:6px;background:transparent;color:#0b706d;text-align:left;text-decoration:none;font-size:13px;font-weight:600}
+body[data-view=external] .external-more>div>a:hover,
+body[data-view=external] .external-more>div>button:hover{background:#edf7f5}
+body[data-view=external] .external-no-candidate{color:#879a97;font-size:12px}
+body[data-view=settings] #managedUserList .settings-user-row{grid-template-columns:minmax(0,1fr) max-content 76px;gap:16px}
+body[data-view=settings] #managedUserList .settings-user-row-no-actions{grid-template-columns:minmax(0,1fr) max-content}
+body[data-view=settings] #managedUserList .profile-actions{width:auto;max-width:none}
+@media(max-width:700px){body[data-view=settings] #managedUserList .settings-user-row,body[data-view=settings] #managedUserList .settings-user-row-no-actions{grid-template-columns:minmax(0,1fr) auto;gap:10px}body[data-view=settings] #managedUserList .settings-user-row-no-actions .profile-learning-toggle{grid-column:1/-1}}
+@media(max-width:560px){body[data-view=settings] .settings-shell,.pch-embedded body[data-view=settings] .settings-shell{padding:16px 14px 36px}}

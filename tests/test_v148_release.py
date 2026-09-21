@@ -49,14 +49,13 @@ class PlaylistNavigationTests(unittest.TestCase):
                 self.assertTrue(url.startswith("/static/") or url.startswith("data:"),
                                 f"{path.name}: remote page asset {url}")
 
-    def test_settings_management_links_escape_the_embedded_frame(self):
+    def test_settings_remaining_internal_links_escape_the_embedded_frame(self):
         page = (ROOT / "src/helper/static/settings.html").read_text(encoding="utf-8")
         parser = _Links()
         parser.feed(page)
-        for path in ("/daily", "/mixes", "/library"):
-            links = [row for row in parser.links if row.get("href") == path]
-            self.assertTrue(links, path)
-            self.assertTrue(all(row.get("target") == "_top" for row in links), path)
+        links = [row for row in parser.links if row.get("href", "").startswith("/")]
+        self.assertTrue(links)
+        self.assertTrue(all(row.get("target") == "_top" for row in links))
 
     def test_sidebar_create_and_import_are_distinct_actions(self):
         page = (ROOT / "src/helper/static/playlists.html").read_text(encoding="utf-8")
@@ -83,7 +82,7 @@ class PlaylistNavigationTests(unittest.TestCase):
     def test_global_rules_and_contextual_playlist_actions_are_named_differently(self):
         settings = (ROOT / "src/helper/static/settings.html").read_text(encoding="utf-8")
         script = (ROOT / "src/helper/static/playlists.js").read_text(encoding="utf-8")
-        self.assertTrue("集中管理生成规则" in settings)
+        self.assertTrue('<h2>推荐规则</h2>' in settings)
         self.assertTrue("调整此歌单" in script)
 
     def test_empty_search_targets_point_to_the_new_create_action(self):
@@ -103,9 +102,11 @@ class PlaylistNavigationTests(unittest.TestCase):
         self.assertTrue('TRACK_BATCH_SIZE' in script)
         self.assertTrue('onStateChange:refreshPlayingRows' in script)
 
-    def test_optional_plex_help_does_not_require_foreign_website(self):
+    def test_plex_webhook_shortcut_is_explicit_and_keeps_manual_connection(self):
         page = (ROOT / "src/helper/static/settings.html").read_text(encoding="utf-8")
-        self.assertFalse('href="https://app.plex.tv/' in page)
+        self.assertIn('id="openPlexWebhooks"', page)
+        self.assertIn('href="https://app.plex.tv/desktop/#!/settings/webhooks"', page)
+        self.assertIn('id="showManualFallback"', page)
 
     def test_manual_lan_plex_connection_is_available_without_foreign_login(self):
         page = (ROOT / "src/helper/static/settings.html").read_text(encoding="utf-8")

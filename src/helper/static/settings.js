@@ -7,12 +7,12 @@ function markDirty(button){button.textContent='保存更改';button.classList.re
 async function request(path,method='GET',body){return PCHAuth.request(path,method,body);}
 async function post(path,b){return PCHAuth.post(path,b);}
 async function action(fn){if(busy)return;busy=true;try{await PCHUI.run(fn);}catch(e){note(e.message,true);}finally{busy=false;}}
-function showSettingsPanel(name){
- for(const button of document.querySelectorAll('[data-settings-target]'))button.classList.toggle('active',button.dataset.settingsTarget===name);
- for(const panel of document.querySelectorAll('.settings-panel'))panel.hidden=panel.id!=='settings-'+name;
- history.replaceState(null,'','#'+name);
+const settingsAnchors={accounts:'currentUser',learning:'people',system:'settings-system'};
+function showSettingsPanel(name,updateHash=true){
+ const target=$(settingsAnchors[name]||settingsAnchors.accounts);
+ if(updateHash)history.replaceState(null,'','#'+name);
+ target?.scrollIntoView({block:'start'});
 }
-for(const button of document.querySelectorAll('[data-settings-target]'))button.onclick=()=>showSettingsPanel(button.dataset.settingsTarget);
 for(const id of ['dailyAutomationHour','smartAutomationHour','libraryAutomationHour']){for(let hour=0;hour<24;hour++){const option=document.createElement('option');option.value=String(hour);option.textContent=String(hour).padStart(2,'0')+':00';$(id).append(option);}}
 function renderSections(rows,saved){
  const select=$('section');select.replaceChildren();const seen=new Set();
@@ -118,14 +118,13 @@ function renderManagedUsers(){
   const learningToggle=document.createElement('input');learningToggle.type='checkbox';learningToggle.className='toggle';learningToggle.checked=row.behavior_enabled!==false;learningToggle.setAttribute('aria-label',profileLabel(row)+'播放学习');
   learningToggle.onchange=()=>{const enabled=learningToggle.checked;if(busy){learningToggle.checked=!enabled;return;}action(async()=>{learningToggle.disabled=true;try{await post('/api/plex/profiles/learning',{profile_id:row.id,enabled});row.behavior_enabled=enabled;note(profileLabel(row)+'播放学习已'+(enabled?'开启':'关闭'));}catch(error){learningToggle.checked=!enabled;throw error;}finally{learningToggle.disabled=false;}});};
   learning.append(learningLabel,learningToggle);
-  const actions=document.createElement('div');actions.className='settings-actions profile-actions';
-  const open=document.createElement('button');open.type='button';open.className='secondary';open.textContent=row.id===activeProfile?'当前':'打开';open.disabled=row.id===activeProfile;
-  open.onclick=()=>action(async()=>{PCHAuth.setProfile(row.id);await refresh();note('已切换到 '+profileLabel(row));});actions.append(open);
+  line.append(person,learning);
   if(row.kind!=='owner'){
+   const actions=document.createElement('div');actions.className='settings-actions profile-actions';
    const remove=document.createElement('button');remove.type='button';remove.className='danger';remove.textContent='移除';
-   remove.onclick=()=>action(async()=>{if(!await PCHUI.confirm('停止为“'+(row.name||'这位用户')+'”生成每日推荐？\nPlex 中已有歌单会保留。',{confirmText:'移除用户'}))return;const result=await post('/api/plex/profiles/remove',{profile_id:row.id,confirm:true});if(row.id===activeProfile)PCHAuth.setProfile('default');await refresh();note(result.message);});actions.append(remove);
-  }
-  line.append(person,learning,actions);list.append(line);
+   remove.onclick=()=>action(async()=>{if(!await PCHUI.confirm('停止为“'+(row.name||'这位用户')+'”生成每日推荐？\nPlex 中已有歌单会保留。',{confirmText:'移除用户'}))return;const result=await post('/api/plex/profiles/remove',{profile_id:row.id,confirm:true});if(row.id===activeProfile)PCHAuth.setProfile('default');await refresh();note(result.message);});actions.append(remove);line.append(actions);
+  }else line.classList.add('settings-user-row-no-actions');
+  list.append(line);
  }
 }
 function renderRecipients(rows,ownerProfileId,warnings=[]){
@@ -224,9 +223,8 @@ $('dailyForm').onsubmit=e=>{e.preventDefault();action(saveDailyPolicy);};
 $('dailyForm').addEventListener('input',()=>markDirty($('dailySave')));
 for(const id of ['dailyAutomationEnabled','dailyAutomationHour','smartAutomationEnabled','smartIntervalDays','smartAutomationHour','libraryAutomationEnabled','libraryAutomationHour']){$(id).onchange=()=>action(async()=>{try{const saved=await post('/api/automation',automationPayload());renderAutomation(saved);note('自动任务已保存');}finally{await refresh();}});}
 $('copyWebhook').onclick=()=>action(async()=>{await copyWebhookAddress();note('地址已复制。');});
-$('webhookHelpToggle').onclick=()=>{$('webhookHelp').hidden=!$('webhookHelp').hidden;};
 $('passwordForm').onsubmit=e=>{e.preventDefault();action(async()=>{const a=$('newPassword').value,b=$('confirmPassword').value;if(a!==b)throw Error('两次输入的新密码不一致');const r=await post('/api/auth/password',{current_password:$('currentPassword').value,new_password:a,confirm_password:b});$('currentPassword').value='';$('newPassword').value='';$('confirmPassword').value='';note(r.message+'，其它旧登录会话已退出。');});};
-async function boot(){const panel=location.hash.slice(1);if(panel==='learning')showSettingsPanel('accounts');else if(['accounts','system'].includes(panel))showSettingsPanel(panel);else showSettingsPanel('accounts');try{await refresh();await resumePlexLogin();}catch(e){note(e.message,true);}startWebhookPolling();}
+async function boot(){const panel=location.hash.slice(1);try{await refresh();await resumePlexLogin();}catch(e){note(e.message,true);}if(settingsAnchors[panel])showSettingsPanel(panel,false);startWebhookPolling();}
 window.addEventListener('pch-auth-ready',boot);window.addEventListener('pch-auth-login',boot);window.addEventListener('pch-auth-logout',()=>{plexPin='';stopPlexPolling();});
 window.addEventListener('pagehide',()=>{stopPlexPolling();clearInterval(webhookTimer);webhookTimer=null;});
 window.addEventListener('visibilitychange',()=>{if(document.hidden)stopPlexPolling();else if(plexPin)schedulePlexPolling(0);});

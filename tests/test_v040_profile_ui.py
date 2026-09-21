@@ -9,7 +9,7 @@ class ProfileUIV040Tests(unittest.TestCase):
     def test_settings_keeps_profile_manager_visible(self):
         html = (ROOT / "src/helper/static/settings.html").read_text(encoding="utf-8")
         self.assertIn('id="plexProfile"', html)
-        self.assertIn('aria-label="当前用户"', html)
+        self.assertIn('aria-label="Plex 用户"', html)
         self.assertIn('id="profileManager"', html)
         start = html.index('id="profileManager"')
         self.assertNotIn(" open", html[start:start + 100])
@@ -45,7 +45,8 @@ class ProfileUIV040Tests(unittest.TestCase):
         connection = html.index('id="plexConnectionTools"')
         self.assertLess(current, people)
         self.assertLess(connection, people)
-        self.assertIn("当前账户", html)
+        self.assertIn("Plex 连接", html)
+        self.assertNotIn("当前账户", html)
         self.assertIn("每日推荐用户", html)
         self.assertIn("添加用户", html)
         self.assertNotIn('id="findHomeUsers"', html)
@@ -93,6 +94,15 @@ class ProfileUIV040Tests(unittest.TestCase):
         self.assertIn("responseJson('/api/plex/recipients')", script)
         self.assertIn("data.owner_profile_id", script)
         self.assertNotIn("function ownerProfile()", script)
+
+    def test_managed_user_rows_do_not_duplicate_the_profile_switcher(self):
+        script = (ROOT / "src/helper/static/settings.js").read_text(encoding="utf-8")
+        rows = script.split("function renderManagedUsers(){", 1)[1].split("function renderRecipients(", 1)[0]
+
+        self.assertIn("$('plexProfile').onchange", script)
+        self.assertNotIn("open.textContent=row.id===activeProfile?'当前':'打开'", rows)
+        self.assertNotIn("open.onclick=", rows)
+        self.assertIn("remove.textContent='移除'", rows)
 
 
 if __name__ == "__main__":

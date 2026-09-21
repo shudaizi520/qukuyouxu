@@ -15,6 +15,7 @@ class _SettingsStructure(HTMLParser):
         self.nav_targets = []
         self.panels = []
         self.classes = []
+        self.headings = []
 
     def handle_starttag(self, tag, attrs):
         values = dict(attrs)
@@ -27,6 +28,11 @@ class _SettingsStructure(HTMLParser):
                 "id": values.get("id", ""),
                 "hidden": "hidden" in values,
             })
+
+    def handle_data(self, data):
+        text = data.strip()
+        if text:
+            self.headings.append(text)
 
 
 class SettingsRedesignV0423Tests(unittest.TestCase):
@@ -100,16 +106,27 @@ class SettingsRedesignV0423Tests(unittest.TestCase):
         self.assertEqual("", archived["existing_profile_id"])
         self.assertEqual("shared-42", archived["archived_profile_id"])
 
-    def test_settings_uses_one_visible_category_instead_of_stacked_cards(self):
+    def test_settings_is_a_single_compact_page_without_repeated_account_titles(self):
         parser = _SettingsStructure()
         parser.feed((ROOT / "src/helper/static/settings.html").read_text(encoding="utf-8"))
 
-        expected = ["accounts", "system"]
-        self.assertEqual(expected, parser.nav_targets)
-        self.assertTrue(set(expected).issubset({panel["id"].removeprefix("settings-") for panel in parser.panels}))
-        self.assertEqual(1, sum(not panel["hidden"] for panel in parser.panels))
+        self.assertEqual([], parser.nav_targets)
+        self.assertFalse(any(panel["hidden"] for panel in parser.panels if panel["id"] in {"settings-accounts", "settings-system"}))
+        self.assertNotIn("账户与成员", parser.headings)
+        self.assertNotIn("当前账户", parser.headings)
+        self.assertIn("Plex 连接", parser.headings)
+        self.assertIn("每日推荐用户", parser.headings)
         self.assertNotIn("panel-description", parser.classes)
         self.assertNotIn("people-next-step", parser.classes)
+
+    def test_legacy_hashes_scroll_to_their_setting_instead_of_hiding_content(self):
+        script = (ROOT / "src/helper/static/settings.js").read_text(encoding="utf-8")
+
+        self.assertIn("const settingsAnchors={accounts:'currentUser',learning:'people',system:'settings-system'}", script)
+        self.assertIn("scrollIntoView({block:'start'})", script)
+        self.assertNotIn("panel.hidden=panel.id!==\'settings-\'+name", script)
+        boot = script.split("async function boot(){", 1)[1].split("window.addEventListener('pch-auth-ready'", 1)[0]
+        self.assertLess(boot.index("await refresh();"), boot.index("showSettingsPanel(panel,false)"))
 
     def test_settings_save_feedback_stays_inside_the_original_button(self):
         html = (ROOT / "src/helper/static/settings.html").read_text(encoding="utf-8")
