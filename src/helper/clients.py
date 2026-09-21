@@ -407,12 +407,12 @@ class PlexClient:
     def playlists(self):
         return [dict(e.attrib) for e in self._page('/playlists','Playlist',{'playlistType':'audio'})]
 
-    def playlist_state(self,pid):
+    def playlist_view(self,pid):
         if not str(pid).isdigit():raise PlexError('歌单ID无效')
         roots=self._xml(f'/playlists/{pid}').findall('Playlist')
         if len(roots)!=1:raise PlexError('程序管理的歌单不存在；不会擅自重建')
         e=roots[0]
-        if e.get('smart')=='1' or e.get('playlistType')!='audio':raise PlexError('不是普通音乐歌单')
+        if e.get('playlistType')!='audio':raise PlexError('不是音乐歌单')
         arr=self._page(f'/playlists/{pid}/items','Track')
         def item(x):
             try:
@@ -426,7 +426,12 @@ class PlexClient:
                 'thumb': x.get('thumb', ''),
             }
         return {'id':str(pid),'title':e.get('title',''),'summary':e.get('summary',''),
-                'items':[item(x) for x in arr]}
+                'smart':e.get('smart')=='1','items':[item(x) for x in arr]}
+
+    def playlist_state(self,pid):
+        state=self.playlist_view(pid)
+        if state.get('smart'):raise PlexError('不是普通音乐歌单')
+        return state
 
     def read_playlist_until(self,pid,predicate,attempts=8,delay=0.25):
         """Retry only Plex reads after a write; never repeats the mutation."""

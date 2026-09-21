@@ -14,6 +14,7 @@ from .engine import SafetyError, fingerprint
 from .external_audio import stream_track_audio
 from .external_playlist_sync import external_marker
 from .external_store import ExternalRepository
+from .playlist_inventory import assistant_playlist_row, merge_playlist_rows
 from .playlist_ownership import legacy_external_marker, legacy_pch_marker, replace_marker
 
 
@@ -60,7 +61,7 @@ def _plan_count(plan):
     return int(result["written"]) if str(result.get("written", "")).isdigit() else None
 
 
-def playlist_rows(store):
+def assistant_playlist_rows(store):
     """Return every playlist owned by this profile without making Plex network calls."""
     rows = []
     daily = store.get("daily_managed") or {}
@@ -118,6 +119,29 @@ def playlist_rows(store):
             "/external?source=" + quote(source["id"]),
         ))
     return rows
+
+
+def playlist_rows(engine):
+    """Return assistant and native Plex playlists, retaining the last good native list."""
+    store = engine.store
+    assistant = [assistant_playlist_row(row) for row in assistant_playlist_rows(store)]
+    plex = engine.plex_factory(store.get("settings"))
+    try:
+        merged = merge_playlist_rows(assistant, plex.playlists())
+        native = [dict(row) for row in merged if row.get("source") == "plex"]
+        store.set("playlist_native_cache_v1", native)
+        return merged
+    except Exception:
+        cached = []
+        for row in store.get("playlist_native_cache_v1", []) or []:
+            if not isinstance(row, dict) or row.get("source") != "plex":
+                continue
+            cached.append({**row, "stale": True})
+        owned = {
+            str(row.get("playlist_id")) for row in assistant
+            if str(row.get("playlist_id") or "")
+        }
+        return [*assistant, *(row for row in cached if str(row.get("playlist_id")) not in owned)]
 
 
 def _playlist_record(engine, kind, key):
@@ -299,6 +323,44 @@ def search_library(store, query, limit=40):
 
 
 def playlist_detail(engine, kind, key):
+    if str(kind) == "plex":
+        key = _safe_key(key)
+        if not key.isdigit():
+            raise ValueError("歌单标识无效")
+        plex = engine.plex_factory(engine.store.get("settings"))
+        listed = {
+            str(row.get("ratingKey")): row for row in plex.playlists()
+            if isinstance(row, dict) and row.get("playlistType") == "audio"
+        }
+        if key not in listed:
+            raise ValueError("当前用户没有这个歌单")
+        state = plex.playlist_view(key)
+        if str(state.get("id") or "") != key:
+            raise SafetyError("Plex 歌单标识已经变化")
+        catalog = {
+            str(row.get("id")): row for row in (engine.store.get("catalog", []) or [])
+            if isinstance(row, dict) and row.get("available", True)
+        }
+        tracks = []
+        for playlist_row in state.get("items") or []:
+            track_id = str(playlist_row.get("id") or "")
+            metadata = catalog.get(track_id)
+            if not metadata:
+                continue
+            tracks.append({
+                "id": track_id, "position": len(tracks) + 1,
+                "title": str(playlist_row.get("title") or metadata.get("title") or "未知歌曲"),
+                "artist": str(playlist_row.get("artist") or metadata.get("artist") or "未知歌手"),
+                "album": str(playlist_row.get("album") or metadata.get("album") or ""),
+                "duration": float(playlist_row.get("duration") or metadata.get("duration") or 0),
+                "thumb": str(playlist_row.get("thumb") or metadata.get("thumb") or ""),
+            })
+        return {
+            "kind": "plex", "key": key, "playlist_id": key,
+            "title": str(state.get("title") or listed[key].get("title") or "未命名歌单"),
+            "smart": bool(state.get("smart")), "count": len(tracks), "tracks": tracks,
+            "unavailable_count": max(0, len(state.get("items") or []) - len(tracks)),
+        }
     record, marker = _playlist_record(engine, kind, key)
     plex = engine.plex_factory(engine.store.get("settings"))
     state = plex.playlist_state(record["id"])
@@ -486,7 +548,7 @@ def attach_playlist_hub_routes(app, store, runtime, profiles, body, ensure_idle)
 
     @app.get("/api/playlists")
     def list_playlists():
-        return {"items": playlist_rows(fixed_engine().store)}
+        return {"items": playlist_rows(fixed_engine())}
 
     @app.get("/api/playlists/search")
     def playlist_search(q: str = "", limit: int = 40):

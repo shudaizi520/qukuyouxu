@@ -60,9 +60,9 @@ class PlaylistHubRowsTests(unittest.TestCase):
         self.temp.cleanup()
 
     def test_collects_every_assistant_owned_playlist_in_one_consistent_shape(self):
-        from helper.playlist_hub import playlist_rows
+        from helper.playlist_hub import assistant_playlist_rows
 
-        rows = playlist_rows(self.store)
+        rows = assistant_playlist_rows(self.store)
         self.assertEqual(
             ["daily", "smart", "category", "external"],
             [row["kind"] for row in rows],
@@ -76,12 +76,12 @@ class PlaylistHubRowsTests(unittest.TestCase):
         self.assertTrue(all(row["manage_url"].startswith("/") for row in rows))
 
     def test_daily_entry_remains_available_before_its_first_publish(self):
-        from helper.playlist_hub import playlist_rows
+        from helper.playlist_hub import assistant_playlist_rows
 
         self.store.set("daily_managed", None)
         self.store.set("daily_published_view", None)
 
-        rows = playlist_rows(self.store)
+        rows = assistant_playlist_rows(self.store)
         daily = rows[0]
         self.assertEqual("daily", daily["kind"])
         self.assertEqual("每日推荐", daily["title"])
