@@ -7,6 +7,7 @@ import time
 import uuid
 import hmac
 import threading
+import ipaddress
 from contextlib import asynccontextmanager, nullcontext
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -43,6 +44,19 @@ def _origin(value):
     if parsed.path not in ('', '/') or parsed.query or parsed.fragment:
         raise ValueError('PUBLIC_ORIGIN 不能包含路径、查询参数或片段')
     return f'{parsed.scheme}://{parsed.netloc}'
+
+
+def _private_request_origin(req):
+    """Allow a direct LAN URL alongside an explicitly configured HTTPS proxy."""
+    origin = _origin(f"{req.scope.get('scheme', 'http')}://{req.headers.get('host', '')}")
+    hostname = urlsplit(origin).hostname or ''
+    if hostname == 'localhost':
+        return origin
+    try:
+        address = ipaddress.ip_address(hostname)
+    except ValueError:
+        return ''
+    return origin if not address.is_global else ''
 
 
 def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
@@ -112,9 +126,14 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
             try:
                 expected_origin = public_origin or _origin(f"{req.scope.get('scheme', 'http')}://{req.headers.get('host', '')}")
                 request_origin = _origin(origin) if origin else ''
+                allowed_origins = {expected_origin}
+                if public_origin:
+                    private_origin = _private_request_origin(req)
+                    if private_origin:
+                        allowed_origins.add(private_origin)
             except ValueError:
                 return JSONResponse({'error': '请求地址无效'}, status_code=400)
-            if request_origin and request_origin != expected_origin:
+            if request_origin and request_origin not in allowed_origins:
                 return JSONResponse({'error': '不允许跨站管理请求；请直接使用本应用地址'}, status_code=403)
             try:
                 if int(req.headers.get('content-length', '0')) > 2 * 1024 * 1024:
@@ -203,8 +222,13 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
         if count > 20:
             raise SafetyError('登录尝试过多，请稍后再试')
 
-    def _set_session_cookie(response, token, max_age=SESSION_SECONDS):
-        response.set_cookie(COOKIE_NAME, token, max_age=max_age, httponly=True, samesite='strict', secure=public_origin.startswith('https://'), path='/')
+    def _set_session_cookie(response, token, req, max_age=SESSION_SECONDS):
+        browser_origin = _origin(req.headers.get('origin')) if req.headers.get('origin') else ''
+        proxy_host = urlsplit(public_origin).netloc if public_origin else ''
+        secure = public_origin.startswith('https://') and (
+            browser_origin == public_origin or req.headers.get('host', '').lower() == proxy_host.lower()
+        )
+        response.set_cookie(COOKIE_NAME, token, max_age=max_age, httponly=True, samesite='strict', secure=secure, path='/')
         return response
 
     @app.get('/api/auth/status')
@@ -224,7 +248,7 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
         username = auth.create_account(d.get('username', 'admin'), d.get('password', ''))
         token, _ = auth.create_session(username)
         store.log('管理员账户已建立；旧版验证信息不再用于日常登录')
-        return _set_session_cookie(JSONResponse({'authenticated': True, 'username': username, 'message': '管理员账户已建立'}), token)
+        return _set_session_cookie(JSONResponse({'authenticated': True, 'username': username, 'message': '管理员账户已建立'}), token, req)
 
     @app.post('/api/auth/login')
     async def auth_login(req: Request):
@@ -235,7 +259,7 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
         if not auth.verify(username, password):
             return JSONResponse({'error': '用户名或密码不正确'}, status_code=401)
         token, _ = auth.create_session(username)
-        return _set_session_cookie(JSONResponse({'authenticated': True, 'username': username}), token)
+        return _set_session_cookie(JSONResponse({'authenticated': True, 'username': username}), token, req)
 
     @app.post('/api/auth/logout')
     def auth_logout(req: Request):
@@ -255,7 +279,7 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
         username = auth.change_password(user, d.get('current_password', ''), d.get('new_password', ''))
         token, _ = auth.create_session(username)
         store.log('管理员密码已修改，旧登录会话已撤销')
-        return _set_session_cookie(JSONResponse({'message': '密码已更新', 'username': username}), token)
+        return _set_session_cookie(JSONResponse({'message': '密码已更新', 'username': username}), token, req)
 
     @app.get('/')
     def index():

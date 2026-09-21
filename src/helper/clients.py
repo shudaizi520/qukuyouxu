@@ -504,6 +504,16 @@ class PlexClient:
         self.append(pid,ids[100:])
         return self.playlist_state(pid)
 
+    def create_blank(self,title):
+        """Create an empty ordinary Plex playlist without borrowing a library track."""
+        root=self._xml('/playlists','POST',{'title':title,'type':'audio','smart':0})
+        el=root.find('Playlist')
+        if el is None or not str(el.get('ratingKey') or '').isdigit():
+            raise PlexError('创建歌单未返回ID，请核对 Plex；不会自动重试创建')
+        # Keep the returned ID even when Plex has not made the new playlist readable yet.
+        return {'id':str(el.get('ratingKey')),'title':el.get('title') or title,
+                'smart':el.get('smart')=='1','items':[]}
+
     def append(self,pid,ids):
         for i in range(0,len(ids),100):self._xml(f'/playlists/{pid}/items','PUT',{'uri':self._uri(ids[i:i+100])})
 

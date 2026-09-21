@@ -501,7 +501,38 @@ def sibling_owned_playlist_ids(profiles, runtime, current_profile_id):
             playlist_id = str(row.get("playlist_id") or "")
             if playlist_id.isdigit():
                 owned.add(playlist_id)
+        for playlist_id in runtime.engine(profile_id).store.get("manual_plex_playlist_ids", []) or []:
+            if str(playlist_id).isdigit():
+                owned.add(str(playlist_id))
     return owned
+
+
+def create_manual_playlist(engine, title):
+    title = str(title or "").strip()
+    if not title or len(title) > 80 or any(ord(char) < 32 for char in title):
+        raise ValueError("歌单名称需为 1—80 个字，且不能包含控制字符")
+    store = engine.store
+    plex = engine.plex_factory(store.get("settings"))
+    state = plex.create_blank(title)
+    playlist_id = str(state.get("id") or "")
+    if not playlist_id.isdigit() or state.get("smart") or state.get("items"):
+        raise SafetyError("Plex 创建结果需要核对；不会自动重试创建")
+    owned = [str(value) for value in (store.get("manual_plex_playlist_ids", []) or [])
+             if str(value).isdigit()]
+    if playlist_id not in owned:
+        store.set("manual_plex_playlist_ids", [*owned, playlist_id])
+    try:
+        rows = plex.read_playlists_until(
+            lambda items: any(str(row.get("ratingKey") or "") == playlist_id for row in items),
+        )
+    except Exception:
+        raise SafetyError("Plex 已返回新歌单编号，但列表读取失败；请刷新，不要重复创建") from None
+    matching = next((row for row in rows if str(row.get("ratingKey") or "") == playlist_id), None)
+    if not matching:
+        raise SafetyError("Plex 已返回新歌单编号，但列表暂未同步；请刷新，不要重复创建")
+    if matching.get("playlistType") != "audio" or str(matching.get("smart") or "0") != "0":
+        raise SafetyError("Plex 返回的歌单类型与普通音乐歌单不符，请核对，不要重复创建")
+    return {"kind": "plex", "key": playlist_id, "title": str(state.get("title") or title)}
 
 
 def resolve_favorite_profile_id(profiles, current_profile_id, requested_profile_id):
@@ -775,6 +806,9 @@ def remove_playlist(engine, kind, key, confirm_title, hidden_playlist_ids=()):
             )
             if any(str(row.get("ratingKey") or "") == key for row in rows):
                 raise SafetyError("Plex 没有确认删除结果，请刷新后核对")
+            manual_ids = [str(value) for value in (engine.store.get("manual_plex_playlist_ids", []) or [])]
+            if key in manual_ids:
+                engine.store.set("manual_plex_playlist_ids", [value for value in manual_ids if value != key])
             return {"message": "已删除歌单；仅删除歌单，不删除音乐文件。"}
     raise ValueError("歌单类型无效")
 
@@ -800,6 +834,16 @@ def attach_playlist_hub_routes(app, store, runtime, profiles, body, ensure_idle)
     @app.get("/api/playlists/search")
     def playlist_search(q: str = "", limit: int = 40):
         return {"items": search_library(fixed_engine().store, q, limit)}
+
+    @app.post("/api/playlists/create")
+    async def create_playlist(request: Request):
+        data = await body(request)
+        if data.get("confirm") is not True:
+            raise SafetyError("请确认新建 Plex 歌单")
+        ensure_idle()
+        target = fixed_engine()
+        with target.exclusive():
+            return create_manual_playlist(target, data.get("title"))
 
     @app.get("/api/playlists/library/tracks/{track_id}/audio")
     def library_audio(

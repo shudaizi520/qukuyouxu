@@ -4,9 +4,9 @@
  <meta charset="utf-8">
  <meta name="viewport" content="width=device-width,initial-scale=1">
  <title>曲库有序 · 我的歌单</title>
- <link rel="stylesheet" href="/static/product.css?v=1.4.7">
- <script defer src="/static/auth.js?v=1.4.7"></script>
- <script type="module" src="/static/playlists.js?v=1.4.7"></script>
+ <link rel="stylesheet" href="/static/product.css?v=1.4.8">
+ <script defer src="/static/auth.js?v=1.4.8"></script>
+ <script type="module" src="/static/playlists.js?v=1.4.8"></script>
 </head>
 <body data-view="playlists" data-auth-state="checking">
 <div id="bootScreen" class="auth-boot"><div class="boot-mark">♫</div><strong>曲库有序</strong><span>正在进入你的音乐库…</span></div>
@@ -21,9 +21,9 @@
 <div id="workspace" hidden>
  <header class="topbar">
   <button id="playlistSidebarToggle" class="playlist-sidebar-toggle" type="button" aria-label="打开歌单导航" aria-controls="playlistSidebar" aria-expanded="false">☰</button>
-  <button class="brand" id="workspaceHome" type="button"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v1.4.7</small></span></button>
+  <button class="brand" id="workspaceHome" type="button"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v1.4.8</small></span></button>
   <form id="librarySearchForm" class="playlist-global-search" role="search"><span class="playlist-search-icon" aria-hidden="true"></span><input id="librarySearchInput" type="search" placeholder="搜索全库歌曲、歌手或专辑" autocomplete="off"><button type="submit">搜索</button></form>
-  <nav><button type="button" data-workspace-url="/status">运行状态</button><button type="button" data-workspace-url="/settings">设置</button></nav><button class="logout" data-auth-logout hidden>退出</button>
+  <nav><button type="button" data-workspace-url="/status">运行状态</button><button id="openSettings" type="button">设置</button></nav><button class="logout" data-auth-logout hidden>退出</button>
  </header>
  <main class="playlist-hub">
   <button id="playlistSidebarBackdrop" class="playlist-sidebar-backdrop" type="button" aria-label="关闭歌单导航" hidden></button>
@@ -34,9 +34,10 @@
     <button id="libraryHubButton" type="button" data-section="library"><span class="playlist-fixed-icon" aria-hidden="true">▦</span><span>曲库整理</span></button>
    </nav>
    <div class="playlist-list-scroll">
-    <div class="playlist-side-heading"><h2>自建歌单</h2><span class="playlist-side-heading-actions"><span id="customPlaylistCount">0</span><button id="customPlaylistImport" type="button" data-tool-url="/external" aria-label="导入外部歌单" title="导入外部歌单">＋</button><button id="customPlaylistRefresh" type="button" aria-label="刷新自建歌单" title="刷新自建歌单">↻</button></span></div>
+    <div class="playlist-side-heading"><h2>自建歌单</h2><span class="playlist-side-heading-actions"><span id="customPlaylistCount">0</span><button id="customPlaylistCreate" type="button" aria-label="新建歌单" title="新建歌单">＋</button><button id="customPlaylistImport" type="button" data-tool-url="/external" aria-label="导入外部歌单" title="导入外部歌单">↓</button><button id="customPlaylistRefresh" type="button" aria-label="刷新自建歌单" title="刷新自建歌单">↻</button></span></div>
     <nav id="customPlaylistList" class="playlist-side-list" aria-label="自建歌单"></nav>
    </div>
+   <div class="playlist-sidebar-footer"><button id="mobileSettings" type="button">设置</button></div>
   </aside>
   <section class="playlist-main">
    <div id="playlistNotice" class="notice" role="status" hidden></div>
@@ -54,6 +55,7 @@
     </div>
     <div class="playlist-track-scroll">
      <div id="playlistTracks" class="playlist-tracks"></div>
+     <button id="playlistLoadMore" class="secondary playlist-load-more" type="button" hidden>加载更多歌曲</button>
      <div id="playlistEmpty" class="playlist-empty">还没有可显示的歌单</div>
     </div>
    </section>
@@ -77,6 +79,12 @@
   <form method="dialog" class="playlist-dialog-head"><h2>重命名歌单</h2><button type="submit" aria-label="关闭">×</button></form>
   <label class="playlist-rename-field">歌单名称<input id="playlistRenameInput" maxlength="80" autocomplete="off"></label>
   <div class="playlist-dialog-actions"><button id="playlistRenameConfirm" class="primary" type="button">确认重命名</button></div>
+ </dialog>
+ <dialog id="playlistCreateDialog" class="playlist-search-dialog playlist-rename-dialog">
+  <form method="dialog" class="playlist-dialog-head"><h2>新建歌单</h2><button type="submit" aria-label="关闭">×</button></form>
+  <p class="playlist-create-hint">将在当前 Plex 用户中创建空白普通歌单，可随后搜索歌曲并添加。</p>
+  <label class="playlist-rename-field">歌单名称<input id="playlistCreateInput" maxlength="80" autocomplete="off" placeholder="给歌单起个名字"></label>
+  <div class="playlist-dialog-actions"><button id="playlistCreateConfirm" class="primary" type="button">创建歌单</button></div>
  </dialog>
  <footer id="playlistPlayer" class="playlist-player" data-playing="false" data-muted="false">
   <div id="playlistProgressRail" class="playlist-progress-rail"><input id="playerSeek" type="range" min="0" max="1000" value="0" aria-label="播放进度"></div>

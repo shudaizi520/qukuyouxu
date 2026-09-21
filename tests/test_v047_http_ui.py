@@ -58,7 +58,9 @@ class HttpAndUiV047Tests(unittest.TestCase):
         self.assertIn('id="smartHubButton"', home)
         self.assertIn("'/mixes'", sections)
         for name in ("daily.html", "home.html", "status.html", "settings.html", "mixes.html"):
-            self.assertIn('href="/">我的歌单</a>', (static / name).read_text(encoding="utf-8"), name)
+            page_text = (static / name).read_text(encoding="utf-8")
+            expected = 'href="/" target="_top">我的歌单</a>' if name == "settings.html" else 'href="/">我的歌单</a>'
+            self.assertIn(expected, page_text, name)
 
     def test_behavior_ui_does_not_claim_learning_before_webhook_connection(self):
         settings = (ROOT / "src/helper/static/settings.html").read_text(encoding="utf-8")
@@ -68,8 +70,8 @@ class HttpAndUiV047Tests(unittest.TestCase):
         self.assertIn('<code id="webhookUrl"', settings)
         self.assertIn('id="copyWebhook"', settings)
         self.assertIn('>复制地址</button>', settings)
-        self.assertIn('href="https://app.plex.tv/desktop/#!/settings/webhooks"', settings)
-        self.assertIn('>打开 Webhooks</a>', settings)
+        self.assertNotIn('href="https://app.plex.tv/', settings)
+        self.assertIn('>设置帮助</button>', settings)
         self.assertNotIn('id="setupWebhook"', settings)
         self.assertIn('id="webhookHelpToggle"', settings)
         self.assertIn('id="webhookHelp"', settings)

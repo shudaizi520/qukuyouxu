@@ -25,7 +25,7 @@ export function createLibrarySearch({
 
  function openAddDialog(track){
   pendingTrack=track;
-  if(!fillTargets()){pendingTrack=null;notify('当前没有可添加歌曲的普通歌单，请先在 Plex 或 Plexamp 创建。',true);return;}
+  if(!fillTargets()){pendingTrack=null;notify('当前没有可添加歌曲的普通歌单，请先点侧栏“＋”新建歌单。',true);return;}
   byId(document,'librarySearchSelected').textContent=(track.title||'未知歌曲')+' · '+(track.artist||'未知歌手');
   byId(document,'librarySearchDialog').showModal();
  }

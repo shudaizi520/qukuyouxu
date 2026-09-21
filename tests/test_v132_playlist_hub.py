@@ -495,8 +495,8 @@ class PlaylistHubPageTests(unittest.TestCase):
         labels = ["歌曲", "歌手", "专辑", "时长"]
         positions = [header.index(f">{label}<") for label in labels]
         self.assertEqual(sorted(positions), positions)
-        render_tracks = script.split("function renderTracks()", 1)[1].split(
-            "const playlistPlayer", 1
+        render_tracks = script.split("function renderNextTrackBatch()", 1)[1].split(
+            "function renderTracks()", 1
         )[0]
         self.assertIn("artist.className='playlist-track-artist'", render_tracks)
         append = render_tracks.split("row.append(", 1)[1].split(")", 1)[0]
@@ -531,7 +531,8 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn('id="playlistSearchView"', page)
         self.assertIn('id="librarySearchResults"', page)
         self.assertIn('data-workspace-url="/status"', topbar)
-        self.assertIn('data-workspace-url="/settings"', topbar)
+        self.assertIn('id="openSettings"', topbar)
+        self.assertIn("location.assign('/settings')", script)
         self.assertNotIn('href="/status"', topbar)
         self.assertNotIn('href="/settings"', topbar)
 
@@ -603,7 +604,8 @@ class PlaylistHubPageTests(unittest.TestCase):
             "status.html", "settings.html",
         ):
             page = (STATIC / name).read_text(encoding="utf-8")
-            self.assertEqual(1, page.count('href="/">我的歌单</a>'), name)
+            expected = 'href="/" target="_top">我的歌单</a>' if name == "settings.html" else 'href="/">我的歌单</a>'
+            self.assertEqual(1, page.count(expected), name)
         playlist_home = (STATIC / "playlists.html").read_text(encoding="utf-8")
         self.assertEqual(1, playlist_home.count('id="workspaceHome"'))
 
@@ -704,8 +706,8 @@ class PlaylistHubPageTests(unittest.TestCase):
 
     def test_playing_highlight_and_unbuilt_daily_keep_unambiguous_context(self):
         script = (STATIC / "playlists.js").read_text(encoding="utf-8")
-        render_tracks = script.split("function renderTracks", 1)[1].split(
-            "function updateArtwork", 1
+        render_tracks = script.split("function renderNextTrackBatch", 1)[1].split(
+            "function renderTracks", 1
         )[0]
         self.assertIn("(isPlaying?' playing':'')", render_tracks)
         unbuilt = script.split("if(!item.can_play)", 1)[1].split("throw Error", 1)[0]
@@ -867,7 +869,7 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn("sidebar.inert=compact&&!open", script)
         self.assertIn("backdrop.hidden=!open", script)
         self.assertIn("compactSidebar.addEventListener('change'", script)
-        mobile = styles.split("@media(max-width:700px){\n body[data-view=playlists]", 1)[1].split("\n}", 1)[0]
+        mobile = styles.split("@media(max-width:700px){\n", 1)[1].split("\n}", 1)[0]
         self.assertIn("grid-template-columns:minmax(0,1fr)", mobile)
         self.assertIn("transform:translateX(-100%)", mobile)
         self.assertIn(".playlist-sidebar-open .playlist-sidebar", mobile)

@@ -12,6 +12,27 @@ docker compose up -d --build
 
 第一次打开页面时，直接填写管理员用户名和两遍密码即可建立账户，不需要额外的设置码。随后按页面引导连接 Plex。使用 HTTPS 反向代理时，同时设置 `PUBLIC_ORIGIN=https://你的访问域名`。
 
+页面的脚本、样式、图标和歌曲封面都由本应用或你自己的 Plex 服务器提供，不依赖国外 CDN。QQ 音乐、网易云音乐的匹配功能需要访问各自的国内服务；Plex 官方账户授权需要访问 Plex 网站，如果所在网络无法访问，可在设置中选择手动填写局域网 Plex 地址和 Token。加载首页与播放本地曲库不要求浏览器连接国外图片或脚本服务。
+
+## HTTPS 反向代理
+
+反向代理请使用独立域名的根路径，例如 `https://music.example.cn/`，不要放在 `/music/` 子路径下。把 `.env` 中的 `PUBLIC_ORIGIN` 设为浏览器实际使用的完整来源（不含末尾路径），并将代理的 `Host` 头保持为该域名。设置后 HTTPS 访问使用 Secure 会话 Cookie；原有局域网 IP 地址仍可单独登录。不要把容器的 `9511` 端口直接暴露到公网。
+
+Nginx 反代到同一主机时，核心转发规则如下；证书、访问控制和公网防护请在自己的反代中配置：
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:9511;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Range $http_range;
+    proxy_read_timeout 180s;
+}
+```
+
+反代与容器在同一主机时，可以把 Compose 的端口映射改成 `127.0.0.1:9511:9511`，避免旁路访问。部署后应分别检查登录、设置、歌单音频的拖动播放和 `/healthz`；代理不能改写 `/api/`、`/static/` 或音频 `Range` 请求，也不能缓存含登录状态的响应。
+
 设置中的每一项对应“一个 Plex 用户 + 一个音乐资料库”。同一用户使用多个音乐资料库时分别添加即可；已有托管歌单的项目不会被直接改到另一个资料库，而是保留原项目并建立独立项目。
 
 ## 查看状态

@@ -56,6 +56,7 @@ class PlaylistSectionUiTests(unittest.TestCase):
         script = (STATIC / "playlist-search.js").read_text(encoding="utf-8")
         self.assertIn("row=>row.playlist_id&&row.can_add_tracks", script)
         self.assertIn("当前没有可添加歌曲的普通歌单", script)
+        self.assertIn("侧栏“＋”新建歌单", script)
 
     def test_controls_follow_backend_capabilities_and_warn_before_delete(self):
         page = (STATIC / "playlists.html").read_text(encoding="utf-8")
