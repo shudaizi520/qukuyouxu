@@ -5,7 +5,7 @@ import {createPlaylistSections} from './playlist-sections.js';
 
 const $=id=>document.getElementById(id);
 const workspace=createPlaylistWorkspace({document});
-const compactSidebar=window.matchMedia('(max-width:620px)');
+const compactSidebar=window.matchMedia('(max-width:700px)');
 
 let profiles=[];
 let playlists=[];
@@ -16,7 +16,6 @@ let unavailablePlaylists=new Set();
 let loadedProfileId='';
 let playlistRequest=0;
 let profileRequest=0;
-let likedRequest=0;
 const likedRequests=new Map();
 let playlistLoading=false;
 let noticeTimer=0;
@@ -71,30 +70,42 @@ function mediaUrl(type,track,context=current){
 }
 function playlistContext(item=current){return item?{kind:item.kind,key:item.key,profileId:loadedProfileId}:null;}
 
+function paintLiked(track,liked,rating){
+ track.liked=liked;track.user_rating=rating;
+ for(const row of tracks){if(String(row.id)===String(track.id)){row.liked=liked;row.user_rating=rating;}}
+ renderTracks();playlistPlayer.syncLiked(track);librarySearch.updateLiked(track.id,liked,rating);
+}
 async function setLiked(track,liked){
- const trackId=String(track.id),profileId=loadedProfileId,profileGeneration=profileRequest,requestId=++likedRequest,previous=!!track.liked;
- likedRequests.set(trackId,requestId);
- track.liked=liked;
- for(const row of tracks){if(String(row.id)===String(track.id))row.liked=liked;}
- renderTracks();playlistPlayer.syncLiked(track);librarySearch.updateLiked(track.id,liked,liked?10:0);
- try{
-  const result=await json('/api/playlists/tracks/liked','POST',{track_id:String(track.id),liked,confirm:true});
-  if(profileId!==loadedProfileId||profileGeneration!==profileRequest||likedRequests.get(trackId)!==requestId)return;
-  track.liked=!!result.liked;track.user_rating=result.user_rating;
-  for(const row of tracks){if(String(row.id)===String(track.id)){row.liked=track.liked;row.user_rating=result.user_rating;}}
-  if(current?.kind==='favorite'&&!track.liked){tracks=tracks.filter(row=>String(row.id)!==String(track.id));filtered=tracks.slice();}
-  const favorite=playlists.find(row=>row.kind==='favorite'&&row.key==='liked');
-  if(favorite&&previous!==track.liked)favorite.count=Math.max(0,Number(favorite.count||0)+(track.liked?1:-1));
-  renderTracks();renderPlaylistList();playlistPlayer.syncLiked(track);librarySearch.updateLiked(track.id,track.liked,result.user_rating);
-  likedRequests.delete(trackId);
- }catch(error){
-  if(profileId===loadedProfileId&&profileGeneration===profileRequest&&likedRequests.get(trackId)===requestId){
-   track.liked=previous;for(const row of tracks){if(String(row.id)===String(track.id))row.liked=previous;}
-   renderTracks();playlistPlayer.syncLiked(track);librarySearch.updateLiked(track.id,previous,track.user_rating);
-   likedRequests.delete(trackId);
-  }
-  throw error;
+ const trackId=String(track.id),profileId=loadedProfileId,profileGeneration=profileRequest;
+ let pending=likedRequests.get(trackId);
+ if(pending&&pending.profileId===profileId&&pending.profileGeneration===profileGeneration){
+  pending.desired=!!liked;paintLiked(track,pending.desired,pending.desired?10:0);return pending.promise;
  }
+ pending={profileId,profileGeneration,desired:!!liked,confirmed:!!track.liked,rating:track.user_rating,track,promise:null};
+ likedRequests.set(trackId,pending);
+ const isCurrent=()=>profileId===loadedProfileId&&profileGeneration===profileRequest&&likedRequests.get(trackId)===pending;
+ paintLiked(track,pending.desired,pending.desired?10:0);
+ pending.promise=(async()=>{
+  try{
+   while(pending.confirmed!==pending.desired){
+    const sent=pending.desired;
+    const result=await json('/api/playlists/tracks/liked','POST',{track_id:trackId,liked:sent,confirm:true});
+    if(!isCurrent())return;
+    if(!!result.liked!==sent)throw Error('喜欢状态更新失败，请重试');
+    const previous=pending.confirmed;pending.confirmed=!!result.liked;pending.rating=result.user_rating;
+    const favorite=playlists.find(row=>row.kind==='favorite'&&row.key==='liked');
+    if(favorite&&previous!==pending.confirmed){favorite.count=Math.max(0,Number(favorite.count||0)+(pending.confirmed?1:-1));renderPlaylistList();}
+   }
+   if(!isCurrent())return;
+   paintLiked(pending.track,pending.confirmed,pending.rating);
+   if(current?.kind==='favorite'&&!pending.confirmed){tracks=tracks.filter(row=>String(row.id)!==trackId);filtered=tracks.slice();renderTracks();}
+  }catch(error){
+   if(!isCurrent())return;
+   paintLiked(pending.track,pending.confirmed,pending.rating);
+   throw error;
+  }finally{if(isCurrent())likedRequests.delete(trackId);}
+ })();
+ return pending.promise;
 }
 
 function renderTracks(){
@@ -184,13 +195,13 @@ function resetPlaylistView(){
  $('playlistManage').hidden=true;$('playlistRename').hidden=true;$('playlistRemove').hidden=true;$('playlistPlayAll').disabled=true;$('playlistEmpty').textContent='正在读取这个账户的歌单…';
 }
 function resetSession(){
- ++profileRequest;++playlistRequest;++likedRequest;likedRequests.clear();loadedProfileId='';profiles=[];playlists=[];current=null;tracks=[];filtered=[];unavailablePlaylists=new Set();
+ ++profileRequest;++playlistRequest;likedRequests.clear();loadedProfileId='';profiles=[];playlists=[];current=null;tracks=[];filtered=[];unavailablePlaylists=new Set();
  const renameDialog=$('playlistRenameDialog');if(renameDialog.open)renameDialog.close();
  playlistPlayer.stop();librarySearch.reset();setPlaylistLoading(false);resetPlaylistView();renderTracks();renderPlaylistList();setSidebarOpen(false);
 }
 async function switchProfile(profileId,persist=true){
  profileId=String(profileId||'');if(!profileId||profileId===loadedProfileId)return;
- const requestId=++profileRequest;++playlistRequest;++likedRequest;likedRequests.clear();loadedProfileId=profileId;$('playlistProfile').value=profileId;
+ const requestId=++profileRequest;++playlistRequest;likedRequests.clear();loadedProfileId=profileId;$('playlistProfile').value=profileId;
  const renameDialog=$('playlistRenameDialog');if(renameDialog.open)renameDialog.close();
  playlistPlayer.stop();librarySearch.reset();tracks=[];filtered=[];playlists=[];unavailablePlaylists=new Set();setPlaylistLoading(false);resetPlaylistView();renderTracks();renderPlaylistList();
  if(persist&&PCHAuth.profile()!==profileId)PCHAuth.setProfile(profileId);

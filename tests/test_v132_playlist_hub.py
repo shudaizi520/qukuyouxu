@@ -511,7 +511,7 @@ class PlaylistHubPageTests(unittest.TestCase):
             "\n}", 1
         )[0]
         self.assertIn(
-            "grid-template-columns:34px minmax(0,1fr) minmax(100px,.7fr) 58px 58px",
+            "grid-template-columns:34px minmax(0,1fr) minmax(100px,.7fr) 58px 100px",
             compact,
         )
         self.assertIn(".playlist-track-head span:nth-child(4)", compact)
@@ -647,7 +647,7 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertNotIn("/api/playlists/'+encoded(context?.kind)", script)
         self.assertNotIn("if(stop)stopPlayback();current=item;const detail", script)
         self.assertIn(
-            "grid-template-columns:34px minmax(0,1fr) minmax(100px,.7fr) 58px 58px",
+            "grid-template-columns:34px minmax(0,1fr) minmax(100px,.7fr) 58px 100px",
             styles,
         )
 
@@ -867,7 +867,7 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn("sidebar.inert=compact&&!open", script)
         self.assertIn("backdrop.hidden=!open", script)
         self.assertIn("compactSidebar.addEventListener('change'", script)
-        mobile = styles.split("@media(max-width:620px){", 1)[1].split("\n}", 1)[0]
+        mobile = styles.split("@media(max-width:700px){\n body[data-view=playlists]", 1)[1].split("\n}", 1)[0]
         self.assertIn("grid-template-columns:minmax(0,1fr)", mobile)
         self.assertIn("transform:translateX(-100%)", mobile)
         self.assertIn(".playlist-sidebar-open .playlist-sidebar", mobile)

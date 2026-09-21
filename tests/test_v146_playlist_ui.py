@@ -68,16 +68,16 @@ class PlaylistSectionUiTests(unittest.TestCase):
         self.assertIn("只删除歌单，不删除音乐文件", script)
         self.assertIn("/api/playlists/rename", script)
 
-    def test_liked_responses_are_profile_and_generation_guarded_with_rollback(self):
+    def test_liked_writes_are_serialized_and_profile_guarded_with_rollback(self):
         script = (STATIC / "playlists.js").read_text(encoding="utf-8")
         liked = script.split("async function setLiked(track,liked)", 1)[1].split(
             "function renderTracks", 1
         )[0]
-        self.assertIn("requestId=++likedRequest", liked)
-        self.assertGreaterEqual(liked.count("profileId===loadedProfileId"), 1)
-        self.assertIn("likedRequests.get(trackId)===requestId", liked)
+        self.assertIn("while(pending.confirmed!==pending.desired)", liked)
+        self.assertIn("likedRequests.get(trackId)===pending", liked)
         self.assertIn("profileGeneration===profileRequest", liked)
-        self.assertIn("track.liked=previous", liked)
+        self.assertIn("paintLiked(pending.track,pending.confirmed,pending.rating)", liked)
+        self.assertIn("previous!==pending.confirmed", liked)
 
     def test_failed_playlist_open_returns_to_its_section(self):
         script = (STATIC / "playlists.js").read_text(encoding="utf-8")
