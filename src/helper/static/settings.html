@@ -4,9 +4,9 @@
  <meta charset="utf-8">
  <meta name="viewport" content="width=device-width,initial-scale=1">
  <title>曲库有序 · 设置</title>
- <link rel="stylesheet" href="/static/product.css?v=1.4.6">
- <script defer src="/static/auth.js?v=1.4.6"></script>
- <script defer src="/static/settings.js?v=1.4.6"></script>
+ <link rel="stylesheet" href="/static/product.css?v=1.4.7">
+ <script defer src="/static/auth.js?v=1.4.7"></script>
+ <script defer src="/static/settings.js?v=1.4.7"></script>
 </head>
 <body data-view="settings" data-auth-state="checking">
 <div id="bootScreen" class="auth-boot"><div class="boot-mark">♫</div><strong>曲库有序</strong><span>正在进入你的音乐库…</span></div>
@@ -21,7 +21,7 @@
 
 <div id="workspace" hidden>
  <header class="topbar">
-  <a class="brand" href="/"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v1.4.6</small></span></a>
+  <a class="brand" href="/"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v1.4.7</small></span></a>
   <nav><a href="/">我的歌单</a><a href="/status">运行状态</a><a class="active" href="/settings">设置</a></nav>
   <button class="logout" data-auth-logout hidden>退出</button>
  </header>
@@ -31,6 +31,7 @@
   <aside class="settings-nav" aria-label="设置分类">
    <h1>设置</h1>
    <button class="settings-nav-item active" type="button" data-settings-target="accounts">账户与成员</button>
+   <button class="settings-nav-item" type="button" data-settings-target="playlists">歌单与曲库</button>
    <button class="settings-nav-item" type="button" data-settings-target="recommend">推荐规则</button>
    <button class="settings-nav-item" type="button" data-settings-target="automation">自动任务</button>
    <button class="settings-nav-item" type="button" data-settings-target="system">系统</button>
@@ -62,6 +63,15 @@
     </section>
    </section>
 
+   <section id="settings-playlists" class="settings-panel" hidden>
+    <div class="settings-page-head"><h2>歌单与曲库</h2></div>
+    <div class="settings-section settings-form-rows">
+     <div class="settings-row"><span>每日推荐：生成、发布与管理</span><a class="secondary button" href="/daily">打开每日推荐</a></div>
+     <div class="settings-row"><span>智能歌单：生成与调整</span><a class="secondary button" href="/mixes">打开智能歌单</a></div>
+     <div class="settings-row"><span>曲库整理：分类与新增歌曲</span><a class="secondary button" href="/library">打开曲库整理</a></div>
+    </div>
+   </section>
+
    <section id="settings-recommend" class="settings-panel" hidden>
     <div class="settings-page-head"><h2>推荐规则</h2></div>
     <form id="dailyForm" class="settings-section settings-form-rows">
@@ -86,7 +96,7 @@
 
    <section id="settings-system" class="settings-panel" hidden>
     <div class="settings-page-head"><h2>系统</h2></div>
-    <section class="settings-section settings-form-rows"><div class="settings-row"><span>QQ 曲库资料</span><a class="secondary button" href="/library">管理授权</a></div><div class="settings-row"><span>运行状态</span><a class="secondary button" href="/status">查看</a></div><div class="settings-row"><span>软件版本</span><strong id="systemVersion" class="settings-static-value">1.4.6</strong></div></section>
+    <section class="settings-section settings-form-rows"><div class="settings-row"><span>QQ 曲库资料</span><a class="secondary button" href="/library">管理授权</a></div><div class="settings-row"><span>运行状态</span><a class="secondary button" href="/status">查看</a></div><div class="settings-row"><span>软件版本</span><strong id="systemVersion" class="settings-static-value">1.4.7</strong></div></section>
     <details id="passwordTools" class="settings-section settings-expander"><summary><span>登录密码</span><span id="accountName">admin</span></summary><div class="settings-expander-body"><form id="passwordForm" class="form-grid"><div class="field"><label for="currentPassword">当前密码</label><input id="currentPassword" type="password" autocomplete="current-password"></div><div class="field"><label for="newPassword">新密码</label><input id="newPassword" type="password" autocomplete="new-password" minlength="8"></div><div class="field"><label for="confirmPassword">确认新密码</label><input id="confirmPassword" type="password" autocomplete="new-password" minlength="8"></div><div class="field full"><button class="primary" type="submit">修改密码</button></div></form></div></details>
    </section>
   </div>

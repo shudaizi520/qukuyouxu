@@ -17,6 +17,7 @@ from .external_playlist_sync import external_marker
 from .external_store import ExternalRepository
 from .playlist_inventory import assistant_playlist_row, merge_playlist_rows
 from .playlist_ownership import legacy_external_marker, legacy_pch_marker, replace_marker
+from .profiles import profile_identity
 
 
 KIND_LABELS = {
@@ -142,20 +143,41 @@ def assistant_playlist_rows(store):
     return rows
 
 
-def playlist_rows(engine):
+def playlist_rows(engine, hidden_playlist_ids=()):
     """Return assistant and native Plex playlists, retaining the last good native list."""
     store = engine.store
+    hidden_playlist_ids = {str(value) for value in hidden_playlist_ids}
     assistant = [assistant_playlist_row(row) for row in assistant_playlist_rows(store)]
     plex = engine.plex_factory(store.get("settings"))
     try:
-        merged = merge_playlist_rows(assistant, plex.playlists())
+        section = str((store.get("settings") or {}).get("section") or "")
+        native_rows = []
+        for row in plex.playlists():
+            row = dict(row)
+            if str(row.get("ratingKey") or "") in hidden_playlist_ids:
+                continue
+            if str(row.get("smart") or "") == "1" and section:
+                try:
+                    source_section = plex.playlist_source_section(row.get("ratingKey"))
+                except Exception:
+                    continue
+                if source_section != section:
+                    continue
+                row["source_section"] = source_section
+            native_rows.append(row)
+        merged = merge_playlist_rows(assistant, native_rows)
         native = [dict(row) for row in merged if row.get("source") == "plex"]
         store.set("playlist_native_cache_v1", native)
         return merged
     except Exception:
         cached = []
+        section = str((store.get("settings") or {}).get("section") or "")
         for row in store.get("playlist_native_cache_v1", []) or []:
             if not isinstance(row, dict) or row.get("source") != "plex":
+                continue
+            if str(row.get("playlist_id") or "") in hidden_playlist_ids:
+                continue
+            if section and row.get("smart") and str(row.get("source_section") or "") != section:
                 continue
             cached.append({**row, "stale": True})
         owned = {
@@ -165,16 +187,22 @@ def playlist_rows(engine):
         return [*assistant, *(row for row in cached if str(row.get("playlist_id")) not in owned)]
 
 
-def _native_playlist(plex, playlist_id):
+def _native_playlist(plex, playlist_id, section="", hidden_playlist_ids=()):
     playlist_id = str(playlist_id or "")
     if not playlist_id.isdigit():
         raise ValueError("歌单标识无效")
+    if playlist_id in {str(value) for value in hidden_playlist_ids}:
+        raise ValueError("这个歌单属于其他曲库，不能在当前曲库中修改")
     listed = {
         str(row.get("ratingKey") or ""): row for row in plex.playlists()
         if isinstance(row, dict) and row.get("playlistType") == "audio"
     }
     if playlist_id not in listed:
         raise ValueError("当前 Plex 账户没有这个音乐歌单")
+    if str(listed[playlist_id].get("smart") or "") == "1" and section:
+        source_section = plex.playlist_source_section(playlist_id)
+        if source_section != str(section):
+            raise ValueError("这个智能歌单属于其他曲库，请切换到对应曲库查看")
     state = plex.playlist_view(playlist_id)
     if str(state.get("id") or "") != playlist_id:
         raise SafetyError("Plex 歌单标识已经变化")
@@ -185,8 +213,8 @@ def _native_smart(listed, state):
     return bool(state.get("smart")) or str(listed.get("smart") or "") == "1"
 
 
-def _edit_native_playlist_track(plex, key, track_id, operation):
-    listed, before = _native_playlist(plex, key)
+def _edit_native_playlist_track(plex, key, track_id, operation, section="", hidden_playlist_ids=()):
+    listed, before = _native_playlist(plex, key, section, hidden_playlist_ids)
     if _native_smart(listed, before):
         raise ValueError("Plex 智能歌单不能逐首添加或移除")
     matching = [row for row in before.get("items", []) if str(row.get("id")) == track_id]
@@ -214,14 +242,15 @@ def _edit_native_playlist_track(plex, key, track_id, operation):
     }
 
 
-def rename_playlist(engine, kind, key, title):
+def rename_playlist(engine, kind, key, title, hidden_playlist_ids=()):
     kind, key, title = str(kind or ""), _safe_key(key), str(title or "").strip()
     if kind != "plex":
         raise ValueError("这个歌单请在对应管理页调整名称")
     if not title or len(title) > 80 or any(ord(char) < 32 for char in title):
         raise ValueError("歌单标题无效")
     plex = engine.plex_factory(engine.store.get("settings"))
-    _listed, before = _native_playlist(plex, key)
+    section = str((engine.store.get("settings") or {}).get("section") or "")
+    _listed, before = _native_playlist(plex, key, section, hidden_playlist_ids)
     if str(before.get("title") or "") != title:
         plex.rename(key, title)
         after = plex.read_playlist_view_until(
@@ -344,7 +373,7 @@ def _ensure_playlist_ownership(engine, kind, key, record, state, marker, plex):
     return migrated, revised
 
 
-def edit_playlist_track(engine, kind, key, track_id, operation):
+def edit_playlist_track(engine, kind, key, track_id, operation, hidden_playlist_ids=()):
     kind, key, track_id = str(kind or ""), _safe_key(key), str(track_id or "")
     if operation not in ("add", "remove") or not track_id.isdigit():
         raise ValueError("歌曲调整请求无效")
@@ -356,7 +385,8 @@ def edit_playlist_track(engine, kind, key, track_id, operation):
         raise ValueError("这首歌已不在当前曲库中")
     if kind == "plex":
         plex = engine.plex_factory(engine.store.get("settings"))
-        return _edit_native_playlist_track(plex, key, track_id, operation)
+        section = str((engine.store.get("settings") or {}).get("section") or "")
+        return _edit_native_playlist_track(plex, key, track_id, operation, section, hidden_playlist_ids)
     record, marker = _playlist_record(engine, kind, key)
     plex = engine.plex_factory(engine.store.get("settings"))
     before = plex.playlist_state(record["id"])
@@ -444,6 +474,56 @@ def favorite_playlist_detail(store):
     }
 
 
+def related_favorite_profile_ids(profiles, current_profile_id):
+    current = profiles.get(current_profile_id)
+    identity = profile_identity(current)[:3]
+    if not identity[1] or not identity[2]:
+        return [current_profile_id]
+    related = [
+        row["id"] for row in profiles.list_public(enabled_only=True)
+        if profile_identity(row)[:3] == identity
+    ]
+    return [current_profile_id, *(profile_id for profile_id in related if profile_id != current_profile_id)]
+
+
+def sibling_owned_playlist_ids(profiles, runtime, current_profile_id):
+    owned = set()
+    identity = profile_identity(profiles.get(current_profile_id))[:3]
+    if not identity[1] or not identity[2]:
+        return owned
+    for profile in profiles.list_public(enabled_only=False):
+        profile_id = profile["id"]
+        if profile_id == current_profile_id:
+            continue
+        if profile_identity(profile)[:3] != identity:
+            continue
+        for row in assistant_playlist_rows(runtime.engine(profile_id).store):
+            playlist_id = str(row.get("playlist_id") or "")
+            if playlist_id.isdigit():
+                owned.add(playlist_id)
+    return owned
+
+
+def resolve_favorite_profile_id(profiles, current_profile_id, requested_profile_id):
+    target = str(requested_profile_id or current_profile_id)
+    if target not in related_favorite_profile_ids(profiles, current_profile_id):
+        raise ValueError("只能修改同一 Plex 账户的已启用曲库中的喜欢状态")
+    return target
+
+
+def favorite_playlist_detail_for_profiles(profiles, runtime, current_profile_id):
+    tracks = []
+    for profile_id in related_favorite_profile_ids(profiles, current_profile_id):
+        detail = favorite_playlist_detail(runtime.engine(profile_id).store)
+        for row in detail["tracks"]:
+            tracks.append({**row, "profile_id": profile_id, "position": len(tracks) + 1})
+    return {
+        "kind": "favorite", "key": "liked", "playlist_id": "",
+        "title": "我的最爱", "count": len(tracks), "tracks": tracks,
+        "unavailable_count": 0,
+    }
+
+
 def set_track_liked(engine, track_id, liked, now=None):
     track_id = str(track_id or "")
     if not track_id.isdigit() or not isinstance(liked, bool):
@@ -468,7 +548,7 @@ def set_track_liked(engine, track_id, liked, now=None):
     return {"track_id": track_id, "liked": liked, "user_rating": expected}
 
 
-def playlist_detail(engine, kind, key):
+def playlist_detail(engine, kind, key, hidden_playlist_ids=()):
     if str(kind) == "favorite" and str(key) == "liked":
         return favorite_playlist_detail(engine.store)
     if str(kind) == "plex":
@@ -476,15 +556,8 @@ def playlist_detail(engine, kind, key):
         if not key.isdigit():
             raise ValueError("歌单标识无效")
         plex = engine.plex_factory(engine.store.get("settings"))
-        listed = {
-            str(row.get("ratingKey")): row for row in plex.playlists()
-            if isinstance(row, dict) and row.get("playlistType") == "audio"
-        }
-        if key not in listed:
-            raise ValueError("当前用户没有这个歌单")
-        state = plex.playlist_view(key)
-        if str(state.get("id") or "") != key:
-            raise SafetyError("Plex 歌单标识已经变化")
+        section = str((engine.store.get("settings") or {}).get("section") or "")
+        listed, state = _native_playlist(plex, key, section, hidden_playlist_ids)
         catalog = {
             str(row.get("id")): row for row in (engine.store.get("catalog", []) or [])
             if isinstance(row, dict) and row.get("available", True)
@@ -507,7 +580,7 @@ def playlist_detail(engine, kind, key):
             })
         return {
             "kind": "plex", "key": key, "playlist_id": key,
-            "title": str(state.get("title") or listed[key].get("title") or "未命名歌单"),
+            "title": str(state.get("title") or listed.get("title") or "未命名歌单"),
             "smart": bool(state.get("smart")), "count": len(tracks), "tracks": tracks,
             "unavailable_count": max(0, len(state.get("items") or []) - len(tracks)),
         }
@@ -546,8 +619,8 @@ def playlist_detail(engine, kind, key):
     }
 
 
-def stream_playlist_audio(engine, kind, key, track_id, range_header, session_key, offset_seconds=0):
-    detail = playlist_detail(engine, kind, key)
+def stream_playlist_audio(engine, kind, key, track_id, range_header, session_key, offset_seconds=0, hidden_playlist_ids=()):
+    detail = playlist_detail(engine, kind, key, hidden_playlist_ids)
     track_id = str(track_id or "")
     if track_id not in {row["id"] for row in detail["tracks"]}:
         raise ValueError("当前歌单中没有这首可试听歌曲")
@@ -610,8 +683,8 @@ def _stream_artwork(engine, track):
     )
 
 
-def stream_playlist_artwork(engine, kind, key, track_id):
-    detail = playlist_detail(engine, kind, key)
+def stream_playlist_artwork(engine, kind, key, track_id, hidden_playlist_ids=()):
+    detail = playlist_detail(engine, kind, key, hidden_playlist_ids)
     track_id = str(track_id or "")
     track = next((row for row in detail["tracks"] if row["id"] == track_id), None)
     if not track:
@@ -675,7 +748,7 @@ def _remove_daily(engine, confirm_title, now=None):
         raise SafetyError("删除结果需要核对；助手不会自动重试") from None
 
 
-def remove_playlist(engine, kind, key, confirm_title):
+def remove_playlist(engine, kind, key, confirm_title, hidden_playlist_ids=()):
     kind, key = str(kind or ""), _safe_key(key)
     if kind == "daily" and key == "daily":
         with engine.exclusive():
@@ -692,7 +765,8 @@ def remove_playlist(engine, kind, key, confirm_title):
     if kind == "plex":
         with engine.exclusive():
             plex = engine.plex_factory(engine.store.get("settings"))
-            _listed, current = _native_playlist(plex, key)
+            section = str((engine.store.get("settings") or {}).get("section") or "")
+            _listed, current = _native_playlist(plex, key, section, hidden_playlist_ids)
             if str(confirm_title or "") != str(current.get("title") or ""):
                 raise SafetyError("歌单名称已经变化，请刷新后重试")
             plex.delete_playlist(key)
@@ -713,7 +787,15 @@ def attach_playlist_hub_routes(app, store, runtime, profiles, body, ensure_idle)
 
     @app.get("/api/playlists")
     def list_playlists():
-        return {"items": playlist_rows(fixed_engine())}
+        items = playlist_rows(
+            fixed_engine(), sibling_owned_playlist_ids(profiles, runtime, str(store.profile_id)),
+        )
+        favorite = next((row for row in items if row.get("kind") == "favorite"), None)
+        if favorite is not None:
+            favorite["count"] = favorite_playlist_detail_for_profiles(
+                profiles, runtime, str(store.profile_id),
+            )["count"]
+        return {"items": items}
 
     @app.get("/api/playlists/search")
     def playlist_search(q: str = "", limit: int = 40):
@@ -740,9 +822,14 @@ def attach_playlist_hub_routes(app, store, runtime, profiles, body, ensure_idle)
 
     @app.get("/api/playlists/{kind}/{key}")
     def playlist(kind: str, key: str):
+        if kind == "favorite" and key == "liked":
+            return favorite_playlist_detail_for_profiles(
+                profiles, runtime, str(store.profile_id),
+            )
         target = fixed_engine()
+        hidden_ids = sibling_owned_playlist_ids(profiles, runtime, str(store.profile_id)) if kind == "plex" else ()
         with target.exclusive():
-            return playlist_detail(target, kind, key)
+            return playlist_detail(target, kind, key, hidden_ids)
 
     @app.get("/api/playlists/{kind}/{key}/tracks/{track_id}/audio")
     def playlist_audio(
@@ -752,12 +839,13 @@ def attach_playlist_hub_routes(app, store, runtime, profiles, body, ensure_idle)
         selected_profile = str(profile_id or store.profile_id)
         with profiles.fixed_active(selected_profile, enabled_only=True):
             target = runtime.engine(selected_profile)
+            hidden_ids = sibling_owned_playlist_ids(profiles, runtime, selected_profile) if kind == "plex" else ()
             with target.exclusive():
                 return stream_playlist_audio(
                     target, kind, key, track_id,
                     str(request.headers.get("range") or ""),
                     str(request.cookies.get(COOKIE_NAME) or ""),
-                    offset,
+                    offset, hidden_ids,
                 )
 
     @app.get("/api/playlists/{kind}/{key}/tracks/{track_id}/artwork")
@@ -767,8 +855,9 @@ def attach_playlist_hub_routes(app, store, runtime, profiles, body, ensure_idle)
         selected_profile = str(profile_id or store.profile_id)
         with profiles.fixed_active(selected_profile, enabled_only=True):
             target = runtime.engine(selected_profile)
+            hidden_ids = sibling_owned_playlist_ids(profiles, runtime, selected_profile) if kind == "plex" else ()
             with target.exclusive():
-                return stream_playlist_artwork(target, kind, key, track_id)
+                return stream_playlist_artwork(target, kind, key, track_id, hidden_ids)
 
     @app.post("/api/playlists/remove")
     async def remove(request: Request):
@@ -778,8 +867,9 @@ def attach_playlist_hub_routes(app, store, runtime, profiles, body, ensure_idle)
         ensure_idle()
         target = fixed_engine()
         kind = str(data.get("kind") or "")
+        hidden_ids = sibling_owned_playlist_ids(profiles, runtime, str(store.profile_id)) if kind == "plex" else ()
         return remove_playlist(
-            target, kind, data.get("key"), str(data.get("title") or ""),
+            target, kind, data.get("key"), str(data.get("title") or ""), hidden_ids,
         )
 
     @app.post("/api/playlists/rename")
@@ -789,10 +879,12 @@ def attach_playlist_hub_routes(app, store, runtime, profiles, body, ensure_idle)
             raise SafetyError("请确认重命名歌单")
         ensure_idle()
         target = fixed_engine()
+        kind = str(data.get("kind") or "")
+        hidden_ids = sibling_owned_playlist_ids(profiles, runtime, str(store.profile_id)) if kind == "plex" else ()
         with target.exclusive():
             return rename_playlist(
-                target, str(data.get("kind") or ""), data.get("key"),
-                str(data.get("title") or ""),
+                target, kind, data.get("key"),
+                str(data.get("title") or ""), hidden_ids,
             )
 
     @app.post("/api/playlists/tracks/edit")
@@ -802,10 +894,12 @@ def attach_playlist_hub_routes(app, store, runtime, profiles, body, ensure_idle)
             raise SafetyError("请确认修改歌单歌曲")
         ensure_idle()
         target = fixed_engine()
+        kind = str(data.get("kind") or "")
+        hidden_ids = sibling_owned_playlist_ids(profiles, runtime, str(store.profile_id)) if kind == "plex" else ()
         with target.exclusive():
             return edit_playlist_track(
-                target, str(data.get("kind") or ""), data.get("key"),
-                data.get("track_id"), str(data.get("operation") or ""),
+                target, kind, data.get("key"),
+                data.get("track_id"), str(data.get("operation") or ""), hidden_ids,
             )
 
     @app.post("/api/playlists/tracks/liked")
@@ -814,6 +908,10 @@ def attach_playlist_hub_routes(app, store, runtime, profiles, body, ensure_idle)
         if data.get("confirm") is not True:
             raise SafetyError("请确认修改喜欢状态")
         ensure_idle()
-        target = fixed_engine()
+        profile_id = resolve_favorite_profile_id(
+            profiles, str(store.profile_id), data.get("profile_id"),
+        )
+        target = runtime.engine(profile_id)
         with target.exclusive():
-            return set_track_liked(target, data.get("track_id"), data.get("liked"))
+            return {**set_track_liked(target, data.get("track_id"), data.get("liked")),
+                    "profile_id": profile_id}

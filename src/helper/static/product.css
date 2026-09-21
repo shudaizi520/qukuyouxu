@@ -561,3 +561,6 @@ body[data-view=settings] .batch-daily-tools{border-top:1px solid #edf1f2}
 body[data-view=daily] .daily-page-head{justify-content:space-between}
 @media(max-width:900px){.library-overview{grid-template-columns:1fr auto}.library-metrics{grid-column:1/-1}.library-auth{margin-left:0}}
 @media(max-width:620px){.library-overview{grid-template-columns:1fr}.library-auth{justify-self:start}.library-result .review-confirm{align-items:stretch;flex-direction:column}.library-result .review-confirm button{width:100%}body[data-view=daily] .daily-page-head{align-items:center;flex-direction:row}}
+
+/* Keep playlist-card hover readable despite the global button hover rule. */
+button.playlist-section-card:hover:not(:disabled){background:var(--playlist-surface-soft);color:var(--playlist-text);border-color:color-mix(in srgb,var(--playlist-accent) 45%,var(--playlist-line));box-shadow:none}

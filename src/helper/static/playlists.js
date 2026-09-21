@@ -63,7 +63,7 @@ function profileLabel(row){
  return account+' · '+library;
 }
 function mediaUrl(type,track,context=current){
- const profile=context?.profileId||loadedProfileId||PCHAuth.profile();
+ const profile=track?.profile_id||context?.profileId||loadedProfileId||PCHAuth.profile();
  const params=new URLSearchParams();if(profile)params.set('profile_id',profile);
  const query=params.size?'?'+params.toString():'';
  return '/api/playlists/library/tracks/'+encoded(track.id)+'/'+type+query;
@@ -77,6 +77,7 @@ function paintLiked(track,liked,rating){
 }
 async function setLiked(track,liked){
  const trackId=String(track.id),profileId=loadedProfileId,profileGeneration=profileRequest;
+ const trackProfileId=String(track.profile_id||profileId);
  let pending=likedRequests.get(trackId);
  if(pending&&pending.profileId===profileId&&pending.profileGeneration===profileGeneration){
   pending.desired=!!liked;paintLiked(track,pending.desired,pending.desired?10:0);return pending.promise;
@@ -89,9 +90,9 @@ async function setLiked(track,liked){
   try{
    while(pending.confirmed!==pending.desired){
     const sent=pending.desired;
-    const result=await json('/api/playlists/tracks/liked','POST',{track_id:trackId,liked:sent,confirm:true});
+    const result=await json('/api/playlists/tracks/liked','POST',{track_id:trackId,profile_id:trackProfileId,liked:sent,confirm:true});
     if(!isCurrent())return;
-    if(!!result.liked!==sent)throw Error('喜欢状态更新失败，请重试');
+    if(!!result.liked!==sent||String(result.profile_id||trackProfileId)!==trackProfileId)throw Error('喜欢状态更新失败，请重试');
     const previous=pending.confirmed;pending.confirmed=!!result.liked;pending.rating=result.user_rating;
     const favorite=playlists.find(row=>row.kind==='favorite'&&row.key==='liked');
     if(favorite&&previous!==pending.confirmed){favorite.count=Math.max(0,Number(favorite.count||0)+(pending.confirmed?1:-1));renderPlaylistList();}

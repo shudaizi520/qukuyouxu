@@ -219,6 +219,147 @@ class PlaylistInventoryTests(unittest.TestCase):
         with self.assertRaisesRegex(PlexError, "普通音乐歌单"):
             client.playlist_state("11")
 
+    def test_inventory_excludes_smart_playlists_from_other_music_libraries(self):
+        from helper.playlist_hub import playlist_rows
+
+        store = _Store({"settings": {"section": "11"}})
+        plex = _Plex([
+            {"ratingKey": "31", "title": "旧曲库", "playlistType": "audio", "smart": "1"},
+            {"ratingKey": "32", "title": "当前曲库", "playlistType": "audio", "smart": "1"},
+            {"ratingKey": "33", "title": "手工歌单", "playlistType": "audio", "smart": "0"},
+        ])
+        plex.playlist_source_section = lambda pid: {"31": "3", "32": "11"}[pid]
+
+        with patch("helper.playlist_hub.assistant_playlist_rows", return_value=[]):
+            rows = playlist_rows(_Engine(store, plex))
+
+        self.assertEqual(["32", "33"], [row["playlist_id"] for row in rows])
+        self.assertEqual(["32", "33"], [row["playlist_id"] for row in store.get("playlist_native_cache_v1")])
+        self.assertEqual("11", store.get("playlist_native_cache_v1")[0]["source_section"])
+
+    def test_old_cache_does_not_restore_unverified_smart_playlists_after_plex_failure(self):
+        from helper.playlist_hub import playlist_rows
+
+        store = _Store({
+            "settings": {"section": "11"},
+            "playlist_native_cache_v1": [{
+                "kind": "plex", "key": "31", "playlist_id": "31", "title": "旧曲库",
+                "source": "plex", "smart": True, "section": "custom",
+            }],
+        })
+        plex = _Plex([], error=RuntimeError("Plex offline"))
+
+        with patch("helper.playlist_hub.assistant_playlist_rows", return_value=[]):
+            rows = playlist_rows(_Engine(store, plex))
+
+        self.assertEqual([], rows)
+
+    def test_one_smart_metadata_failure_does_not_hide_other_live_playlists(self):
+        from helper.playlist_hub import playlist_rows
+
+        store = _Store({"settings": {"section": "11"}})
+        plex = _Plex([
+            {"ratingKey": "31", "title": "损坏规则", "playlistType": "audio", "smart": "1"},
+            {"ratingKey": "32", "title": "可用规则", "playlistType": "audio", "smart": "1"},
+            {"ratingKey": "33", "title": "手工歌单", "playlistType": "audio", "smart": "0"},
+        ])
+
+        def source_section(pid):
+            if pid == "31":
+                raise RuntimeError("metadata unavailable")
+            return "11"
+
+        plex.playlist_source_section = source_section
+        with patch("helper.playlist_hub.assistant_playlist_rows", return_value=[]):
+            rows = playlist_rows(_Engine(store, plex))
+
+        self.assertEqual(["32", "33"], [row["playlist_id"] for row in rows])
+
+    def test_smart_playlist_without_verifiable_library_is_not_listed(self):
+        from helper.playlist_hub import playlist_rows
+
+        store = _Store({"settings": {"section": "11"}})
+        plex = _Plex([{
+            "ratingKey": "31", "title": "未知来源", "playlistType": "audio", "smart": "1",
+        }])
+        plex.playlist_source_section = lambda _pid: None
+        with patch("helper.playlist_hub.assistant_playlist_rows", return_value=[]):
+            rows = playlist_rows(_Engine(store, plex))
+
+        self.assertEqual([], rows)
+
+    def test_inventory_does_not_reclassify_sibling_profile_managed_playlist_as_native(self):
+        from helper.playlist_hub import playlist_rows
+
+        store = _Store({"settings": {"section": "11"}})
+        plex = _Plex([
+            {"ratingKey": "41", "title": "其他曲库每日推荐", "playlistType": "audio", "smart": "0"},
+            {"ratingKey": "42", "title": "本曲库手工歌单", "playlistType": "audio", "smart": "0"},
+        ])
+
+        with patch("helper.playlist_hub.assistant_playlist_rows", return_value=[]):
+            rows = playlist_rows(_Engine(store, plex), hidden_playlist_ids={"41"})
+
+        self.assertEqual(["42"], [row["playlist_id"] for row in rows])
+
+    def test_native_mutations_reject_foreign_smart_and_sibling_owned_playlists(self):
+        from helper.playlist_hub import edit_playlist_track, remove_playlist, rename_playlist
+
+        store = _Store({
+            "settings": {"section": "11"},
+            "catalog": [{"id": "10", "title": "曲目", "available": True}],
+        })
+        plex = _Plex([
+            {"ratingKey": "31", "title": "旧曲库", "playlistType": "audio", "smart": "1"},
+            {"ratingKey": "41", "title": "其他曲库托管", "playlistType": "audio", "smart": "0"},
+        ])
+        plex.playlist_source_section = lambda _pid: "3"
+        engine = _Engine(store, plex)
+
+        with self.assertRaisesRegex(ValueError, "其他曲库"):
+            rename_playlist(engine, "plex", "31", "新标题")
+        with self.assertRaisesRegex(ValueError, "其他曲库"):
+            remove_playlist(engine, "plex", "41", "其他曲库托管", hidden_playlist_ids={"41"})
+        with self.assertRaisesRegex(ValueError, "其他曲库"):
+            edit_playlist_track(engine, "plex", "41", "10", "remove", hidden_playlist_ids={"41"})
+
+    def test_client_extracts_source_library_from_encoded_smart_playlist_rule(self):
+        from helper.clients import PlexClient
+
+        client = object.__new__(PlexClient)
+        client._xml = lambda _path: ET.fromstring(
+            '<MediaContainer><Playlist ratingKey="31" playlistType="audio" smart="1" '
+            'content="library://abc/directory/%2Flibrary%2Fsections%2F3%2Fall%3Ftype%3D10" />'
+            '</MediaContainer>'
+        )
+
+        self.assertEqual("3", client.playlist_source_section("31"))
+
+    def test_client_reads_smart_playlist_tracks_without_playlist_item_ids(self):
+        from helper.clients import PlexClient
+
+        client = object.__new__(PlexClient)
+        client._xml = lambda _path, params=None: ET.fromstring(
+            '<MediaContainer totalSize="2"><Track ratingKey="10" title="甲" />'
+            '<Track ratingKey="20" title="乙" /></MediaContainer>'
+        )
+
+        rows = client._page("/playlists/31/items", "Track")
+
+        self.assertEqual(["10", "20"], [row.get("ratingKey") for row in rows])
+
+    def test_opening_other_library_smart_playlist_does_not_read_broken_items(self):
+        from helper.playlist_hub import playlist_detail
+
+        store = _Store({"settings": {"section": "11"}, "catalog": []})
+        plex = _Plex([
+            {"ratingKey": "31", "title": "旧曲库", "playlistType": "audio", "smart": "1"},
+        ])
+        plex.playlist_source_section = lambda _pid: "3"
+
+        with self.assertRaisesRegex(ValueError, "其他曲库"):
+            playlist_detail(_Engine(store, plex), "plex", "31")
+
     def test_native_regular_playlist_writes_only_after_membership_validation(self):
         from helper.playlist_hub import edit_playlist_track
 

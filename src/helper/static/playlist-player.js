@@ -58,7 +58,7 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
   if(event==='stop'||event==='scrobble')terminalReported=true;
   const payload={
    track_id:String(track.id),position,duration:trackDuration,
-   profileId:String(context.profileId||''),
+   profileId:String(track.profile_id||context.profileId||''),
   };
   return Promise.resolve(reportPlayback(event,payload,{keepalive})).catch(()=>{});
  }

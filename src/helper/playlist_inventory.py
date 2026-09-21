@@ -77,6 +77,7 @@ def native_playlist_row(row):
         "section": "custom",
         "source": "plex",
         "smart": smart,
+        "source_section": str(row.get("source_section") or ""),
         "stale": False,
     }
     result.update(capabilities(source="plex", smart=smart))

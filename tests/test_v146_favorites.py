@@ -1,6 +1,9 @@
 import sys
 import unittest
+import asyncio
+from contextlib import nullcontext
 from pathlib import Path
+from unittest.mock import patch
 from xml.etree import ElementTree as ET
 
 
@@ -9,9 +12,8 @@ sys.path.insert(0, str(ROOT / "src"))
 
 
 class _Store:
-    profile_id = "default"
-
-    def __init__(self, catalog):
+    def __init__(self, catalog, profile_id="default"):
+        self.profile_id = profile_id
         self.values = {"settings": {}, "catalog": catalog}
 
     def get(self, key, default=None):
@@ -116,6 +118,161 @@ class FavoritePlaylistTests(unittest.TestCase):
         self.assertEqual(("/:/rate", "PUT"), calls[0][:2])
         self.assertEqual("1", calls[0][2]["key"])
         self.assertEqual(10.0, calls[0][2]["rating"])
+
+    def test_favorites_include_other_enabled_library_of_same_plex_account(self):
+        from helper.playlist_hub import favorite_playlist_detail_for_profiles
+
+        profiles = _FavoriteProfiles([
+            _profile("default", "owner", "account-a", "server-a", "11"),
+            _profile("second", "owner", "account-a", "server-a", "15"),
+            _profile("other", "owner", "account-b", "server-a", "16"),
+            _profile("disabled", "owner", "account-a", "server-a", "17", enabled=False),
+        ])
+        stores = {
+            "default": _Store([{"id": "1", "title": "甲", "user_rating": 10, "available": True}], "default"),
+            "second": _Store([{"id": "2", "title": "乙", "user_rating": 8, "available": True}], "second"),
+            "other": _Store([{"id": "3", "title": "丙", "user_rating": 10, "available": True}], "other"),
+            "disabled": _Store([{"id": "4", "title": "丁", "user_rating": 10, "available": True}], "disabled"),
+        }
+        runtime = _FavoriteRuntime(stores)
+
+        detail = favorite_playlist_detail_for_profiles(profiles, runtime, "default")
+
+        self.assertEqual([("1", "default"), ("2", "second")],
+                         [(row["id"], row["profile_id"]) for row in detail["tracks"]])
+        self.assertEqual([1, 2], [row["position"] for row in detail["tracks"]])
+        self.assertEqual(2, detail["count"])
+
+    def test_favorite_mutation_rejects_unrelated_or_disabled_profile(self):
+        from helper.playlist_hub import resolve_favorite_profile_id
+
+        profiles = _FavoriteProfiles([
+            _profile("default", "owner", "account-a", "server-a", "11"),
+            _profile("second", "owner", "account-a", "server-a", "15"),
+            _profile("other", "owner", "account-b", "server-a", "16"),
+            _profile("disabled", "owner", "account-a", "server-a", "17", enabled=False),
+        ])
+        self.assertEqual("second", resolve_favorite_profile_id(profiles, "default", "second"))
+        with self.assertRaisesRegex(ValueError, "同一 Plex 账户"):
+            resolve_favorite_profile_id(profiles, "default", "other")
+        with self.assertRaisesRegex(ValueError, "同一 Plex 账户"):
+            resolve_favorite_profile_id(profiles, "default", "disabled")
+
+    def test_sibling_managed_playlist_ids_are_hidden_from_native_inventory(self):
+        from helper.playlist_hub import sibling_owned_playlist_ids
+
+        profiles = _FavoriteProfiles([
+            _profile("default", "owner", "account-a", "server-a", "11"),
+            _profile("second", "owner", "account-a", "server-a", "15"),
+            _profile("archived", "owner", "account-a", "server-a", "17", enabled=False),
+            _profile("other", "owner", "account-b", "server-a", "16"),
+        ])
+        runtime = _FavoriteRuntime({pid: _Store([], pid) for pid in profiles.rows})
+
+        def rows(store):
+            return [{"playlist_id": {"default": "10", "second": "20", "archived": "25", "other": "30"}[store.profile_id]}]
+
+        with patch("helper.playlist_hub.assistant_playlist_rows", side_effect=rows):
+            hidden = sibling_owned_playlist_ids(profiles, runtime, "default")
+
+        self.assertEqual({"20", "25"}, hidden)
+
+    def test_favorite_api_lists_and_updates_same_account_other_library(self):
+        from fastapi import FastAPI
+        from helper.playlist_hub import attach_playlist_hub_routes
+
+        profiles = _FavoriteProfiles([
+            _profile("default", "owner", "account-a", "server-a", "11"),
+            _profile("second", "owner", "account-a", "server-a", "15"),
+        ])
+        stores = {
+            "default": _Store([{"id": "1", "title": "甲", "user_rating": 10, "available": True}], "default"),
+            "second": _Store([{"id": "2", "title": "乙", "user_rating": 8, "available": True}], "second"),
+        }
+        plex = _RatingPlex()
+        runtime = _FavoriteRuntime(stores, plex)
+        app = FastAPI()
+
+        async def body(request):
+            return request.payload
+
+        with patch("helper.playlist_hub.assistant_playlist_rows", return_value=[]), patch("helper.playlist_hub.playlist_rows", return_value=[{
+            "kind": "favorite", "key": "liked", "count": 1,
+        }]):
+            attach_playlist_hub_routes(app, stores["default"], runtime, profiles, body, lambda: None)
+            route = lambda path: next(row.endpoint for row in app.routes if row.path == path)
+            self.assertEqual(2, route("/api/playlists")()["items"][0]["count"])
+            self.assertEqual(["1", "2"], [row["id"] for row in
+                             route("/api/playlists/{kind}/{key}")("favorite", "liked")["tracks"]])
+            request = type("Request", (), {"payload": {
+                "track_id": "2", "liked": False, "profile_id": "second", "confirm": True,
+            }})()
+            response = asyncio.run(route("/api/playlists/tracks/liked")(request))
+
+        self.assertFalse(response["liked"])
+        self.assertEqual(0, stores["second"].get("catalog")[0]["user_rating"])
+        self.assertEqual(10, stores["default"].get("catalog")[0]["user_rating"])
+
+    def test_native_remove_route_rejects_playlist_owned_by_sibling_library(self):
+        from fastapi import FastAPI
+        from helper.playlist_hub import attach_playlist_hub_routes
+
+        profiles = _FavoriteProfiles([
+            _profile("default", "owner", "account-a", "server-a", "11"),
+            _profile("second", "owner", "account-a", "server-a", "15"),
+        ])
+        stores = {pid: _Store([], pid) for pid in profiles.rows}
+        runtime = _FavoriteRuntime(stores, _RatingPlex())
+        app = FastAPI()
+
+        async def body(request):
+            return request.payload
+
+        attach_playlist_hub_routes(app, stores["default"], runtime, profiles, body, lambda: None)
+        route = next(row.endpoint for row in app.routes if row.path == "/api/playlists/remove")
+        detail_route = next(row.endpoint for row in app.routes if row.path == "/api/playlists/{kind}/{key}")
+        request = type("Request", (), {"payload": {
+            "kind": "plex", "key": "41", "title": "其他曲库", "confirm": True,
+        }})()
+
+        def rows(store):
+            return [{"playlist_id": "41"}] if store.profile_id == "second" else []
+
+        with patch("helper.playlist_hub.assistant_playlist_rows", side_effect=rows):
+            with self.assertRaisesRegex(ValueError, "其他曲库"):
+                detail_route("plex", "41")
+            with self.assertRaisesRegex(ValueError, "其他曲库"):
+                asyncio.run(route(request))
+
+
+def _profile(profile_id, kind, account_id, machine, library_id, enabled=True):
+    return {"id": profile_id, "kind": kind, "enabled": enabled,
+            "account": {"id": account_id}, "server": {"machine": machine},
+            "library": {"id": library_id}}
+
+
+class _FavoriteProfiles:
+    def __init__(self, rows):
+        self.rows = {row["id"]: row for row in rows}
+
+    def get(self, profile_id):
+        return self.rows[profile_id]
+
+    def list_public(self, enabled_only=False):
+        return [row for row in self.rows.values() if not enabled_only or row["enabled"]]
+
+
+class _FavoriteRuntime:
+    def __init__(self, stores, plex=None):
+        self.stores = stores
+        self.plex = plex
+
+    def engine(self, profile_id):
+        return type("Engine", (), {
+            "store": self.stores[profile_id],
+            "exclusive": lambda _self: nullcontext(),
+            "plex_factory": lambda _self, _settings: self.plex,
+        })()
 
 
 if __name__ == "__main__":

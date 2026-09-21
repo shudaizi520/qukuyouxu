@@ -6,7 +6,7 @@ import math
 import re
 import time
 import uuid
-from urllib.parse import urlsplit, parse_qs
+from urllib.parse import urlsplit, parse_qs, unquote
 from xml.etree import ElementTree as ET
 import requests
 from .plex_identity import plex_headers
@@ -287,7 +287,8 @@ class PlexClient:
             if total!=expected:raise PlexError('Plex分页期间曲库发生变化，请重试预览')
             if not items and len(rows)<total:raise PlexError('Plex分页不完整')
             for e in items:
-                k=e.get('playlistItemID') if tag=='Track' and '/playlists/' in path else e.get('ratingKey')
+                k=(e.get('playlistItemID') or e.get('ratingKey')) if tag=='Track' and '/playlists/' in path else e.get('ratingKey')
+                if not k:raise PlexError('Plex分页条目标识缺失')
                 if k in seen:raise PlexError('Plex分页返回重复条目')
                 seen.add(k);rows.append(e)
             if len(rows)>=expected:
@@ -420,6 +421,14 @@ class PlexClient:
 
     def playlists(self):
         return [dict(e.attrib) for e in self._page('/playlists','Playlist',{'playlistType':'audio'})]
+
+    def playlist_source_section(self, pid):
+        if not str(pid).isdigit():raise PlexError('歌单ID无效')
+        rows=self._xml(f'/playlists/{pid}').findall('Playlist')
+        if len(rows)!=1:raise PlexError('Plex 歌单不存在或不唯一')
+        content=unquote(str(rows[0].get('content') or ''))
+        match=re.search(r'/library/sections/(\d+)/',content)
+        return match.group(1) if match else None
 
     def playlist_view(self,pid):
         if not str(pid).isdigit():raise PlexError('歌单ID无效')

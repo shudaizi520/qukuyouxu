@@ -104,7 +104,7 @@ class SettingsRedesignV0423Tests(unittest.TestCase):
         parser = _SettingsStructure()
         parser.feed((ROOT / "src/helper/static/settings.html").read_text(encoding="utf-8"))
 
-        expected = ["accounts", "recommend", "automation", "system"]
+        expected = ["accounts", "playlists", "recommend", "automation", "system"]
         self.assertEqual(expected, parser.nav_targets)
         self.assertEqual(expected, [panel["id"].removeprefix("settings-") for panel in parser.panels])
         self.assertEqual(1, sum(not panel["hidden"] for panel in parser.panels))
