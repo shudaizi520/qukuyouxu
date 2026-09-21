@@ -332,13 +332,14 @@ def playlist_detail(engine, kind, key):
     }
 
 
-def stream_playlist_audio(engine, kind, key, track_id, range_header, session_key):
+def stream_playlist_audio(engine, kind, key, track_id, range_header, session_key, offset_seconds=0):
     detail = playlist_detail(engine, kind, key)
     track_id = str(track_id or "")
     if track_id not in {row["id"] for row in detail["tracks"]}:
         raise ValueError("当前歌单中没有这首可试听歌曲")
     return stream_track_audio(
         engine.store, engine.plex_factory, track_id, range_header, session_key,
+        offset_seconds,
     )
 
 
@@ -353,10 +354,11 @@ def _library_track(store, track_id):
     return track
 
 
-def stream_library_audio(engine, track_id, range_header, session_key):
+def stream_library_audio(engine, track_id, range_header, session_key, offset_seconds=0):
     track = _library_track(engine.store, track_id)
     return stream_track_audio(
         engine.store, engine.plex_factory, str(track["id"]), range_header, session_key,
+        offset_seconds,
     )
 
 
@@ -491,13 +493,16 @@ def attach_playlist_hub_routes(app, store, runtime, profiles, body, ensure_idle)
         return {"items": search_library(fixed_engine().store, q, limit)}
 
     @app.get("/api/playlists/library/tracks/{track_id}/audio")
-    def library_audio(track_id: str, request: Request, profile_id: str = ""):
+    def library_audio(
+        track_id: str, request: Request, profile_id: str = "", offset: str = "0",
+    ):
         selected_profile = str(profile_id or store.profile_id)
         with profiles.fixed_active(selected_profile, enabled_only=True):
             target = runtime.engine(selected_profile)
             return stream_library_audio(
                 target, track_id, str(request.headers.get("range") or ""),
                 str(request.cookies.get(COOKIE_NAME) or ""),
+                offset,
             )
 
     @app.get("/api/playlists/library/tracks/{track_id}/artwork")
@@ -514,7 +519,8 @@ def attach_playlist_hub_routes(app, store, runtime, profiles, body, ensure_idle)
 
     @app.get("/api/playlists/{kind}/{key}/tracks/{track_id}/audio")
     def playlist_audio(
-        kind: str, key: str, track_id: str, request: Request, profile_id: str = "",
+        kind: str, key: str, track_id: str, request: Request,
+        profile_id: str = "", offset: str = "0",
     ):
         selected_profile = str(profile_id or store.profile_id)
         with profiles.fixed_active(selected_profile, enabled_only=True):
@@ -524,6 +530,7 @@ def attach_playlist_hub_routes(app, store, runtime, profiles, body, ensure_idle)
                     target, kind, key, track_id,
                     str(request.headers.get("range") or ""),
                     str(request.cookies.get(COOKIE_NAME) or ""),
+                    offset,
                 )
 
     @app.get("/api/playlists/{kind}/{key}/tracks/{track_id}/artwork")

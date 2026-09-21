@@ -231,6 +231,15 @@ def validate_audio_range(value):
         raise ValueError('音频 Range 请求无效')
     return value
 
+def validate_audio_offset(value):
+    try:
+        number = float(value or 0)
+    except (TypeError, ValueError, OverflowError):
+        raise ValueError('音频播放位置无效') from None
+    if not math.isfinite(number) or not 0 <= number <= 86400:
+        raise ValueError('音频播放位置无效')
+    return number
+
 class PlexClient:
     def __init__(self,base,token,session=None,store=None):
         self.base=validate_base(base)
@@ -329,10 +338,11 @@ class PlexClient:
             raise PlexError(f'Plex音频返回HTTP {response.status_code}')
         return response
 
-    def open_browser_audio(self, track_id, range_header=''):
+    def open_browser_audio(self, track_id, range_header='', offset_seconds=0):
         """Return a browser-safe audio stream without modifying the source file."""
         track_id, media_index, part_index, media, part = self._audio_source(track_id)
         range_header = validate_audio_range(range_header)
+        offset_seconds = validate_audio_offset(offset_seconds)
         container = str(media.get('container') or part.get('container') or '').lower()
         codec = str(media.get('audioCodec') or '').lower()
         browser_safe = (
@@ -350,7 +360,9 @@ class PlexClient:
                 'path': f'/library/metadata/{track_id}', 'mediaIndex': str(media_index),
                 'partIndex': str(part_index), 'protocol': 'http', 'directPlay': '0',
                 'directStream': '0', 'directStreamAudio': '0',
-                'musicBitrate': '320', 'offset': '0', 'location': 'lan',
+                'musicBitrate': '320',
+                'offset': format(offset_seconds, '.3f').rstrip('0').rstrip('.') or '0',
+                'location': 'lan',
             }
             headers = {
                 'Accept': 'audio/mpeg', 'X-Plex-Client-Profile-Name': 'generic',

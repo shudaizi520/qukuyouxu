@@ -114,7 +114,8 @@ class _PlaylistPlex:
         self.last_audio = (str(track_id), range_header)
         return self.audio
 
-    def open_browser_audio(self, track_id, range_header=""):
+    def open_browser_audio(self, track_id, range_header="", offset_seconds=0):
+        self.last_audio_offset = offset_seconds
         return self.open_audio_part(track_id, range_header)
 
     def open_artwork(self, path):
@@ -286,9 +287,10 @@ class PlaylistHubPlaybackTests(unittest.TestCase):
         self.plex.audio = FakeAudioResponse(status=200, headers={
             "Content-Type": "audio/mpeg", "Content-Length": "1024",
         })
-        response = stream_library_audio(self.engine, "10", "", "session")
+        response = stream_library_audio(self.engine, "10", "", "session", 75.5)
         self.assertEqual(200, response.status_code)
         self.assertEqual(("10", ""), self.plex.last_audio)
+        self.assertEqual(75.5, self.plex.last_audio_offset)
         asyncio.run(close_response(response))
         with self.assertRaisesRegex(ValueError, "当前曲库"):
             stream_library_audio(self.engine, "999", "", "session-other")

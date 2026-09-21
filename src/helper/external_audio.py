@@ -9,7 +9,7 @@ import requests
 from starlette.background import BackgroundTask
 from starlette.responses import StreamingResponse
 
-from .clients import PlexError, validate_audio_range
+from .clients import PlexError, validate_audio_offset, validate_audio_range
 from .external_store import ExternalRepository
 
 
@@ -17,6 +17,21 @@ MAX_AUDIO_BYTES = 1024 ** 3
 CHUNK_SIZE = 64 * 1024
 _active_lock = threading.Lock()
 _active_streams: dict[str, int] = {}
+MAX_ACTIVE_STREAMS = 3
+
+
+class _AudioStreamingResponse(StreamingResponse):
+    """Release the upstream even when ASGI streaming is cancelled mid-body."""
+    def __init__(self, content, *, cleanup, **kwargs):
+        self.source_iterator = content
+        self._audio_cleanup = cleanup
+        super().__init__(content, **kwargs)
+
+    async def stream_response(self, send):
+        try:
+            await super().stream_response(send)
+        finally:
+            self._audio_cleanup()
 
 
 def _stream_key(profile_id, session_key):
@@ -29,7 +44,7 @@ def _stream_key(profile_id, session_key):
 def _acquire(key):
     with _active_lock:
         active = _active_streams.get(key, 0)
-        if active >= 2:
+        if active >= MAX_ACTIVE_STREAMS:
             raise ValueError('当前试听数量已达上限，请先停止一首再试')
         _active_streams[key] = active + 1
 
@@ -81,13 +96,14 @@ def _matched_track(repository, profile_id, source_id, track_key, candidate_id=''
     raise ValueError('这首歌还没有可靠匹配，不能试听')
 
 
-def stream_track_audio(store, plex_factory, track_id, range_header, session_key):
+def stream_track_audio(store, plex_factory, track_id, range_header, session_key, offset_seconds=0):
     """Stream one catalog track after the caller has established its playlist scope."""
     profile_id = str(getattr(store, 'profile_id', 'default') or 'default')
     track_id = str(track_id or '')
     if not track_id.isdigit():
         raise ValueError('当前歌单中没有这首可试听歌曲')
     range_header = validate_audio_range(range_header)
+    offset_seconds = validate_audio_offset(offset_seconds)
     catalog = {
         str(row.get('id')): row for row in (store.get('catalog', []) or [])
         if isinstance(row, dict) and row.get('id') is not None
@@ -117,7 +133,7 @@ def stream_track_audio(store, plex_factory, track_id, range_header, session_key)
     try:
         plex = plex_factory(settings)
         try:
-            upstream = plex.open_browser_audio(track_id, range_header)
+            upstream = plex.open_browser_audio(track_id, range_header, offset_seconds)
         except requests.RequestException:
             raise PlexError('Plex音频连接失败，请稍后重试') from None
         if upstream.status_code not in (200, 206):
@@ -128,16 +144,20 @@ def stream_track_audio(store, plex_factory, track_id, range_header, session_key)
 
         def chunks():
             total = 0
-            for chunk in upstream.iter_content(CHUNK_SIZE):
-                if not chunk:
-                    continue
-                total += len(chunk)
-                if total > MAX_AUDIO_BYTES:
-                    raise PlexError('Plex音频流超过大小上限')
-                yield chunk
+            try:
+                for chunk in upstream.iter_content(CHUNK_SIZE):
+                    if not chunk:
+                        continue
+                    total += len(chunk)
+                    if total > MAX_AUDIO_BYTES:
+                        raise PlexError('Plex音频流超过大小上限')
+                    yield chunk
+            finally:
+                cleanup()
 
-        return StreamingResponse(
+        return _AudioStreamingResponse(
             chunks(), status_code=upstream.status_code, headers=headers,
+            cleanup=cleanup,
             background=BackgroundTask(background_cleanup),
         )
     except Exception:
@@ -145,11 +165,13 @@ def stream_track_audio(store, plex_factory, track_id, range_header, session_key)
         raise
 
 
-def stream_local_audio(store, plex_factory, source_id, track_key, range_header, session_key, *, candidate_id=''):
+def stream_local_audio(store, plex_factory, source_id, track_key, range_header, session_key, *, candidate_id='', offset_seconds=0):
     profile_id = str(getattr(store, 'profile_id', 'default') or 'default')
     track_key = str(track_key or '')
     if not track_key or len(track_key) > 300:
         raise ValueError('当前歌单中没有这首可试听歌曲')
     repository = ExternalRepository(store)
     track_id = _matched_track(repository, profile_id, str(source_id), track_key, candidate_id)
-    return stream_track_audio(store, plex_factory, track_id, range_header, session_key)
+    return stream_track_audio(
+        store, plex_factory, track_id, range_header, session_key, offset_seconds,
+    )

@@ -42,8 +42,8 @@ class FakePlex:
             raise self.error
         return self.response
 
-    def open_browser_audio(self, track_id, range_header=""):
-        self.browser_calls.append((track_id, range_header))
+    def open_browser_audio(self, track_id, range_header="", offset_seconds=0):
+        self.browser_calls.append((track_id, range_header, offset_seconds))
         return self.open_audio_part(track_id, range_header)
 
 
@@ -83,13 +83,13 @@ class ExternalAudioV130Tests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def stream(self, plex=None, track="a", range_header="bytes=0-1023", session="session-a", candidate=""):
+    def stream(self, plex=None, track="a", range_header="bytes=0-1023", session="session-a", candidate="", offset=0):
         from helper.external_audio import stream_local_audio
 
         plex = plex or FakePlex()
         response = stream_local_audio(
             self.store, lambda _cfg: plex, self.source["id"], track,
-            range_header, session, candidate_id=candidate,
+            range_header, session, candidate_id=candidate, offset_seconds=offset,
         )
         return plex, response
 
@@ -107,7 +107,7 @@ class ExternalAudioV130Tests(unittest.TestCase):
         self.assertEqual("bytes 0-1023/4096", response.headers["Content-Range"])
         self.assertNotIn("X-Plex-Token", response.headers)
         self.assertEqual([("10", "bytes=0-1023")], plex.calls)
-        self.assertEqual([("10", "bytes=0-1023")], plex.browser_calls)
+        self.assertEqual([("10", "bytes=0-1023", 0)], plex.browser_calls)
         asyncio.run(close_response(response))
         self.assertTrue(plex.response.closed)
 
@@ -144,25 +144,49 @@ class ExternalAudioV130Tests(unittest.TestCase):
         with self.assertRaisesRegex(PlexError, "连接"):
             self.stream(FakePlex(error=requests.Timeout()), session="timeout")
 
-    def test_only_two_active_streams_per_session_and_profile(self):
+    def test_three_active_streams_allow_one_replacement_but_remain_bounded(self):
         first_plex, first = self.stream(session="same-session")
         second_plex, second = self.stream(session="same-session")
+        third_plex, third = self.stream(session="same-session")
         with self.assertRaisesRegex(ValueError, "试听"):
             self.stream(session="same-session")
         asyncio.run(close_response(first))
-        third_plex, third = self.stream(session="same-session")
+        fourth_plex, fourth = self.stream(session="same-session")
         asyncio.run(close_response(second))
         asyncio.run(close_response(third))
+        asyncio.run(close_response(fourth))
         self.assertTrue(first_plex.response.closed)
         self.assertTrue(second_plex.response.closed)
         self.assertTrue(third_plex.response.closed)
+        self.assertTrue(fourth_plex.response.closed)
 
-    def test_client_disconnect_cleanup_closes_upstream_and_releases_slot(self):
-        plex, response = self.stream(session="disconnect")
-        asyncio.run(response.background())
-        self.assertTrue(plex.response.closed)
-        _next_plex, next_response = self.stream(session="disconnect")
-        asyncio.run(next_response.background())
+    def test_stream_iterator_close_releases_slot_before_background_cleanup(self):
+        async def scenario():
+            responses = [self.stream(session="disconnect") for _ in range(3)]
+            response = responses[0][1]
+
+            async def one_chunk():
+                yield b"a" * 512
+
+            async def disconnected(message):
+                if message["type"] == "http.response.body":
+                    raise asyncio.CancelledError()
+
+            response.body_iterator = one_chunk()
+            with self.assertRaises(asyncio.CancelledError):
+                await response.stream_response(disconnected)
+            self.assertTrue(responses[0][0].response.closed)
+            _next_plex, next_response = self.stream(session="disconnect")
+            await next_response.background()
+            for _plex, response in responses[1:]:
+                await response.background()
+
+        asyncio.run(scenario())
+
+    def test_stream_forwards_validated_transcode_offset(self):
+        plex, response = self.stream(offset=91.25)
+        self.assertEqual([("10", "bytes=0-1023", 91.25)], plex.browser_calls)
+        asyncio.run(close_response(response))
 
 
 class PlexAudioPartV130Tests(unittest.TestCase):
@@ -230,16 +254,21 @@ class PlexAudioPartV130Tests(unittest.TestCase):
         client._xml = lambda _path: ET.fromstring(
             '<MediaContainer><Track ratingKey="10"><Media container="flac" audioCodec="flac"><Part key="/library/parts/1/file.flac" container="flac" accessible="1" exists="1" /></Media></Track></MediaContainer>'
         )
-        response = client.open_browser_audio("10", "bytes=0-1023")
+        response = client.open_browser_audio("10", "bytes=0-1023", offset_seconds=91.25)
         method, url, kwargs = client.session.calls[-1]
         self.assertEqual("GET", method)
         self.assertEqual("http://plex/music/:/transcode/universal/start.mp3", url)
         self.assertEqual("/library/metadata/10", kwargs["params"]["path"])
         self.assertEqual("320", kwargs["params"]["musicBitrate"])
         self.assertEqual("0", kwargs["params"]["directPlay"])
+        self.assertEqual("91.25", kwargs["params"]["offset"])
         self.assertNotIn("Range", kwargs["headers"])
         self.assertIn("add-transcode-target", kwargs["headers"]["X-Plex-Client-Profile-Extra"])
         response.close()
+
+        for value in (-1, float("inf"), 86401, "bad"):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "播放位置"):
+                client.open_browser_audio("10", offset_seconds=value)
 
     def test_browser_audio_uses_the_selected_media_and_part_indexes(self):
         from helper.clients import PlexClient
