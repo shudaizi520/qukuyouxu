@@ -806,7 +806,7 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn("return true", open_playlist)
         self.assertIn("catch(error)", open_playlist)
         self.assertIn("requestId!==playlistRequest", open_playlist)
-        self.assertIn("restoreCurrentPlaylistSelection()", open_playlist)
+        self.assertIn("restoreCurrentPlaylistSelection(item.section||'smart')", open_playlist)
 
     def test_logout_stops_player_and_invalidates_account_requests(self):
         script = (STATIC / "playlists.js").read_text(encoding="utf-8")
