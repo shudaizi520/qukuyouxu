@@ -19,6 +19,7 @@ let unavailablePlaylists=new Set();
 let loadedProfileId='';
 let playlistRequest=0;
 let profileRequest=0;
+let embeddedProfileRequest=0;
 const likedRequests=new Map();
 const unseenFavoriteKey=()=>{
  const profileId=loadedProfileId||PCHAuth.profile()||'default';
@@ -248,7 +249,7 @@ function resetPlaylistView(){
  $('playlistManage').hidden=true;$('playlistRename').hidden=true;$('playlistRemove').hidden=true;$('playlistPlayAll').disabled=true;$('playlistEmpty').textContent='正在读取这个账户的歌单…';
 }
 function resetSession(){
- ++profileRequest;++playlistRequest;likedRequests.clear();loadedProfileId='';profiles=[];playlists=[];current=null;tracks=[];filtered=[];unavailablePlaylists=new Set();
+ ++profileRequest;++playlistRequest;++embeddedProfileRequest;likedRequests.clear();loadedProfileId='';profiles=[];playlists=[];current=null;tracks=[];filtered=[];unavailablePlaylists=new Set();
  const renameDialog=$('playlistRenameDialog');if(renameDialog.open)renameDialog.close();
  const createDialog=$('playlistCreateDialog');if(createDialog.open)createDialog.close();
  playlistPlayer.stop();librarySearch.reset();setPlaylistLoading(false);resetPlaylistView();renderTracks();renderPlaylistList();setSidebarOpen(false);
@@ -381,14 +382,18 @@ function mount(){
  $('playlistCreateInput').onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();action(confirmCreate);}};
  document.querySelectorAll('[data-tool-url]').forEach(button=>button.onclick=()=>openTool(button.dataset.toolUrl,button.title||button.textContent.trim()));
  document.querySelectorAll('[data-workspace-url]').forEach(button=>button.onclick=()=>openWorkspacePage(button.dataset.workspaceUrl,button.textContent.trim(),'system'));
- window.addEventListener('pch-profile-change',event=>{const profileId=String(event.detail?.profile_id||'');if(profileId&&profileId!==loadedProfileId)action(()=>switchProfile(profileId,false));});
+ window.addEventListener('pch-profile-change',event=>{++embeddedProfileRequest;const profileId=String(event.detail?.profile_id||'');if(profileId&&profileId!==loadedProfileId)action(()=>switchProfile(profileId,false));});
  window.addEventListener('pch-auth-logout',resetSession);
  window.addEventListener('message',event=>{
   if(event.origin!==location.origin||event.source!==$('playlistToolFrame').contentWindow)return;
   if(event.data?.type==='pch-auth-logout'){PCHAuth.expire();return;}
   if(event.data?.type==='pch-profile-selected'){
-   const profileId=String(event.data.profile_id||'');
-   if(profileId&&profileId!==loadedProfileId)action(async()=>{if(!profiles.some(row=>row.id===profileId))await loadProfiles();if(profiles.some(row=>row.id===profileId))await switchProfile(profileId,false);});
+   const sequence=++embeddedProfileRequest,profileId=String(event.data.profile_id||'');
+   if(profileId&&profileId!==loadedProfileId)action(async()=>{
+    if(!profiles.some(row=>row.id===profileId))await loadProfiles();
+    if(sequence!==embeddedProfileRequest||PCHAuth.profile()!==profileId)return;
+    if(profiles.some(row=>row.id===profileId))await switchProfile(profileId,false);
+   });
    return;
   }
   if(event.data?.type==='pch-playlists-changed'){action(refreshPlaylistSidebar);return;}

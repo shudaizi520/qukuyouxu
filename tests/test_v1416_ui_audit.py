@@ -51,6 +51,13 @@ def test_embedded_profile_change_reaches_outer_playlist_workspace():
     assert "await loadProfiles()" in playlists
 
 
+def test_stale_embedded_profile_selection_cannot_override_newer_selection():
+    playlists = (STATIC / "playlists.js").read_text()
+    assert "let embeddedProfileRequest=0" in playlists
+    assert "const sequence=++embeddedProfileRequest" in playlists
+    assert "sequence!==embeddedProfileRequest||PCHAuth.profile()!==profileId" in playlists
+
+
 def test_typing_import_url_clears_stale_selected_file_label():
     script = (STATIC / "external.js").read_text()
     assert "$('selectedFile').hidden=true" in script
@@ -72,3 +79,10 @@ def test_library_task_heading_names_the_stage_not_its_action():
     assert 'id="taskTitle">整理任务' in page
     assert "$('taskTitle').textContent='整理任务'" in script
     assert 'id="analyzeLibrary">分析曲库' in page
+
+
+def test_narrow_search_keeps_like_and_add_actions_available():
+    styles = (STATIC / "product.css").read_text()
+    assert "@media(max-width:720px){body[data-view=playlists] .playlist-search-result .playlist-search-actions" in styles
+    assert "body[data-view=playlists] .playlist-search-result .playlist-search-actions button{display:inline-grid}" in styles
+    assert "body[data-view=playlists] .playlist-search-result .playlist-search-title-line .playlist-heart{display:grid}" in styles
