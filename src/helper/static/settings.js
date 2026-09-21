@@ -72,7 +72,6 @@ function render(s,saved){
  renderSavedConnection(saved);renderWebhook(s.webhook);
  renderSections(s.plex_connection?.sections,c.section);renderOfficialSections(s.plex_connection?.sections,c.section);
  $('dailySize').value=d.size??30;$('rediscoveryDays').value=d.rediscovery_days??90;$('dailyAvoidDays').value=d.daily_avoid_days??21;$('favoritePercent').value=d.favorite_percent??20;$('artistCap').value=d.artist_cap??2;$('accountName').textContent=PCHAuth.status().username||'admin';
- $('systemVersion').textContent=s.version;
 }
 function renderAutomation(value){
  const schedule=value||{};

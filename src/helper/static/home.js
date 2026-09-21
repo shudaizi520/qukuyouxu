@@ -25,7 +25,7 @@ function renderQQAuth(auth,running){
 }
 async function refresh(skipPlexLink=false){
  if(polling)return;polling=true;
- try{current=await(await request('/api/workflow/status?release=1.4.15')).json();render(current);if(!libraryNavigationReady){libraryNavigationReady=true;revealLibraryTarget();}if(!skipPlexLink||!lastPlexLinkRefresh||Date.now()-lastPlexLinkRefresh>=PLEX_LINK_TTL_MS)await refreshPlexLink();return true;}finally{polling=false;}
+ try{current=await(await request('/api/workflow/status?release=1.4.16')).json();render(current);if(!libraryNavigationReady){libraryNavigationReady=true;revealLibraryTarget();}if(!skipPlexLink||!lastPlexLinkRefresh||Date.now()-lastPlexLinkRefresh>=PLEX_LINK_TTL_MS)await refreshPlexLink();return true;}finally{polling=false;}
 }
 function render(data){
  const w=data.workflow,s=w.state||{},sum=w.summary||{},job=w.job||{},running=!!job.running,discovery=w.discovery||{};
@@ -203,7 +203,7 @@ function renderLibraryPresentation(w,phase,running){
  $('attentionLink').textContent='查看待核对'+(w.summary?.review_count?' · '+number(w.summary.review_count):'');
  if(discovery.phase==='choose')$('taskTitle').textContent='发现可创建的歌单';
  else if(discovery.phase==='empty')$('taskTitle').textContent='分析完成';
- else if(discovery.phase==='before_analysis'&&!w.needs_setup)$('taskTitle').textContent='分析曲库';
+ else if(discovery.phase==='before_analysis'&&!w.needs_setup)$('taskTitle').textContent='整理任务';
  else if(phase==='ready'){
   $('taskTitle').textContent='最近整理';
   const r=w.state?.result;

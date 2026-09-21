@@ -5,9 +5,9 @@
  <meta name="viewport" content="width=device-width,initial-scale=1">
  <meta name="color-scheme" content="light">
  <title>曲库有序 · 外部歌单</title>
- <link rel="stylesheet" href="/static/product.css?v=1.4.15">
- <script defer src="/static/auth.js?v=1.4.15"></script>
- <script defer src="/static/external.js?v=1.4.15"></script>
+ <link rel="stylesheet" href="/static/product.css?v=1.4.16">
+ <script defer src="/static/auth.js?v=1.4.16"></script>
+ <script defer src="/static/external.js?v=1.4.16"></script>
 </head>
 <body data-view="external" data-auth-state="checking">
 <div id="bootScreen" class="auth-boot"><div class="boot-mark">♫</div><strong>曲库有序</strong><span>正在进入你的音乐库…</span></div>
@@ -20,7 +20,7 @@
  </div>
 </section>
 <div id="workspace" hidden>
- <header class="topbar"><a class="brand" href="/"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v1.4.15</small></span></a><nav><a href="/">我的歌单</a><a href="/status">运行状态</a><a href="/settings">设置</a></nav><button class="logout" data-auth-logout hidden>退出</button></header>
+ <header class="topbar"><a class="brand" href="/"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v1.4.16</small></span></a><nav><a href="/">我的歌单</a><a href="/status">运行状态</a><a href="/settings">设置</a></nav><button class="logout" data-auth-logout hidden>退出</button></header>
  <main class="wrap external-shell">
   <div id="notice" class="notice" role="status" hidden></div>
   <header class="external-page-title"><h1>导入歌单</h1></header>
@@ -41,8 +41,8 @@
     <label for="plexPlaylistTitle">Plex 歌单</label><div class="external-command-main"><input id="plexPlaylistTitle" maxlength="80" aria-label="Plex 歌单名称"><span id="sourceState" class="external-state"></span></div>
     <div class="external-command-actions"><label id="followUpdatesRow" class="external-follow-label"><input id="followUpdates" type="checkbox">自动刷新</label><button id="publishSource" class="primary" type="button">更新歌单</button></div>
    </section>
-   <section id="replenishmentCard" class="external-command-bar" aria-label="缺失歌曲" hidden>
-    <strong>缺失歌曲</strong><span id="missingSummary"></span>
+   <section id="replenishmentCard" class="external-command-bar" aria-label="补歌清单" hidden>
+    <strong>补歌清单</strong>
     <div class="external-command-actions"><button id="copyMissing" class="external-text-action" type="button">复制清单</button><details id="downloadMenu" class="external-more"><summary class="external-text-action">下载</summary><div><a id="downloadText" class="link" href="#">TXT</a><a id="downloadCsv" class="link" href="#">CSV</a><button id="downloadImage" class="external-text-action" type="button">长图</button></div></details></div>
    </section>
    <section id="detailCard" class="external-detail-card">

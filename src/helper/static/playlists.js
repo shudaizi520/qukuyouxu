@@ -386,6 +386,11 @@ function mount(){
  window.addEventListener('message',event=>{
   if(event.origin!==location.origin||event.source!==$('playlistToolFrame').contentWindow)return;
   if(event.data?.type==='pch-auth-logout'){PCHAuth.expire();return;}
+  if(event.data?.type==='pch-profile-selected'){
+   const profileId=String(event.data.profile_id||'');
+   if(profileId&&profileId!==loadedProfileId)action(async()=>{if(!profiles.some(row=>row.id===profileId))await loadProfiles();if(profiles.some(row=>row.id===profileId))await switchProfile(profileId,false);});
+   return;
+  }
   if(event.data?.type==='pch-playlists-changed'){action(refreshPlaylistSidebar);return;}
   if(event.data?.type==='pch-open-playlist'){
    const item=playlists.find(row=>row.kind===event.data.kind&&String(row.key)===String(event.data.key));

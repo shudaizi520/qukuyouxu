@@ -81,7 +81,6 @@ function renderDetail(){
  $('publishSource').textContent=(current.managed?'更新歌单':'创建歌单')+'（'+matched+'首）';
  $('publishSource').disabled=!matched;
  $('replenishmentCard').hidden=!count('missing');
- $('missingSummary').textContent=count('missing')+' 首未找到';
  const exportBase='/api/external/sources/'+encodeURIComponent(current.id)+'/export?format=';
  $('downloadText').dataset.url=exportBase+'text';$('downloadCsv').dataset.url=exportBase+'csv';
  document.querySelectorAll('.external-count-tab').forEach(button=>button.classList.toggle('active',button.dataset.matchStatus===activeStatus));
@@ -186,6 +185,7 @@ async function beginImport(){
   payload={filename:file.name,content_base64:bytesToBase64(await file.arrayBuffer())};
  }
  await json('/api/external/import','POST',payload);notify('正在读取并与 Plex 曲库匹配，可以留在本页等待。');await pollJob('导入完成');
+ $('sourceUrl').value='';$('sourceFile').value='';$('selectedFile').textContent='';$('selectedFile').hidden=true;
  const added=sources.find(row=>!previousIds.has(row.id));if(added)await openSource(added.id);
 }
 async function pollJob(successMessage){
@@ -231,7 +231,7 @@ async function downloadLongImages(){
 
 $('importForm').addEventListener('submit',event=>{event.preventDefault();action(beginImport);});
 $('sourceFile').onchange=()=>{$('sourceUrl').value='';$('selectedFile').textContent=$('sourceFile').files[0]?.name||'';$('selectedFile').hidden=!$('sourceFile').files[0];};
-$('sourceUrl').oninput=()=>{if($('sourceUrl').value)$('sourceFile').value='';};
+$('sourceUrl').oninput=()=>{if($('sourceUrl').value){$('sourceFile').value='';$('selectedFile').textContent='';$('selectedFile').hidden=true;}};
 $('sourceSelector').onchange=()=>action(()=>openSource($('sourceSelector').value));
 $('refreshSource').onclick=()=>action(async()=>{const force=!!current.needs_confirmation;if(force&&!await PCHUI.confirm('来源歌曲比上次少很多。确认用最新公开歌单覆盖上次读取结果？Plex 歌单仍会先经过归属校验。'))return;await json('/api/external/sources/'+encodeURIComponent(current.id)+'/refresh','POST',{confirm_large_removal:force});notify('正在重新读取来源');await pollJob('刷新完成');});
 $('publishSource').onclick=()=>action(async()=>{const title=$('plexPlaylistTitle').value.trim(),matched=count('matched');if(!title)throw Error('请填写 Plex 歌单名称');if(!await PCHUI.confirm('确认在 Plex 创建或更新“'+title+'”？\n只包含 '+matched+' 首可靠匹配的本地歌曲。'))return;await json('/api/external/sources/'+encodeURIComponent(current.id)+'/publish','POST',{confirm:true,title,revision:current.revision});notify('正在写入经过验证的 Plex 歌单');await pollJob('Plex 歌单已更新');});

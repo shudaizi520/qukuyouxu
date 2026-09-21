@@ -13,7 +13,7 @@ let state={authenticated:false,username:null,setup_required:false};
 const PROFILE_KEY='pch-profile-id';
 let readyResolve;const ready=new Promise(r=>readyResolve=r);
 function profile(){return sessionStorage.getItem(PROFILE_KEY)||'';}
-function setProfile(value){const id=String(value||'').trim();if(id)sessionStorage.setItem(PROFILE_KEY,id);else sessionStorage.removeItem(PROFILE_KEY);window.dispatchEvent(new CustomEvent('pch-profile-change',{detail:{profile_id:id}}));}
+function setProfile(value){const id=String(value||'').trim();if(id)sessionStorage.setItem(PROFILE_KEY,id);else sessionStorage.removeItem(PROFILE_KEY);window.dispatchEvent(new CustomEvent('pch-profile-change',{detail:{profile_id:id}}));if(EMBEDDED&&window.parent!==window)window.parent.postMessage({type:'pch-profile-selected',profile_id:id},location.origin);}
 function message(text,error=false){const n=$('authMessage');if(!n)return;n.hidden=!text;n.textContent=text||'';n.className='auth-message'+(error?' error':'');}
 function showWorkspace(){if($('bootScreen'))$('bootScreen').hidden=true;if($('authShell'))$('authShell').hidden=true;if($('workspace'))$('workspace').hidden=false;for(const el of document.querySelectorAll('[data-auth-logout]'))el.hidden=false;document.body.dataset.authState='ready';}
 function showAuth(){if($('bootScreen'))$('bootScreen').hidden=true;if($('workspace'))$('workspace').hidden=true;if($('authShell'))$('authShell').hidden=false;for(const el of document.querySelectorAll('[data-auth-logout]'))el.hidden=true;document.body.dataset.authState='login';renderMode();}
