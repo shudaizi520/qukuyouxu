@@ -57,6 +57,16 @@ def asgi_request(*args, **kwargs):
 
 
 class ReleaseBlockerTests(unittest.TestCase):
+    def test_native_playlist_delete_has_no_media_file_delete_primitive(self):
+        hub = (ROOT / "src/helper/playlist_hub.py").read_text(encoding="utf-8")
+        remove = hub.split("def remove_playlist", 1)[1].split("def attach_playlist_hub_routes", 1)[0]
+        native_remove = remove.split('if kind == "plex":', 1)[1].split(
+            'raise ValueError("歌单类型无效")', 1
+        )[0]
+        self.assertIn("delete_playlist", native_remove)
+        self.assertNotIn("delete_media", native_remove)
+        self.assertNotIn("unlink", native_remove)
+
     def test_starting_a_new_preview_invalidates_the_old_confirmation(self):
         from helper.engine import Engine
         from helper.store import Store

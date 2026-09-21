@@ -144,6 +144,75 @@ def playlist_rows(engine):
         return [*assistant, *(row for row in cached if str(row.get("playlist_id")) not in owned)]
 
 
+def _native_playlist(plex, playlist_id):
+    playlist_id = str(playlist_id or "")
+    if not playlist_id.isdigit():
+        raise ValueError("歌单标识无效")
+    listed = {
+        str(row.get("ratingKey") or ""): row for row in plex.playlists()
+        if isinstance(row, dict) and row.get("playlistType") == "audio"
+    }
+    if playlist_id not in listed:
+        raise ValueError("当前 Plex 账户没有这个音乐歌单")
+    state = plex.playlist_view(playlist_id)
+    if str(state.get("id") or "") != playlist_id:
+        raise SafetyError("Plex 歌单标识已经变化")
+    return listed[playlist_id], state
+
+
+def _native_smart(listed, state):
+    return bool(state.get("smart")) or str(listed.get("smart") or "") == "1"
+
+
+def _edit_native_playlist_track(plex, key, track_id, operation):
+    listed, before = _native_playlist(plex, key)
+    if _native_smart(listed, before):
+        raise ValueError("Plex 智能歌单不能逐首添加或移除")
+    matching = [row for row in before.get("items", []) if str(row.get("id")) == track_id]
+    if operation == "add" and not matching:
+        plex.append(key, [track_id])
+        after = plex.read_playlist_view_until(
+            key, lambda row: any(str(item.get("id")) == track_id for item in row.get("items", [])),
+        )
+    elif operation == "remove" and matching:
+        item_ids = [str(row.get("item_id") or "") for row in matching]
+        if any(not value.isdigit() for value in item_ids):
+            raise SafetyError("Plex 歌单条目标识无效，拒绝修改")
+        plex.remove_items(key, item_ids)
+        after = plex.read_playlist_view_until(
+            key, lambda row: all(str(item.get("id")) != track_id for item in row.get("items", [])),
+        )
+    else:
+        after = before
+    actual = any(str(row.get("id")) == track_id for row in after.get("items", []))
+    if actual != (operation == "add"):
+        raise SafetyError("Plex 没有确认这次歌曲调整，请刷新后核对")
+    return {
+        "message": "已加入歌单" if operation == "add" else "已从歌单移除",
+        "count": len(after.get("items", [])),
+    }
+
+
+def rename_playlist(engine, kind, key, title):
+    kind, key, title = str(kind or ""), _safe_key(key), str(title or "").strip()
+    if kind != "plex":
+        raise ValueError("这个歌单请在对应管理页调整名称")
+    if not title or len(title) > 80 or any(ord(char) < 32 for char in title):
+        raise ValueError("歌单标题无效")
+    plex = engine.plex_factory(engine.store.get("settings"))
+    _listed, before = _native_playlist(plex, key)
+    if str(before.get("title") or "") != title:
+        plex.rename(key, title)
+        after = plex.read_playlist_view_until(
+            key, lambda row: str(row.get("id") or "") == key and str(row.get("title") or "") == title,
+        )
+    else:
+        after = before
+    if str(after.get("id") or "") != key or str(after.get("title") or "") != title:
+        raise SafetyError("Plex 没有确认歌单重命名，请刷新后核对")
+    return {"message": "歌单已重命名", "title": title}
+
+
 def _playlist_record(engine, kind, key):
     kind, key = str(kind or ""), _safe_key(key)
     store = engine.store
@@ -264,6 +333,9 @@ def edit_playlist_track(engine, kind, key, track_id, operation):
     }
     if track_id not in catalog:
         raise ValueError("这首歌已不在当前曲库中")
+    if kind == "plex":
+        plex = engine.plex_factory(engine.store.get("settings"))
+        return _edit_native_playlist_track(plex, key, track_id, operation)
     record, marker = _playlist_record(engine, kind, key)
     plex = engine.plex_factory(engine.store.get("settings"))
     before = plex.playlist_state(record["id"])
@@ -537,6 +609,19 @@ def remove_playlist(engine, kind, key, confirm_title):
     if kind == "external":
         with engine.exclusive():
             return engine.external.remove(key, confirm_title)
+    if kind == "plex":
+        with engine.exclusive():
+            plex = engine.plex_factory(engine.store.get("settings"))
+            _listed, current = _native_playlist(plex, key)
+            if str(confirm_title or "") != str(current.get("title") or ""):
+                raise SafetyError("歌单名称已经变化，请刷新后重试")
+            plex.delete_playlist(key)
+            rows = plex.read_playlists_until(
+                lambda items: all(str(row.get("ratingKey") or "") != key for row in items),
+            )
+            if any(str(row.get("ratingKey") or "") == key for row in rows):
+                raise SafetyError("Plex 没有确认删除结果，请刷新后核对")
+            return {"message": "已删除歌单；仅删除歌单，不删除音乐文件。"}
     raise ValueError("歌单类型无效")
 
 
@@ -616,6 +701,19 @@ def attach_playlist_hub_routes(app, store, runtime, profiles, body, ensure_idle)
         return remove_playlist(
             target, kind, data.get("key"), str(data.get("title") or ""),
         )
+
+    @app.post("/api/playlists/rename")
+    async def rename(request: Request):
+        data = await body(request)
+        if data.get("confirm") is not True:
+            raise SafetyError("请确认重命名歌单")
+        ensure_idle()
+        target = fixed_engine()
+        with target.exclusive():
+            return rename_playlist(
+                target, str(data.get("kind") or ""), data.get("key"),
+                str(data.get("title") or ""),
+            )
 
     @app.post("/api/playlists/tracks/edit")
     async def edit_track(request: Request):

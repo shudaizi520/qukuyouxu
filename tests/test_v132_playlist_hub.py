@@ -631,7 +631,7 @@ class PlaylistHubPageTests(unittest.TestCase):
     def test_remove_route_dispatches_every_managed_playlist_kind_under_the_lock(self):
         hub = (ROOT / "src/helper/playlist_hub.py").read_text(encoding="utf-8")
         remove_route = hub.split('@app.post("/api/playlists/remove")', 1)[1].split(
-            '@app.post("/api/playlists/tracks/edit")', 1
+            '@app.post("/api/playlists/rename")', 1
         )[0]
         self.assertNotIn('if kind in ("smart", "category")', remove_route)
         self.assertNotIn("with target.exclusive():", remove_route)

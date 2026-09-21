@@ -444,6 +444,28 @@ class PlexClient:
             if attempt+1<attempts:time.sleep(delay*(attempt+1))
         return last
 
+    def read_playlist_view_until(self,pid,predicate,attempts=8,delay=0.25):
+        """Retry normal or smart playlist reads after one metadata mutation."""
+        if isinstance(attempts,bool) or not isinstance(attempts,int) or not 1<=attempts<=20:
+            raise ValueError('回读次数无效')
+        last=None
+        for attempt in range(attempts):
+            last=self.playlist_view(pid)
+            if predicate(last):return last
+            if attempt+1<attempts:time.sleep(delay*(attempt+1))
+        return last
+
+    def read_playlists_until(self,predicate,attempts=8,delay=0.25):
+        """Retry account playlist listing after one delete mutation."""
+        if isinstance(attempts,bool) or not isinstance(attempts,int) or not 1<=attempts<=20:
+            raise ValueError('回读次数无效')
+        last=None
+        for attempt in range(attempts):
+            last=self.playlists()
+            if predicate(last):return last
+            if attempt+1<attempts:time.sleep(delay*(attempt+1))
+        return last
+
     def _uri(self,ids):
         if not ids or any(not str(x).isdigit() for x in ids):raise PlexError('空曲目或非法曲目ID')
         if not self.machine:self.identity()

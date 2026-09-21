@@ -48,8 +48,72 @@ class _Engine:
     def plex_factory(self, _settings):
         return self.plex
 
+    def exclusive(self):
+        from contextlib import nullcontext
+        return nullcontext()
+
+
+class _WritablePlex(_Plex):
+    def __init__(self):
+        super().__init__([
+            {"ratingKey": "10", "title": "工作", "playlistType": "audio", "smart": "0"},
+            {"ratingKey": "11", "title": "四星", "playlistType": "audio", "smart": "1"},
+        ], {
+            "10": {"id": "10", "title": "工作", "summary": "", "smart": False,
+                   "items": [{"id": "10", "item_id": "100", "title": "歌一"}]},
+            "11": {"id": "11", "title": "四星", "summary": "", "smart": True,
+                   "items": [{"id": "10", "item_id": "110", "title": "歌一"}]},
+        })
+        self.mutations = []
+
+    def append(self, playlist_id, track_ids):
+        self.mutations.append(("append", str(playlist_id), list(track_ids)))
+        for track_id in track_ids:
+            self.views[str(playlist_id)]["items"].append({
+                "id": str(track_id), "item_id": str(200 + len(self.views[str(playlist_id)]["items"])),
+            })
+
+    def remove_items(self, playlist_id, item_ids):
+        self.mutations.append(("remove_items", str(playlist_id), list(item_ids)))
+        wanted = {str(item_id) for item_id in item_ids}
+        self.views[str(playlist_id)]["items"] = [
+            row for row in self.views[str(playlist_id)]["items"]
+            if str(row.get("item_id")) not in wanted
+        ]
+
+    def rename(self, playlist_id, title):
+        self.mutations.append(("rename", str(playlist_id), str(title)))
+        self.views[str(playlist_id)]["title"] = str(title)
+        for row in self.rows:
+            if str(row.get("ratingKey")) == str(playlist_id):
+                row["title"] = str(title)
+
+    def delete_playlist(self, playlist_id):
+        self.mutations.append(("delete_playlist", str(playlist_id)))
+        self.rows = [row for row in self.rows if str(row.get("ratingKey")) != str(playlist_id)]
+        self.views.pop(str(playlist_id), None)
+
+    def read_playlist_view_until(self, playlist_id, predicate, attempts=8, delay=0.25):
+        row = self.playlist_view(playlist_id)
+        return row if predicate(row) else row
+
+    def read_playlists_until(self, predicate, attempts=8, delay=0.25):
+        rows = self.playlists()
+        return rows if predicate(rows) else rows
+
 
 class PlaylistInventoryTests(unittest.TestCase):
+    def writable_engine(self):
+        store = _Store({
+            "settings": {},
+            "catalog": [
+                {"id": "10", "title": "歌一", "available": True},
+                {"id": "20", "title": "歌二", "available": True},
+            ],
+        })
+        plex = _WritablePlex()
+        return _Engine(store, plex), plex
+
     def test_assistant_rows_win_by_rating_key_and_native_rows_become_custom(self):
         from helper.playlist_inventory import merge_playlist_rows
 
@@ -143,6 +207,42 @@ class PlaylistInventoryTests(unittest.TestCase):
         self.assertEqual("10", view["items"][0]["id"])
         with self.assertRaisesRegex(PlexError, "普通音乐歌单"):
             client.playlist_state("11")
+
+    def test_native_regular_playlist_writes_only_after_membership_validation(self):
+        from helper.playlist_hub import edit_playlist_track
+
+        engine, plex = self.writable_engine()
+        result = edit_playlist_track(engine, "plex", "10", "20", "add")
+
+        self.assertEqual("已加入歌单", result["message"])
+        self.assertEqual(["10", "20"], [row["id"] for row in plex.playlist_view("10")["items"]])
+        self.assertEqual([("append", "10", ["20"])], plex.mutations)
+
+    def test_native_smart_playlist_rejects_manual_membership_changes(self):
+        from helper.playlist_hub import edit_playlist_track
+
+        engine, plex = self.writable_engine()
+        with self.assertRaisesRegex(ValueError, "智能歌单"):
+            edit_playlist_track(engine, "plex", "11", "20", "add")
+        self.assertEqual([], plex.mutations)
+
+    def test_native_rename_and_delete_require_fresh_membership_and_title(self):
+        from helper.engine import SafetyError
+        from helper.playlist_hub import remove_playlist, rename_playlist
+
+        engine, plex = self.writable_engine()
+        renamed = rename_playlist(engine, "plex", "10", "新的工作歌单")
+        self.assertEqual("新的工作歌单", renamed["title"])
+
+        with self.assertRaises(ValueError):
+            remove_playlist(engine, "plex", "999", "伪造")
+        with self.assertRaisesRegex(SafetyError, "名称"):
+            remove_playlist(engine, "plex", "10", "旧名称")
+
+        removed = remove_playlist(engine, "plex", "10", "新的工作歌单")
+        self.assertIn("不删除音乐文件", removed["message"])
+        self.assertNotIn("10", [row["ratingKey"] for row in plex.playlists()])
+        self.assertEqual("delete_playlist", plex.mutations[-1][0])
 
 
 if __name__ == "__main__":
