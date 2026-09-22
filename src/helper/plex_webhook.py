@@ -181,15 +181,14 @@ def _matching_profiles(registry, machine, account_id, library_id="", base_store=
     elif base_store is not None and str(track_id).isdigit():
         track_id = str(track_id)
         catalog_matches = []
-        known_catalog = False
         for row in candidates:
             catalog = ScopedStore(base_store, row["id"]).get("catalog", []) or []
-            known_catalog = known_catalog or bool(catalog)
             if any(str(track.get("id") or "") == track_id
                    for track in catalog if isinstance(track, dict)):
                 catalog_matches.append(row)
-        if known_catalog:
-            candidates = catalog_matches
+        candidates = catalog_matches if len(catalog_matches) == 1 else []
+    elif not library_id:
+        candidates = []
     return [row["id"] for row in candidates]
 
 

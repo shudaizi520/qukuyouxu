@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 
-def payload(event, account="10", machine="machine-a", track="123", player="player-a", library=None, **metadata):
+def payload(event, account="10", machine="machine-a", track="123", player="player-a", library="15", **metadata):
     values = {"ratingKey": track, "type": "track", "title": "Song", "duration": 200000}
     if library is not None:
         values["librarySectionID"] = str(library)
@@ -373,7 +373,7 @@ class PlexWebhookV040Tests(unittest.TestCase):
         )
 
         result = apply_webhook_event(
-            self.store, self.registry, payload("media.scrobble", track="778"), now=100,
+            self.store, self.registry, payload("media.scrobble", track="778", library=None), now=100,
         )
 
         self.assertEqual("ignored", result["status"])
@@ -395,7 +395,7 @@ class PlexWebhookV040Tests(unittest.TestCase):
         ScopedStore(self.store, "owner-classics").set("catalog", [{"id": "778"}])
 
         result = apply_webhook_event(
-            self.store, self.registry, payload("media.scrobble", track="778"), now=100,
+            self.store, self.registry, payload("media.scrobble", track="778", library=None), now=100,
         )
 
         self.assertEqual("recorded", result["status"])
@@ -409,7 +409,17 @@ class PlexWebhookV040Tests(unittest.TestCase):
 
         ScopedStore(self.store, "default").set("catalog", [{"id": "100"}])
         result = apply_webhook_event(
-            self.store, self.registry, payload("media.scrobble", track="778"), now=100,
+            self.store, self.registry, payload("media.scrobble", track="778", library=None), now=100,
+        )
+
+        self.assertEqual("ignored", result["status"])
+        self.assertEqual([], self.events("default"))
+
+    def test_missing_library_identity_is_ignored_before_catalog_sync(self):
+        from helper.plex_webhook import apply_webhook_event
+
+        result = apply_webhook_event(
+            self.store, self.registry, payload("media.scrobble", track="778", library=None), now=100,
         )
 
         self.assertEqual("ignored", result["status"])
@@ -429,7 +439,7 @@ class PlexWebhookV040Tests(unittest.TestCase):
             ScopedStore(self.store, profile_id).set("catalog", [{"id": "778"}])
 
         result = apply_webhook_event(
-            self.store, self.registry, payload("media.scrobble", track="778"), now=100,
+            self.store, self.registry, payload("media.scrobble", track="778", library=None), now=100,
         )
 
         self.assertEqual("ignored", result["status"])

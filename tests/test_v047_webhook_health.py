@@ -10,7 +10,8 @@ sys.path.insert(0, str(ROOT / "src"))
 
 
 def payload(event, account="10", machine="machine-a", track="123", **metadata):
-    values = {"ratingKey": track, "type": "track", "title": "Song", "duration": 200000}
+    values = {"ratingKey": track, "type": "track", "title": "Song", "duration": 200000,
+              "librarySectionID": "15"}
     values.update(metadata)
     return {
         "event": event,
