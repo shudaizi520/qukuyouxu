@@ -226,7 +226,7 @@ async function openPlaylist(item){
   const detail=await json('/api/playlists/'+encoded(item.kind)+'/'+encoded(item.key));if(requestId!==playlistRequest)return false;
   current=item;tracks=Array.isArray(detail.tracks)?detail.tracks:[];filtered=tracks.slice();unavailablePlaylists.delete(item.kind+'\t'+item.key);
   if(item.kind==='favorite'){item.count=tracks.length;markFavoriteUnseen(false);renderPlaylistList();}
-  $('playlistKind').textContent=item.kind_label;$('playlistTitle').textContent=detail.title;$('playlistSummary').textContent=tracks.length+' 首歌曲'+(item.smart?' · 歌曲由 Plex 规则生成':'');
+  $('playlistTitle').textContent=detail.title;$('playlistSummary').textContent=tracks.length+' 首歌曲'+(item.smart?' · 歌曲由 Plex 规则生成':'');
   playlistArtwork.paintTracks($('playlistHeroArtwork'),tracks);
   $('playlistManage').hidden=!item.manage_url;$('playlistManage').textContent=item.kind==='external'?'整理导入来源':'调整此歌单';
   $('playlistRename').hidden=!item.can_rename;$('playlistRemove').hidden=!item.can_delete;$('playlistPlayAll').disabled=!tracks.length;$('playlistEmpty').textContent=item.kind==='plex'?'已在 Plex 创建，歌单里还没有歌曲。可搜索歌曲后添加。':'歌单里还没有歌曲';renderTracks();
@@ -259,7 +259,7 @@ async function loadProfiles(){
  return select.value;
 }
 function resetPlaylistView(){
- workspace.reset();current=null;$('playlistKind').textContent='我的歌单';$('playlistTitle').textContent='正在载入歌单';$('playlistSummary').textContent='';
+ workspace.reset();current=null;$('playlistTitle').textContent='正在载入歌单';$('playlistSummary').textContent='';
  playlistArtwork.placeholder($('playlistHeroArtwork'));
  $('playlistManage').hidden=true;$('playlistRename').hidden=true;$('playlistRemove').hidden=true;$('playlistPlayAll').disabled=true;$('playlistEmpty').textContent='正在读取这个账户的歌单…';
 }

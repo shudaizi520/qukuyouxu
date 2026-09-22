@@ -144,6 +144,36 @@ class ReleaseBlockerTests(unittest.TestCase):
             status, _, _ = asgi_request(app, "/api/schedule", method="POST", headers=headers, body={"enabled": False})
             self.assertEqual(403, status)
 
+    def test_public_origin_with_explicit_port_keeps_proxy_and_private_login_separate(self):
+        from helper.auth import AuthManager
+        from helper.store import Store
+
+        with tempfile.TemporaryDirectory() as root:
+            store = Store(Path(root))
+            AuthManager(store).create_account("admin", "safe-password")
+            app = self._app(root, public_origin="https://music.example:9981")
+            credentials = {"username": "admin", "password": "safe-password"}
+            status, headers, _ = asgi_request(
+                app, "/api/auth/login", method="POST",
+                headers={"host": "music.example:9981", "origin": "https://music.example:9981"},
+                body=credentials,
+            )
+            self.assertEqual(200, status)
+            self.assertIn(b"secure", headers[b"set-cookie"].lower())
+            status, _, _ = asgi_request(
+                app, "/api/auth/login", method="POST",
+                headers={"host": "music.example:9981", "origin": "https://attacker.example"},
+                body=credentials,
+            )
+            self.assertEqual(403, status)
+            status, headers, _ = asgi_request(
+                app, "/api/auth/login", method="POST",
+                headers={"host": "192.168.50.99:9512", "origin": "http://192.168.50.99:9512"},
+                body=credentials,
+            )
+            self.assertEqual(200, status)
+            self.assertNotIn(b"secure", headers[b"set-cookie"].lower())
+
     def test_authenticated_malformed_host_is_rejected_without_server_error(self):
         from helper.auth import AuthManager, COOKIE_NAME
         from helper.store import Store

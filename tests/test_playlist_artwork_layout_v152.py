@@ -32,6 +32,14 @@ def test_playlist_header_has_cover_landmark_and_artwork_module():
     assert "./playlist-artwork.js" in script
 
 
+def test_playlist_header_has_one_title_without_duplicate_kind_label():
+    page = _Landmarks()
+    page.feed((STATIC / "playlists.html").read_text(encoding="utf-8"))
+    assert "playlistTitle" in page.ids
+    assert "playlistSummary" in page.ids
+    assert "playlistKind" not in page.ids
+
+
 def test_artwork_layout_has_a_visible_placeholder_surface():
     css = (STATIC / "product.css").read_text(encoding="utf-8")
     assert ".playlist-cover.is-placeholder" in css
