@@ -175,7 +175,12 @@ class PlexRecipientService:
         owner_account = owner.get("account") or {}
         owner_id = str(owner_account.get("id") or "").strip()
         owner_name = str(owner_account.get("username") or "").strip().casefold()
-        items = []
+        display_name = str(owner_account.get("username") or owner.get("name") or "Plex 管理员")[:120]
+        items = [{
+            "id": owner_id, "title": display_name, "username": display_name,
+            "kind": "owner", "kind_label": "管理员",
+            "existing_profile_id": owner_profile_id, "archived_profile_id": "",
+        }]
         warnings = []
         sources = (
             ("home", "家庭成员", self.list_home_users),
@@ -240,9 +245,22 @@ class PlexRecipientService:
         plex.playlists()
         return rows
 
+    def _library_states(self, kind, account_id, machine, libraries):
+        result = []
+        for library in libraries:
+            existing = self.registry.find_identity(kind, account_id, machine, library["id"])
+            status = ("cleanup" if existing and not existing["enabled"] else
+                      "added" if existing else "available")
+            result.append({**library, "status": status})
+        return result
+
     def list_profile_libraries(self, profile_id):
         profile = self.registry.get(profile_id)
-        return self._libraries(profile, profile.get("token"))
+        libraries = self._libraries(profile, profile.get("token"))
+        return self._library_states(
+            profile["kind"], (profile.get("account") or {}).get("id"),
+            (profile.get("server") or {}).get("machine"), libraries,
+        )
 
     def _recipient_access(self, owner, kind, user_id):
         user_id = str(user_id or "").strip()
@@ -268,7 +286,9 @@ class PlexRecipientService:
             "server": dict(owner.get("server") or {}),
         }
         libraries = self._libraries(candidate, token)
-        return {"account": dict(account), "libraries": libraries}
+        return {"account": dict(account), "libraries": self._library_states(
+            kind, account.get("id"), (owner.get("server") or {}).get("machine"), libraries,
+        )}
 
     def _validate(self, owner, token, library_id):
         library_id = str(library_id or "")

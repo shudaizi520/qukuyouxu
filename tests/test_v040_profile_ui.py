@@ -82,18 +82,6 @@ class ProfileUIV040Tests(unittest.TestCase):
         self.assertIn("note('音乐资料库已保存。')", script)
         self.assertIn("$('addUserDialog').showModal()", script)
 
-    def test_existing_people_can_be_removed_and_added_fresh(self):
-        script = (ROOT / "src/helper/static/settings.js").read_text(encoding="utf-8")
-
-        self.assertIn("row.existing_profile_id", script)
-        self.assertIn("remove.textContent=row.removal?", script)
-        self.assertIn("button.textContent=row.archived_profile_id?'待清理':'添加'", script)
-        self.assertIn("/api/plex/profiles/remove", script)
-        self.assertNotIn("/api/plex/profiles/restore", script)
-        self.assertIn("responseJson('/api/plex/recipients')", script)
-        self.assertIn("data.owner_profile_id", script)
-        self.assertNotIn("function ownerProfile()", script)
-
     def test_managed_user_rows_do_not_duplicate_the_profile_switcher(self):
         script = (ROOT / "src/helper/static/settings.js").read_text(encoding="utf-8")
         rows = script.split("function renderManagedUsers(){", 1)[1].split("function renderRecipients(", 1)[0]

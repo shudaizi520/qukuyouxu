@@ -56,9 +56,26 @@ async function copyWebhookAddress(){
 }
 async function refreshWebhookStatus(){const status=await responseJson('/api/status');renderWebhook(status.webhook);}
 function startWebhookPolling(){if(webhookTimer)return;webhookTimer=setInterval(()=>{if(document.visibilityState==='visible'&&!$('settings-accounts').hidden)refreshWebhookStatus().catch(()=>{});},5000);}
+let removalTimer=null;
+function stopRemovalPolling(){if(removalTimer!==null)clearTimeout(removalTimer);removalTimer=null;}
+function scheduleRemovalPoll(){
+ if(document.hidden||!plexProfiles.some(row=>row.removal&&row.removal.status!=='legacy_cleanup_required')){stopRemovalPolling();return;}
+ if(removalTimer===null)removalTimer=setTimeout(pollRemovalStatus,3000);
+}
+async function pollRemovalStatus(){
+ removalTimer=null;if(document.hidden)return;
+ const pending=plexProfiles.filter(row=>row.removal&&row.removal.status!=='legacy_cleanup_required').map(row=>row.id);
+ if(!pending.length)return;
+ try{
+  const data=await responseJson('/api/plex/profiles');
+  const removed=pending.some(id=>!(data.items||[]).some(row=>row.id===id));
+  renderProfiles(data);
+  if(removed)await refresh();
+ }catch(_error){scheduleRemovalPoll();}
+}
 function renderProfiles(data){
  plexProfiles=Array.isArray(data?.items)?data.items:[];const requested=PCHAuth.profile();const enabled=plexProfiles.filter(row=>row.enabled);const fallback=String(data?.active_profile_id||enabled[0]?.id||'default');activeProfile=enabled.some(row=>row.id===requested)?requested:fallback;if(activeProfile!==requested)PCHAuth.setProfile(activeProfile);
- renderManagedUsers();
+ renderManagedUsers();scheduleRemovalPoll();
 }
 function render(s,saved){
  current=s;const c=s.settings||{},d=s.daily_policy||{};
@@ -150,14 +167,19 @@ function renderManagedUsers(){
 function renderRecipients(rows,ownerProfileId,warnings=[]){
  const list=$('profileRecipientList');list.replaceChildren();
  $('profileRecipientLibraries').hidden=true;$('profileRecipientLibraries').replaceChildren();list.hidden=false;$('findPeople').textContent='刷新名单';
- const available=(rows||[]).filter(row=>!row.existing_profile_id);
- if(!available.length){const p=document.createElement('p');p.className='dialog-empty';p.textContent='没有其他可添加用户';list.append(p);}
- for(const row of available){
+ const people=rows||[];
+ if(!people.length){const p=document.createElement('p');p.className='dialog-empty';p.textContent='没有可添加用户';list.append(p);}
+ for(const row of people){
   const line=document.createElement('div');line.className='settings-user-row';const person=document.createElement('div');person.className='settings-person';
   const avatar=document.createElement('span');avatar.className='settings-avatar';avatar.textContent=(row.title||row.username||'P').trim().slice(0,1).toUpperCase();
   const text=document.createElement('div');const strong=document.createElement('strong');strong.textContent=row.title||row.username||'Plex 用户';const kind=document.createElement('span');kind.textContent=row.kind_label||'Plex 用户';text.append(strong,kind);person.append(avatar,text);
-  const button=document.createElement('button');button.type='button';button.className='secondary';button.textContent=row.archived_profile_id?'待清理':'添加';button.disabled=!!row.archived_profile_id;
-  button.onclick=()=>action(async()=>{const data=await post('/api/plex/recipients/libraries',{owner_profile_id:ownerProfileId,kind:row.kind,user_id:String(row.id)});renderRecipientLibraries(row,ownerProfileId,data);});
+  const button=document.createElement('button');button.type='button';button.className='secondary';button.textContent='选择曲库';
+  button.onclick=()=>action(async()=>{
+   const data=row.kind==='owner'
+    ?{account:{id:row.id,username:row.username},libraries:(await responseJson('/api/plex/profiles/libraries?profile_id='+encodeURIComponent(ownerProfileId))).items||[]}
+    :await post('/api/plex/recipients/libraries',{owner_profile_id:ownerProfileId,kind:row.kind,user_id:String(row.id)});
+   renderRecipientLibraries(row,ownerProfileId,data);
+  });
   line.append(person,button);list.append(line);
  }
  for(const message of warnings){const p=document.createElement('p');p.className='recipient-warning';p.textContent=message;list.append(p);}
@@ -165,7 +187,7 @@ function renderRecipients(rows,ownerProfileId,warnings=[]){
 function renderRecipientLibraries(person,ownerProfileId,data){
  const box=$('profileRecipientLibraries');box.replaceChildren();$('profileRecipientList').hidden=true;box.hidden=false;$('findPeople').textContent='返回';
  const title=document.createElement('strong');title.textContent=data.account?.username||person.title||person.username||'Plex 用户';box.append(title);
- for(const library of data.libraries||[]){const line=document.createElement('div');line.className='settings-user-row';const name=document.createElement('strong');name.textContent=library.name||('音乐资料库 · '+library.id);const add=document.createElement('button');add.type='button';add.className='primary';add.textContent='添加';add.onclick=()=>action(async()=>{const endpoint=person.kind==='home'?'/api/plex/recipients/home/import':'/api/plex/recipients/shared/import';await post(endpoint,{owner_profile_id:ownerProfileId,user_id:String(person.id),library_id:String(library.id)});$('addUserDialog').close();await refresh();});line.append(name,add);box.append(line);}
+ for(const library of data.libraries||[]){const line=document.createElement('div');line.className='settings-user-row';const name=document.createElement('strong');name.textContent=library.name||('音乐资料库 · '+library.id);const add=document.createElement('button');add.type='button';add.className='primary';add.textContent=library.status==='added'?'已添加':library.status==='cleanup'?'待清理':'添加';add.disabled=library.status==='added'||library.status==='cleanup';if(!add.disabled)add.onclick=()=>action(async()=>{if(person.kind==='owner')await post('/api/plex/profiles/library',{profile_id:ownerProfileId,library_id:String(library.id)});else{const endpoint=person.kind==='home'?'/api/plex/recipients/home/import':'/api/plex/recipients/shared/import';await post(endpoint,{owner_profile_id:ownerProfileId,user_id:String(person.id),library_id:String(library.id)});}$('addUserDialog').close();await refresh();});line.append(name,add);box.append(line);}
  if(!(data.libraries||[]).length){const empty=document.createElement('p');empty.className='dialog-empty';empty.textContent='没有可用音乐库';box.append(empty);}
 }
 async function loadAvailablePeople(){$('profileRecipientList').innerHTML='<p class="dialog-empty">正在读取…</p>';const data=await responseJson('/api/plex/recipients');renderRecipients(data.items||[],data.owner_profile_id,data.warnings||[]);}
@@ -242,5 +264,5 @@ $('copyWebhook').onclick=()=>action(async()=>{await copyWebhookAddress();note('�
 $('passwordForm').onsubmit=e=>{e.preventDefault();action(async()=>{const a=$('newPassword').value,b=$('confirmPassword').value;if(a!==b)throw Error('两次输入的新密码不一致');const r=await post('/api/auth/password',{current_password:$('currentPassword').value,new_password:a,confirm_password:b});$('currentPassword').value='';$('newPassword').value='';$('confirmPassword').value='';note(r.message+'，其它旧登录会话已退出。');});};
 async function boot(){const panel=location.hash.slice(1);try{await refresh();await resumePlexLogin();}catch(e){note(e.message,true);}if(settingsAnchors[panel])showSettingsPanel(panel,false);startWebhookPolling();}
 window.addEventListener('pch-auth-ready',boot);window.addEventListener('pch-auth-login',boot);window.addEventListener('pch-auth-logout',()=>{plexPin='';stopPlexPolling();});
-window.addEventListener('pagehide',()=>{stopPlexPolling();clearInterval(webhookTimer);webhookTimer=null;});
-window.addEventListener('visibilitychange',()=>{if(document.hidden)stopPlexPolling();else if(plexPin)schedulePlexPolling(0);});
+window.addEventListener('pagehide',()=>{stopPlexPolling();stopRemovalPolling();clearInterval(webhookTimer);webhookTimer=null;});
+window.addEventListener('visibilitychange',()=>{if(document.hidden){stopPlexPolling();stopRemovalPolling();}else{if(plexPin)schedulePlexPolling(0);scheduleRemovalPoll();}});

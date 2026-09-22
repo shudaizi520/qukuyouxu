@@ -35,6 +35,16 @@ jobs:
       - name: Test
         run: python -m pytest -q
 
+  ui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Settings interaction tests
+        run: node tests/settings_interactions.test.js
+
   smoke:
     runs-on: ubuntu-latest
     steps:

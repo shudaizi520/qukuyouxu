@@ -72,6 +72,7 @@ class ProfileLibrariesV108Tests(unittest.TestCase):
         rows = self.service.list_profile_libraries("shared-248098626")
 
         self.assertEqual(["11", "15"], [row["id"] for row in rows])
+        self.assertEqual(["added", "available"], [row["status"] for row in rows])
         self.assertEqual(["friend-token"], self.clients.tokens)
 
     def test_non_music_sections_are_not_returned(self):
@@ -93,7 +94,26 @@ class ProfileLibrariesV108Tests(unittest.TestCase):
 
         self.assertEqual("shudai6", result["account"]["username"])
         self.assertEqual(["11", "15"], [row["id"] for row in result["libraries"]])
+        self.assertEqual(["added", "available"], [row["status"] for row in result["libraries"]])
         self.assertNotIn("token", repr(result).lower())
+
+    def test_owner_can_choose_unadded_second_library(self):
+        rows = self.service.list_profile_libraries("default")
+
+        self.assertEqual(
+            [("音乐", "added"), ("经典音乐", "available")],
+            [(row["name"], row["status"]) for row in rows],
+        )
+
+    def test_pending_cleanup_blocks_only_its_own_library(self):
+        child = self.registry.create_for_library(
+            "shared-248098626", {"id": "15", "name": "经典音乐"}
+        )
+        self.registry.archive(child["id"])
+
+        rows = self.service.list_profile_libraries("shared-248098626")
+
+        self.assertEqual(["added", "cleanup"], [row["status"] for row in rows])
 
     def test_protected_library_selection_creates_profile_and_preserves_source(self):
         from helper.scoped_store import ScopedStore

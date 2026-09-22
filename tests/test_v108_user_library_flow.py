@@ -218,7 +218,7 @@ class UserLibraryFlowV108Tests(unittest.TestCase):
             self.assertEqual("音乐", owner_library["profile"]["library"]["name"])
 
             people = self.direct("/api/plex/recipients", owner_profile_id="default")
-            self.assertEqual(["shudai6"], [row["username"] for row in people["items"]])
+            self.assertEqual(["shudaizi", "shudai6"], [row["username"] for row in people["items"]])
             status, _, choices = self.http("/api/plex/recipients/libraries", method="POST", headers=self.authed(cookie), body={"owner_profile_id": "default", "kind": "shared", "user_id": "248098626"})
             self.assertEqual(["11", "15"], [row["id"] for row in choices["libraries"]])
             status, _, imported = self.http("/api/plex/recipients/shared/import", method="POST", headers=self.authed(cookie), body={"owner_profile_id": "default", "user_id": "248098626", "library_id": "15"})

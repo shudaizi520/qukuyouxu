@@ -147,6 +147,11 @@ class PlexRecipientsV040Tests(unittest.TestCase):
         self.assertEqual(
             [
                 {
+                    "id": "1", "title": "owner", "username": "owner",
+                    "kind": "owner", "kind_label": "管理员", "existing_profile_id": "default",
+                    "archived_profile_id": "",
+                },
+                {
                     "id": "2", "title": "Kid", "username": "kid",
                     "kind": "home", "kind_label": "家庭成员", "existing_profile_id": "",
                     "archived_profile_id": "",
@@ -177,7 +182,7 @@ class PlexRecipientsV040Tests(unittest.TestCase):
         result = service.list_people("default")
 
         self.assertEqual(["家庭成员：当前账户没有 Plex Home 管理权限"], result["warnings"])
-        self.assertEqual("shared", result["items"][0]["kind"])
+        self.assertEqual(["owner", "shared"], [item["kind"] for item in result["items"]])
 
     def test_home_user_import_switches_token_then_performs_read_only_validation(self):
         from helper.plex_recipients import PlexRecipientService

@@ -79,7 +79,7 @@ class SettingsRedesignV0423Tests(unittest.TestCase):
         self.assertTrue(restored["enabled"])
         self.assertEqual("playlist-99", scoped.get("daily_managed")["id"])
 
-    def test_people_list_hides_owner_and_distinguishes_archived_friend(self):
+    def test_people_list_includes_owner_and_distinguishes_archived_friend(self):
         from helper.plex_recipients import PlexRecipientService
 
         self.registry.create(
@@ -101,8 +101,8 @@ class SettingsRedesignV0423Tests(unittest.TestCase):
 
         result = service.list_people("default")
 
-        self.assertEqual(["2", "42"], [row["id"] for row in result["items"]])
-        archived = result["items"][1]
+        self.assertEqual(["1", "2", "42"], [row["id"] for row in result["items"]])
+        archived = result["items"][2]
         self.assertEqual("", archived["existing_profile_id"])
         self.assertEqual("shared-42", archived["archived_profile_id"])
 
