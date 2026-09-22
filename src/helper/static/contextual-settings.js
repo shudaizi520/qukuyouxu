@@ -102,7 +102,7 @@
    if(smart){
     const result=await api('/api/plex/profiles/controls?profile_id='+encodeURIComponent(PCHAuth.profile()));profileControls=result.controls;renderAutomation();
     const policy=await api('/api/daily/policy');
-    $('dailySize').value=policy.size??30;$('rediscoveryDays').value=policy.rediscovery_days??90;
+    $('dailySize').value=policy.size??50;$('rediscoveryDays').value=policy.rediscovery_days??90;
     $('artistCap').value=policy.artist_cap??2;$('favoritePercent').value=policy.favorite_percent??20;
     await watchDaily();
    }

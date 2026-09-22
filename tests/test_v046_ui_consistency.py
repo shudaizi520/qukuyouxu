@@ -52,12 +52,12 @@ class UIConsistencyV046Tests(unittest.TestCase):
             resolver(app, engine),
         )
 
-    def test_daily_overview_uses_saved_size_instead_of_fixed_thirty(self):
+    def test_daily_overview_uses_saved_size_instead_of_fixed_count(self):
         script = (ROOT / "src/helper/static/daily.js").read_text(encoding="utf-8")
         page = (ROOT / "src/helper/static/daily.html").read_text(encoding="utf-8")
 
-        self.assertIn("$('targetCount').textContent=n(cfg.size??30)", script)
-        self.assertIn("n(plan.items?.length||cfg.size||30)+' 首歌曲已准备好", script)
+        self.assertIn("$('targetCount').textContent=n(cfg.size??50)", script)
+        self.assertIn("n(plan.items?.length||cfg.size||50)+' 首歌曲已准备好", script)
         self.assertNotIn("$('targetCount').textContent='30'", script)
         self.assertIn('<strong id="targetCount">—</strong>', page)
 

@@ -85,14 +85,16 @@ class SettingsV042Tests(unittest.TestCase):
         self.assertEqual("details", profile_tag)
         self.assertNotIn("open", profile_attrs)
 
-        input_tag, size_attrs = page.elements["dailySize"]
+        mixes = _SettingsMarkup()
+        mixes.feed((ROOT / "src/helper/static/mixes.html").read_text(encoding="utf-8"))
+        input_tag, size_attrs = mixes.elements["dailySize"]
         self.assertEqual("input", input_tag)
         self.assertNotIn("disabled", size_attrs)
         self.assertEqual("10", size_attrs.get("min"))
         self.assertEqual("100", size_attrs.get("max"))
         self.assertNotIn("固定生成 30 首", "".join(page.text))
 
-        script = (ROOT / "src/helper/static/settings.js").read_text(encoding="utf-8")
+        script = (ROOT / "src/helper/static/contextual-settings.js").read_text(encoding="utf-8")
         self.assertIn("size:Number($('dailySize').value)", script)
 
     def test_daily_mix_honors_configured_size(self):

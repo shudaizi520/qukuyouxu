@@ -45,7 +45,7 @@ def test_download_choices_share_the_same_alignment_and_hit_area():
         assert option["min-height"] == "36px"
 
 
-def test_settings_without_tabs_keeps_policy_and_automation_reachable():
+def test_settings_without_tabs_keeps_automation_reachable_and_policy_in_smart_page():
     class Sections(HTMLParser):
         def __init__(self):
             super().__init__()
@@ -58,5 +58,6 @@ def test_settings_without_tabs_keeps_policy_and_automation_reachable():
 
     sections = Sections()
     sections.feed((CSS.parent / "settings.html").read_text())
-    for section_id in ("settings-recommend", "settings-automation"):
-        assert "hidden" not in sections.by_id[section_id]
+    assert "settings-recommend" not in sections.by_id
+    assert "hidden" not in sections.by_id["settings-automation"]
+    assert 'id="dailyPolicyForm"' in (CSS.parent / "mixes.html").read_text()

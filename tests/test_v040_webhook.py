@@ -403,6 +403,18 @@ class PlexWebhookV040Tests(unittest.TestCase):
         self.assertEqual([], self.events("default"))
         self.assertEqual("778", self.events("owner-classics")[0]["track_id"])
 
+    def test_single_profile_does_not_claim_other_library_track_when_catalog_is_known(self):
+        from helper.plex_webhook import apply_webhook_event
+        from helper.scoped_store import ScopedStore
+
+        ScopedStore(self.store, "default").set("catalog", [{"id": "100"}])
+        result = apply_webhook_event(
+            self.store, self.registry, payload("media.scrobble", track="778"), now=100,
+        )
+
+        self.assertEqual("ignored", result["status"])
+        self.assertEqual([], self.events("default"))
+
     def test_missing_library_identity_rejects_ambiguous_cached_membership(self):
         from helper.plex_webhook import apply_webhook_event
         from helper.scoped_store import ScopedStore

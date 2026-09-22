@@ -79,10 +79,12 @@ class PlaylistNavigationTests(unittest.TestCase):
         self.assertIn("$('mobileSettings').onclick=", script)
         self.assertIn('.playlist-sidebar-footer', style)
 
-    def test_global_rules_and_contextual_playlist_actions_are_named_differently(self):
+    def test_daily_rules_have_one_contextual_home(self):
         settings = (ROOT / "src/helper/static/settings.html").read_text(encoding="utf-8")
+        mixes = (ROOT / "src/helper/static/mixes.html").read_text(encoding="utf-8")
         script = (ROOT / "src/helper/static/playlists.js").read_text(encoding="utf-8")
-        self.assertTrue('<h2>推荐规则</h2>' in settings)
+        self.assertNotIn('<h2>推荐规则</h2>', settings)
+        self.assertIn('id="dailyPolicyForm"', mixes)
         self.assertTrue("调整此歌单" in script)
 
     def test_empty_search_targets_point_to_the_new_create_action(self):

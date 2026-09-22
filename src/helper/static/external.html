@@ -5,9 +5,9 @@
  <meta name="viewport" content="width=device-width,initial-scale=1">
  <meta name="color-scheme" content="light">
  <title>曲库有序 · 外部歌单</title>
- <link rel="stylesheet" href="/static/product.css?v=1.4.22">
- <script defer src="/static/auth.js?v=1.4.22"></script>
- <script defer src="/static/external.js?v=1.4.22"></script>
+ <link rel="stylesheet" href="/static/product.css?v=1.4.23">
+ <script defer src="/static/auth.js?v=1.4.23"></script>
+ <script defer src="/static/external.js?v=1.4.23"></script>
 </head>
 <body data-view="external" data-auth-state="checking">
 <div id="bootScreen" class="auth-boot"><div class="boot-mark">♫</div><strong>曲库有序</strong><span>正在进入你的音乐库…</span></div>
@@ -20,7 +20,7 @@
  </div>
 </section>
 <div id="workspace" hidden>
- <header class="topbar"><a class="brand" href="/"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v1.4.22</small></span></a><nav><a href="/">我的歌单</a><a href="/status">运行状态</a><a href="/settings">设置</a></nav><button class="logout" data-auth-logout hidden>退出</button></header>
+ <header class="topbar"><a class="brand" href="/"><span class="brand-mark">♫</span><span>曲库有序<small id="version">v1.4.23</small></span></a><nav><a href="/">我的歌单</a><a href="/status">运行状态</a><a href="/settings">设置</a></nav><button class="logout" data-auth-logout hidden>退出</button></header>
  <main class="wrap external-shell">
   <div id="notice" class="notice" role="status" hidden></div>
   <header class="external-page-title"><h1>导入歌单</h1></header>
@@ -52,7 +52,7 @@
       <button class="external-count-tab" type="button" data-match-status="missing"><span>缺失歌曲</span><strong id="missingCount">0</strong></button>
      </div>
      <div id="reviewToolbar" class="external-review-toolbar" hidden><label><input id="reviewSelectAll" type="checkbox">全选本页</label><span id="reviewSelectedCount">已选 0 首</span><button id="confirmSelected" class="primary" type="button" disabled>确认所选</button></div>
-     <div id="trackColumnHead" class="external-track-column-head"><span>#</span><span>歌曲</span><span>歌手</span><span>专辑</span><span>时长</span><span id="trackActionHeading">操作</span></div>
+     <div id="trackColumnHead" class="external-track-column-head"><span aria-hidden="true"></span><span>歌曲</span><span>歌手</span><span>专辑</span><span>时长</span><span id="trackActionHeading">操作</span></div>
      <div id="trackList" class="external-track-list" aria-live="polite"></div>
      <div id="trackPaging" class="external-paging"><button id="previousTracks" class="secondary" type="button">上一页</button><span id="trackRange"></span><button id="nextTracks" class="secondary" type="button">下一页</button></div>
      <audio id="auditionPlayer" preload="none" hidden></audio>

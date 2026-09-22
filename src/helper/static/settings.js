@@ -2,8 +2,6 @@
 const $=id=>document.getElementById(id);
 let busy=false,current=null,plexPin='',plexTimer=null,plexDeadline=0,plexProfiles=[],activeProfile='default',automationState={},webhookTimer=null;
 function note(t,e=false){PCHUI.notify(t,{error:e});}
-function markSaved(button){button.textContent='已保存';button.classList.add('is-saved');}
-function markDirty(button){button.textContent='保存更改';button.classList.remove('is-saved');}
 async function request(path,method='GET',body){return PCHAuth.request(path,method,body);}
 async function post(path,b){return PCHAuth.post(path,b);}
 async function action(fn){if(busy)return;busy=true;try{await PCHUI.run(fn);}catch(e){note(e.message,true);}finally{busy=false;}}
@@ -84,12 +82,12 @@ function renderProfiles(data){
  renderManagedUsers();scheduleProfileStatusPoll();
 }
 function render(s,saved){
- current=s;const c=s.settings||{},d=s.daily_policy||{};
+ current=s;const c=s.settings||{};
  $('version').textContent='v'+s.version;$('plexUrl').value=c.plex_url||'';$('accountLabel').value=c.account_label||'';$('plexToken').value='';
  $('tokenHint').textContent=c.token_present?'Plex Token 已保存；不修改时留空。':'尚未保存 Plex Token。';
  renderSavedConnection(saved);renderWebhook(s.webhook);
  renderSections(s.plex_connection?.sections,c.section);renderOfficialSections(s.plex_connection?.sections,c.section);
- $('dailySize').value=d.size??30;$('rediscoveryDays').value=d.rediscovery_days??90;$('dailyAvoidDays').value=d.daily_avoid_days??21;$('favoritePercent').value=d.favorite_percent??20;$('artistCap').value=d.artist_cap??2;$('accountName').textContent=PCHAuth.status().username||'admin';
+ $('accountName').textContent=PCHAuth.status().username||'admin';
 }
 function renderAutomation(value){
  const schedule=value||{};automationState=schedule;
@@ -110,14 +108,13 @@ async function responseJson(path){
 }
 async function refresh(){
  const profiles=await responseJson('/api/plex/profiles');renderProfiles(profiles);
- const [libraryResult,savedResult,statusResult,policyResult,automationResult]=await Promise.allSettled([
-  responseJson('/api/plex/profiles/libraries?profile_id='+encodeURIComponent(activeProfile)),responseJson('/api/plex/saved'),responseJson('/api/status'),responseJson('/api/daily/policy'),responseJson('/api/automation')
+ const [libraryResult,savedResult,statusResult,automationResult]=await Promise.allSettled([
+  responseJson('/api/plex/profiles/libraries?profile_id='+encodeURIComponent(activeProfile)),responseJson('/api/plex/saved'),responseJson('/api/status'),responseJson('/api/automation')
  ]);
  const saved=savedResult.status==='fulfilled'?savedResult.value:{configured:false,state:'not_configured'};
  renderSavedConnection(saved);
  if(statusResult.status!=='fulfilled')throw statusResult.reason;
  const s=statusResult.value;
- s.daily_policy=policyResult.status==='fulfilled'?policyResult.value:{};
  render(s,saved);renderOfficialSections(libraryResult.status==='fulfilled'?libraryResult.value.items:[],saved.library?.id||'');
  if(automationResult.status==='fulfilled')renderAutomation(automationResult.value);
 }
@@ -262,9 +259,6 @@ $('savePlexLibrary').onclick=()=>action(saveOfficialLibrary);
 $('officialSection').onchange=()=>{$('savePlexLibrary').hidden=$('officialSection').value===String(plexProfiles.find(row=>row.id===activeProfile)?.library?.id||'');};
 $('plexForm').onsubmit=e=>{e.preventDefault();action(async()=>{if(!$('section').value)throw Error('请先选择音乐资料库。');const r=await post('/api/settings',{plex_url:$('plexUrl').value.trim(),plex_token:$('plexToken').value.trim(),section:$('section').value.trim(),account_label:$('accountLabel').value.trim()});note(r.message);await refresh();});};
 $('testPlex').onclick=()=>action(async()=>{const r=await post('/api/plex/check',{});renderSections(r.sections,$('section').value);$('plexState').textContent='已连接 · '+(r.server||'Plex');note('连接成功。');await refresh();});
-async function saveDailyPolicy(){await post('/api/daily/policy',{size:Number($('dailySize').value),rediscovery_days:Number($('rediscoveryDays').value),daily_avoid_days:Number($('dailyAvoidDays').value),favorite_percent:Number($('favoritePercent').value),artist_cap:Number($('artistCap').value)});markSaved($('dailySave'));await refresh();}
-$('dailyForm').onsubmit=e=>{e.preventDefault();action(saveDailyPolicy);};
-$('dailyForm').addEventListener('input',()=>markDirty($('dailySave')));
 for(const id of ['dailyAutomationHour','smartIntervalDays','smartAutomationHour','libraryAutomationEnabled','libraryAutomationHour']){$(id).onchange=()=>action(async()=>{try{const saved=await post('/api/automation',automationPayload());renderAutomation(saved);}finally{await refresh();}});}
 $('copyWebhook').onclick=()=>action(async()=>{await copyWebhookAddress();note('地址已复制。');});
 $('passwordForm').onsubmit=e=>{e.preventDefault();action(async()=>{const a=$('newPassword').value,b=$('confirmPassword').value;if(a!==b)throw Error('两次输入的新密码不一致');const r=await post('/api/auth/password',{current_password:$('currentPassword').value,new_password:a,confirm_password:b});$('currentPassword').value='';$('newPassword').value='';$('confirmPassword').value='';note(r.message+'，其它旧登录会话已退出。');});};

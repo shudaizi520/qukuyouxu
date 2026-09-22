@@ -22,7 +22,7 @@ from .recommend import diagnostic_display
 POLICY_VERSION = "daily-mix-v0.4.24"
 DAY = 86400
 POLICY = {
-    "size": 30,
+    "size": 50,
     "recent_seed_limit": 20,
     "recent_max_days": 180,
     "recent_days": 180,
@@ -580,6 +580,8 @@ def read_plex_history(client, section, now, days=400, page_size=300, maximum=100
             tid = str(item.get("ratingKey") or "")
             viewed = _number(item.get("viewedAt") or item.get("lastViewedAt"))
             account = str(item.get("accountID") or "").strip()
+            if account_id and not account:
+                raise PlexHistoryIsolationError("Plex历史缺少可验证的用户标识")
             if account_id and account and account != account_id:
                 raise PlexHistoryIsolationError("Plex历史返回了设置用户之外的记录")
             if account:
@@ -613,10 +615,14 @@ def read_plex_history_cached(
             and str(saved.get("profile_username") or "").casefold()
             == str(identity.get("username") or "").casefold()
         )
-    saved_events = saved.get("events", []) if saved.get("scope") == scope and same_profile else []
+    saved_events = (
+        saved.get("events", [])
+        if saved.get("scope") == scope and same_profile and saved.get("verification_version") == 2
+        else []
+    )
     saved_events = [
         row for row in saved_events
-        if str(row.get("account_id") or account_id) == str(account_id)
+        if str(row.get("account_id") or "") == str(account_id)
         and 0 <= now - _number(row.get("viewed_at")) <= days * DAY
     ]
     age = now - _number(saved.get("updated_at"))
@@ -638,6 +644,7 @@ def read_plex_history_cached(
             merged[key] = {"id": key[0], "viewed_at": viewed, "account_id": key[2]}
     events = sorted(merged.values(), key=lambda row: (-row["viewed_at"], row["id"]))[:maximum]
     state = {
+        "verification_version": 2,
         "scope": scope,
         "section": str(section),
         "account_id": str(account_id),

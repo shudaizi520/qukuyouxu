@@ -37,10 +37,10 @@ class SettingsPolicyV0424Tests(unittest.TestCase):
         self.assertEqual("friend", saved["account"]["username"])
 
     def test_recommendation_settings_present_activity_mode_and_relaxed_limits(self):
-        page = (ROOT / "src/helper/static/settings.html").read_text(encoding="utf-8")
-        script = (ROOT / "src/helper/static/settings.js").read_text(encoding="utf-8")
+        page = (ROOT / "src/helper/static/mixes.html").read_text(encoding="utf-8")
+        script = (ROOT / "src/helper/static/contextual-settings.js").read_text(encoding="utf-8")
 
-        self.assertIn("按最近 20 次有效播放", page)
+        self.assertIn('id="dailyPolicyForm"', page)
         self.assertNotIn('id="recentDays"', page)
         for value in range(1, 7):
             self.assertIn(f'<option value="{value}">{value} 首</option>', page)

@@ -128,13 +128,14 @@ class SettingsRedesignV0423Tests(unittest.TestCase):
         boot = script.split("async function boot(){", 1)[1].split("window.addEventListener('pch-auth-ready'", 1)[0]
         self.assertLess(boot.index("await refresh();"), boot.index("showSettingsPanel(panel,false)"))
 
-    def test_settings_save_feedback_stays_inside_the_original_button(self):
+    def test_settings_has_no_duplicate_daily_save_feedback(self):
         html = (ROOT / "src/helper/static/settings.html").read_text(encoding="utf-8")
         script = (ROOT / "src/helper/static/settings.js").read_text(encoding="utf-8")
         presentation = (ROOT / "src/helper/static/auth.js").read_text(encoding="utf-8")
 
-        self.assertIn('id="dailySave"', html)
-        self.assertIn("function markSaved", script)
+        self.assertNotIn('id="dailySave"', html)
+        self.assertIn('id="dailyPolicySave"', (ROOT / "src/helper/static/mixes.html").read_text(encoding="utf-8"))
+        self.assertNotIn("function markSaved", script)
         self.assertNotIn('id="behaviorSave"', html)
         self.assertNotIn("anchor.after(inline)", presentation)
 

@@ -183,7 +183,7 @@ def select_daily_mix_v2(
 ):
     """Build a deterministic Daily Mix V2 preview without mutating Plex."""
     cfg = dict(settings or {})
-    size = max(1, min(100, int(cfg.get("size", 30))))
+    size = max(1, min(100, int(cfg.get("size", 50))))
     rediscovery_days = max(30, min(3650, int(cfg.get("rediscovery_days", 90))))
     artist_cap = max(1, min(6, int(cfg.get("artist_cap", 2))))
     album_cap = max(1, min(2, int(cfg.get("album_cap", 1))))

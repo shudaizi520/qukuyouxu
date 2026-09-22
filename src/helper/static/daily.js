@@ -31,15 +31,15 @@ function render(s){
  $('fullRefresh').hidden=!previewReady;$('fullRefresh').disabled=need||running;$('fullRefresh').textContent='换一批';
  $('publish').hidden=!previewReady;$('publish').disabled=running||!publishable;
  $('publish').textContent=running&&job.kind==='daily_apply'?'正在发布…':'发布到 Plexamp';
- $('targetCount').textContent=n(cfg.size??30);$('actualCount').textContent=n(source.items?.length||source.count||0);$('favoriteCount').textContent='≤'+n(Math.floor((cfg.size??30)*(cfg.favorite_percent??20)/100));$('avoidDays').textContent=n(source.stats?.daily_avoid_window_days??cfg.daily_avoid_days??21)+'天';
+ $('targetCount').textContent=n(cfg.size??50);$('actualCount').textContent=n(source.items?.length||source.count||0);$('favoriteCount').textContent='≤'+n(Math.floor((cfg.size??50)*(cfg.favorite_percent??20)/100));$('avoidDays').textContent=n(source.stats?.daily_avoid_window_days??cfg.daily_avoid_days??21)+'天';
  renderDailyNotices(source,blocking);$('bucketSummary').replaceChildren();
  for(const [k,v] of Object.entries(source.stats?.bucket_counts||{})){const x=document.createElement('span');x.textContent=k+' '+v+' 首';$('bucketSummary').append(x);}
- if(source.stats)$('favoriteCount').textContent=n(source.stats.favorite_selected_count||0)+' / '+n(Math.floor((cfg.size??30)*(cfg.favorite_percent??20)/100));
+ if(source.stats)$('favoriteCount').textContent=n(source.stats.favorite_selected_count||0)+' / '+n(Math.floor((cfg.size??50)*(cfg.favorite_percent??20)/100));
  $('songs').replaceChildren();(source.items||[]).forEach(addSong);$('emptySongs').hidden=!!(source.items||[]).length;
  if(!$('emptySongs').hidden)$('emptySongs').textContent=isPublished?'已发布 '+n(source.count||0)+' 首':'点击“生成今日歌单”开始';
  $('dailyTitle').textContent='今日歌单';
  if(previewReady&&blocking.length){$('dailyState').textContent='暂不可发布';$('dailyMessage').textContent='请重新生成后再试。';setFlow(2);}
- else if(previewReady){$('dailyState').textContent='待发布';$('dailyMessage').textContent=n(plan.items?.length||cfg.size||30)+' 首歌曲已准备好，发布后会更新 Plex 中的“每日推荐”。';setFlow(2);}
+ else if(previewReady){$('dailyState').textContent='待发布';$('dailyMessage').textContent=n(plan.items?.length||cfg.size||50)+' 首歌曲已准备好，发布后会更新 Plex 中的“每日推荐”。';setFlow(2);}
  else if(isPublished||plan.applied){$('dailyState').textContent='已发布';$('dailyMessage').textContent='已更新 Plex 中的“每日推荐”。';setFlow(3);}
  else{$('dailyState').textContent='待生成';$('dailyMessage').textContent='先生成并预览，确认发布后才会修改 Plex。';setFlow(1);}
  if(lastPlan!==String(source.id||source.plan_id||'')){lastPlan=String(source.id||source.plan_id||'');window.scrollTo({top:0,behavior:'smooth'});}

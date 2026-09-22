@@ -269,7 +269,7 @@ class DailyMixin:
             'retained': len(preserve_ids),
             'consumed': max(0, len((before or {}).get('items', [])) - len(preserve_ids)),
             'unchanged': bool(before and selected_ids == before_ids
-                              and len(selected_ids) == int(daily.get('size', 30))),
+                              and len(selected_ids) == int(daily.get('size', 50))),
         }
         result['stats']['childrens_excluded_count'] = len(audience['excluded_ids'])
         if not result['items']:

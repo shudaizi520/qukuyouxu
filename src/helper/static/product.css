@@ -660,7 +660,7 @@ body[data-view=external] .external-paging{padding:14px 0 24px}
 .playlist-progress-rail input[type=range]::-moz-range-progress{height:3px;border-radius:999px;background:var(--playlist-accent)}
 .mix-automation-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 22px;border:1px solid var(--line);border-radius:12px;background:#fff}.mix-automation-row>strong{font-size:15px}.mix-automation-row .contextual-automation{margin:0}
 body[data-view=mixes] .contextual-settings-card>.contextual-automation{margin:0 0 14px}
-.playlist-global-search{width:min(420px,38vw);height:38px;gap:9px;padding:0 13px;border:1px solid transparent;border-radius:9px;background:var(--playlist-surface-soft)}
+.playlist-global-search{width:min(460px,38vw);height:42px;gap:10px;margin:0;padding:0 14px;border:1px solid var(--playlist-line);border-radius:11px;background:var(--playlist-surface);transition:border-color .18s,box-shadow .18s}
 .playlist-global-search:focus-within{border-color:var(--playlist-accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--playlist-accent) 12%,transparent)}
 .playlist-global-search input{height:36px;padding:0;border:0;background:transparent;box-shadow:none}
 .playlist-global-search input:focus{outline:none;box-shadow:none}
