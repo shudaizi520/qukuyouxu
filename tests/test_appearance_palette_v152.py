@@ -29,6 +29,7 @@ def test_warm_and_night_palettes_keep_normal_and_muted_text_legible():
         palette = _palette(css, name)
         assert _contrast(palette["--theme-text"], palette["--theme-canvas"]) >= 7
         assert _contrast(palette["--theme-text"], palette["--theme-surface"]) >= 7
+        assert _contrast(palette["--theme-text"], palette["--theme-soft"]) >= 7
         assert _contrast(palette["--theme-muted"], palette["--theme-surface"]) >= 4.5
 
 
@@ -49,6 +50,9 @@ def test_night_palette_covers_header_navigation_and_secondary_surfaces():
     for selector in (
         ".topbar nav a", ".topbar nav button", ".topbar .logout",
         ".external-source-panel", ".flow-strip", ".pch-dialog-body",
-        ".daily-meta", "a.primary.link",
+        ".daily-meta", "a.primary.link", ".library-overview", ".mix-automation-row",
     ):
         assert selector in theme_css
+    overview_rule = theme_css.split("html[data-appearance=night] body[data-view=library] .library-overview,", 1)[1].split("}", 1)[0]
+    assert "background:var(--theme-soft)" in overview_rule
+    assert "color:var(--theme-text)" in overview_rule

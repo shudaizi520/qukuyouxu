@@ -1000,3 +1000,7 @@ html[data-appearance=night] :is(th,.external-track-column-head){background:var(-
 html[data-appearance=warm] a.primary.link,
 html[data-appearance=night] a.primary.link{background:var(--theme-accent);color:var(--theme-on-accent);border-color:var(--theme-accent)}
 html[data-appearance=night] :is(.toggle,.switch-row>input[type=checkbox]):checked:before{background:var(--theme-on-accent)}
+html[data-appearance=warm] body[data-view=library] .library-overview,
+html[data-appearance=night] body[data-view=library] .library-overview,
+html[data-appearance=warm] body[data-view=mixes] .mix-automation-row,
+html[data-appearance=night] body[data-view=mixes] .mix-automation-row{background:var(--theme-soft);color:var(--theme-text);border-color:var(--theme-line)}

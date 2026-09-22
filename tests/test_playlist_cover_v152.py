@@ -37,3 +37,31 @@ def test_cover_candidates_have_empty_fallback_and_preserve_playlist_access_check
         with pytest.raises(ValueError, match="隐藏的歌单"):
             playlist_cover_candidates(object(), "plex", "500", {"500"})
         assert detail.call_args.args[1:] == ("plex", "500", {"500"})
+
+
+def test_cover_route_does_not_take_the_interactive_playlist_gate():
+    from helper.playlist_hub import attach_playlist_hub_routes
+
+    class App:
+        routes = {}
+
+        def get(self, path):
+            return lambda function: self.routes.setdefault(path, function)
+
+        post = get
+
+    class BusyEngine:
+        def exclusive(self):
+            raise AssertionError("封面请求不能抢占开歌单的任务锁")
+
+    engine = BusyEngine()
+    store = type("Store", (), {"profile_id": "p1"})()
+    profiles = type("Profiles", (), {"get": lambda _self, _profile: {"id": "p1"}})()
+    runtime = type("Runtime", (), {"engine": lambda _self, _profile: engine})()
+    app = App()
+    attach_playlist_hub_routes(app, store, runtime, profiles, None, None)
+
+    with patch("helper.playlist_hub.playlist_cover_candidates", return_value={"track_ids": ["11"]}) as candidates:
+        result = app.routes["/api/playlists/{kind}/{key}/cover"]("daily", "daily")
+    assert result == {"track_ids": ["11"]}
+    candidates.assert_called_once_with(engine, "daily", "daily", ())

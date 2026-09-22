@@ -72,7 +72,12 @@ export function createPlaylistArtwork({document,request,profileId}){
   const node=document.createElement('span');node.dataset.variant=variant;
   node.setAttribute('aria-hidden','true');placeholder(node);
   if(observer){items.set(node,item);observer.observe(node);}
-  else enqueue(node,item);
+  else{
+   const createdGeneration=generation;
+   Promise.resolve().then(()=>{
+    if(createdGeneration===generation&&node.isConnected)enqueue(node,item);
+   });
+  }
   return node;
  }
  function paintTracks(node,tracks){

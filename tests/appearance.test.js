@@ -14,14 +14,15 @@ class Element {
  contains(node){return node===this||this.children.some(child=>child.contains(node));}
 }
 
-function fixture(saved='',{blocked=false,embedded=false}={}){
+function fixture(saved='',{blocked=false,embedded=false,parentWindow=null,frames=[]}={}){
  const header=new Element('header'),events={},storage={value:saved};
  storage.getItem=()=>{if(blocked)throw Error('storage blocked');return storage.value;};
  storage.setItem=(_key,value)=>{if(blocked)throw Error('storage blocked');storage.value=value;};
  const document={documentElement:{dataset:{}},querySelector:selector=>selector==='.topbar'?header:null,
+  querySelectorAll:selector=>selector==='iframe'?frames:[],
   createElement:tag=>new Element(tag),addEventListener:(name,fn)=>{events[name]=fn;}};
  const window={location:{search:''},localStorage:storage,events:{},addEventListener(name,fn){this.events[name]=fn;}};
- window.self=window;window.top=embedded?{}:window;
+ window.self=window;window.top=embedded?{}:window;window.parent=parentWindow||window;
  new Function('window','document','URLSearchParams',source)(window,document,URLSearchParams);
  return {window,document,header,events,storage,mount:()=>events.DOMContentLoaded()};
 }
@@ -63,4 +64,15 @@ test('embedded tools inherit the theme without a duplicate clothing control',()=
  const setup=fixture('night',{embedded:true});setup.mount();
  assert.equal(setup.document.documentElement.dataset.appearance,'night');
  assert.equal(setup.header.children.length,0);
+});
+
+test('blocked storage still synchronizes a parent theme with embedded tools',()=>{
+ const frames=[];
+ const parent=fixture('',{blocked:true,frames});parent.mount();
+ parent.window.PCHAppearance.setTheme('warm');
+ const child=fixture('',{blocked:true,embedded:true,parentWindow:parent.window});child.mount();
+ assert.equal(child.document.documentElement.dataset.appearance,'warm');
+ frames.push({contentWindow:child.window});
+ parent.window.PCHAppearance.setTheme('night');
+ assert.equal(child.document.documentElement.dataset.appearance,'night');
 });

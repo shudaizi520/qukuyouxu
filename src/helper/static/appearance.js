@@ -6,6 +6,9 @@
  let current='light',trigger=null,menu=null,options=[];
  try{const saved=window.localStorage.getItem(KEY);if(valid(saved))current=saved;}catch(_error){}
  const embedded=window.self!==window.top||new URLSearchParams(window.location.search).get('embedded')==='1';
+ if(embedded){
+  try{const inherited=window.parent?.PCHAppearance?.getTheme();if(valid(inherited))current=inherited;}catch(_error){}
+ }
 
  function updateMenu(){
   for(const option of options){
@@ -15,9 +18,16 @@
   }
  }
  function applyTheme(){document.documentElement.dataset.appearance=current;updateMenu();return current;}
+ function syncFrames(){
+  for(const frame of document.querySelectorAll?.('iframe')||[]){
+   try{frame.contentWindow?.PCHAppearance?.receiveTheme(current);}catch(_error){}
+  }
+ }
+ function receiveTheme(id){if(valid(id)){current=id;applyTheme();syncFrames();}}
  function setTheme(id){
   current=valid(id)?id:'light';applyTheme();
   try{window.localStorage.setItem(KEY,current);}catch(_error){}
+  syncFrames();
   return current;
  }
  function closeMenu(restoreFocus=false){
@@ -64,10 +74,10 @@
   updateMenu();
  }
  applyTheme();
- window.PCHAppearance={setTheme,getTheme:()=>current,applyTheme};
+ window.PCHAppearance={setTheme,getTheme:()=>current,applyTheme,receiveTheme};
  window.addEventListener('storage',event=>{
   if(event.key!==KEY)return;
-  current=valid(event.newValue)?event.newValue:'light';applyTheme();
+  current=valid(event.newValue)?event.newValue:'light';applyTheme();syncFrames();
  });
  if(document.readyState==='loading'||!document.readyState)document.addEventListener('DOMContentLoaded',mount);
  else mount();

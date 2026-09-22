@@ -344,7 +344,7 @@ def _pch_category_id(kind, key):
     return ""
 
 
-def _ensure_playlist_ownership(engine, kind, key, record, state, marker, plex):
+def _ensure_playlist_ownership(engine, kind, key, record, state, marker, plex, *, migrate=True):
     """Validate ownership and safely restamp an unchanged pre-restore marker."""
     summary = str(state.get("summary") or "")
     if marker and marker in summary:
@@ -358,6 +358,8 @@ def _ensure_playlist_ownership(engine, kind, key, record, state, marker, plex):
     if (not marker or not historical or not record.get("fingerprint")
             or fingerprint(state) != record.get("fingerprint")):
         raise SafetyError("助手管理标记缺失，不能读取这个歌单")
+    if not migrate:
+        return state, record
     previous_ids = [str(row.get("id")) for row in state.get("items", [])]
     plex.update_playlist_summary(record["id"], replace_marker(summary, historical, marker))
     migrated = plex.read_playlist_until(
@@ -610,7 +612,7 @@ def set_track_liked(engine, track_id, liked, now=None):
     return {"track_id": track_id, "liked": liked, "user_rating": expected}
 
 
-def playlist_detail(engine, kind, key, hidden_playlist_ids=()):
+def playlist_detail(engine, kind, key, hidden_playlist_ids=(), *, migrate_ownership=True):
     if str(kind) == "favorite" and str(key) == "liked":
         return favorite_playlist_detail_live(engine)
     if str(kind) == "plex":
@@ -665,6 +667,7 @@ def playlist_detail(engine, kind, key, hidden_playlist_ids=()):
         raise SafetyError("Plex 歌单名称已经变化，请先核对")
     state, record = _ensure_playlist_ownership(
         engine, str(kind), str(key), record, state, marker, plex,
+        migrate=migrate_ownership,
     )
     catalog = {
         str(row.get("id")): row for row in (engine.store.get("catalog", []) or [])
@@ -695,7 +698,7 @@ def playlist_detail(engine, kind, key, hidden_playlist_ids=()):
 
 def playlist_cover_candidates(engine, kind, key, hidden_playlist_ids=()):
     """Return a small, profile-scoped set of tracks with Plex artwork."""
-    detail = playlist_detail(engine, kind, key, hidden_playlist_ids)
+    detail = playlist_detail(engine, kind, key, hidden_playlist_ids, migrate_ownership=False)
     track_ids = []
     for row in detail.get("tracks") or []:
         track_id = str(row.get("id") or "")
@@ -949,8 +952,7 @@ def attach_playlist_hub_routes(app, store, runtime, profiles, body, ensure_idle)
     def playlist_cover(kind: str, key: str):
         target = fixed_engine()
         hidden_ids = sibling_owned_playlist_ids(profiles, runtime, str(store.profile_id)) if kind == "plex" else ()
-        with target.exclusive():
-            return playlist_cover_candidates(target, kind, key, hidden_ids)
+        return playlist_cover_candidates(target, kind, key, hidden_ids)
 
     @app.get("/api/playlists/{kind}/{key}/tracks/{track_id}/audio")
     def playlist_audio(

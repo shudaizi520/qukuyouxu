@@ -62,3 +62,15 @@ test('large lists fetch no more than three covers at once',async()=>{
  await flush();
  assert.equal(started,3);
 });
+
+test('without IntersectionObserver a newly created detached cover loads after it is attached',async()=>{
+ let started=0;
+ const detachedDocument={createElement:tag=>{const node=new FakeElement(tag);if(tag==='span')node.isConnected=false;return node;}};
+ const art=createPlaylistArtwork({document:detachedDocument,request:async()=>{started++;return {track_ids:['12']};},profileId:()=> 'p1'});
+ art.reset('p1');
+ const node=art.create(item,'sidebar');
+ node.isConnected=true;
+ await flush();
+ assert.equal(started,1);
+ assert.equal(node.children[0].src,artworkUrl('12','p1'));
+});

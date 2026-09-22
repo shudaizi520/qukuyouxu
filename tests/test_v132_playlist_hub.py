@@ -240,6 +240,19 @@ class PlaylistHubPlaybackTests(unittest.TestCase):
         self.assertEqual(fingerprint(self.state), self.store.get("daily_managed")["fingerprint"])
         self.assertEqual(1, len(self.plex.summary_updates))
 
+    def test_cover_read_does_not_migrate_or_modify_a_legacy_playlist(self):
+        from helper.engine import fingerprint
+        from helper.playlist_hub import playlist_cover_candidates
+
+        self.state["summary"] = "[PCH:11111111111111111111111111111111:daily]\n旧说明"
+        record = dict(self.store.get("daily_managed"))
+        record["fingerprint"] = fingerprint(self.state)
+        self.store.set("daily_managed", record)
+
+        self.assertEqual({"track_ids": ["10"]}, playlist_cover_candidates(self.engine, "daily", "daily"))
+        self.assertEqual([], self.plex.summary_updates)
+        self.assertEqual(record, self.store.get("daily_managed"))
+
     def test_detail_never_adopts_an_unmarked_same_name_playlist(self):
         from helper.engine import fingerprint
         from helper.playlist_hub import playlist_detail
