@@ -185,6 +185,10 @@ class BaseMixin:
                 snap.update(status='applied',after=after);self._save_snapshot(snap)
                 managed[cid]={'id':after['id'],'fingerprint':fingerprint(after),'snapshot_id':snap['id'],'title':after['title']}
                 self.store.set('managed',managed);existing_titles.add(after['title']);result['written']+=1
+                runtime=getattr(self,'profile_runtime',None)
+                if runtime is not None and runtime.registry.get(self.store.profile_id).get('kind')=='owner':
+                    from .library_sharing import queue_owner_revision
+                    queue_owner_revision(runtime,self.store.profile_id,cid,'publish',managed[cid])
             except Exception as exc:
                 snap.update(status='uncertain',error=safe_error(exc));self._save_snapshot(snap)
                 result['errors'].append(g['title']+'：'+safe_error(exc))

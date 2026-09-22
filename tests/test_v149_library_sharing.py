@@ -56,6 +56,9 @@ class FakePlex:
     def delete_playlist(self, playlist_id):
         del self.data["playlists"][str(playlist_id)]
 
+    def rename(self, playlist_id, title):
+        self.data["playlists"][str(playlist_id)]["title"] = title
+
     def remove_items(self, playlist_id, item_ids):
         row = self.data["playlists"][str(playlist_id)]
         removed = set(map(str, item_ids))
@@ -115,7 +118,22 @@ def test_owner_categories_default_to_recipient_without_qq_login(shared_library):
     assert child.get("qq_auth_credentials") is None
 
 
-def test_confirmed_recipient_deletion_opts_out_and_never_recreates(shared_library):
+def test_existing_owner_playlist_is_shared_even_when_future_maintenance_is_off(shared_library):
+    from helper.library_sharing import sync_recipient
+    from helper.scoped_store import ScopedStore
+
+    base, _registry, runtime, data = shared_library
+    ScopedStore(base, "default").set("sources", [
+        {"id": "qq:pop", "name": "流行精选", "enabled": False},
+    ])
+
+    result = sync_recipient(runtime, "default", "friend")
+
+    assert result["created"] == 1
+    assert len(data["friend-token"]["playlists"]) == 1
+
+
+def test_confirmed_recipient_deletion_recreates_the_owner_copy(shared_library):
     from helper.library_sharing import sync_recipient
     from helper.scoped_store import ScopedStore
 
@@ -128,22 +146,19 @@ def test_confirmed_recipient_deletion_opts_out_and_never_recreates(shared_librar
     first = sync_recipient(runtime, "default", "friend")
     second = sync_recipient(runtime, "default", "friend")
 
-    assert first["opted_out"] == 1
+    assert first["created"] == 1
     assert second["created"] == 0
-    assert "qq:pop" not in child.get("managed")
-    assert "qq:pop" in child.get("library_share_v1")["excluded"]
-    assert not data["friend-token"]["playlists"]
+    assert "qq:pop" in child.get("managed")
+    assert len(data["friend-token"]["playlists"]) == 1
 
 
-def test_restore_resubscribes_only_that_category(shared_library):
-    from helper.library_sharing import restore_category, sync_recipient
+def test_legacy_exclusion_is_not_a_recipient_switch(shared_library):
+    from helper.library_sharing import sync_recipient
     from helper.scoped_store import ScopedStore
 
     base, _registry, runtime, data = shared_library
     child = ScopedStore(base, "friend")
     child.set("library_share_v1", {"owner_id": "default", "excluded": ["qq:pop"]})
-    assert sync_recipient(runtime, "default", "friend")["created"] == 0
-    restore_category(runtime, "friend", "qq:pop")
     assert sync_recipient(runtime, "default", "friend")["created"] == 1
     assert len(data["friend-token"]["playlists"]) == 1
 
@@ -165,7 +180,7 @@ def test_owner_removing_category_removes_only_unchanged_recipient_copy(shared_li
     assert "qq:pop" not in child.get("managed")
 
 
-def test_owner_removal_preserves_recipient_edited_copy(shared_library):
+def test_owner_removal_deletes_recipient_edited_copy_if_marker_is_intact(shared_library):
     from helper.library_sharing import sync_recipient
     from helper.scoped_store import ScopedStore
 
@@ -178,8 +193,8 @@ def test_owner_removal_preserves_recipient_edited_copy(shared_library):
 
     result = sync_recipient(runtime, "default", "friend")
 
-    assert result["skipped"] == 1
-    assert playlist_id in data["friend-token"]["playlists"]
+    assert result["removed"] == 1
+    assert playlist_id not in data["friend-token"]["playlists"]
 
 
 def test_other_library_is_never_written(shared_library):
@@ -192,7 +207,7 @@ def test_other_library_is_never_written(shared_library):
     assert "friend-token" not in data
 
 
-def test_manually_modified_recipient_playlist_is_not_overwritten(shared_library):
+def test_owner_update_reconciles_recipient_edited_copy_with_marker(shared_library):
     from helper.library_sharing import sync_recipient
     from helper.scoped_store import ScopedStore
 
@@ -211,12 +226,12 @@ def test_manually_modified_recipient_playlist_is_not_overwritten(shared_library)
 
     result = sync_recipient(runtime, "default", "friend")
 
-    assert result["skipped"] == 1
-    assert [row["id"] for row in data["friend-token"]["playlists"][playlist_id]["items"]] == ["1", "2"]
-    assert managed == child.get("managed")
+    assert result["updated"] == 1
+    assert [row["id"] for row in data["friend-token"]["playlists"][playlist_id]["items"]] == ["1", "2", "3"]
+    assert managed != child.get("managed")
 
 
-def test_deleting_from_this_app_also_opts_out(shared_library):
+def test_deleting_recipient_copy_from_app_does_not_opt_out(shared_library):
     from helper.library_sharing import sync_recipient
     from helper.playlist_hub import remove_playlist
     from helper.scoped_store import ScopedStore
@@ -228,9 +243,9 @@ def test_deleting_from_this_app_also_opts_out(shared_library):
     remove_playlist(runtime.engine("friend"), "category", "qq:pop", "流行精选")
     result = sync_recipient(runtime, "default", "friend")
 
-    assert result["created"] == 0
-    assert "qq:pop" in child.get("library_share_v1")["excluded"]
-    assert not data["friend-token"]["playlists"]
+    assert result["created"] == 1
+    assert "qq:pop" not in (child.get("library_share_v1") or {}).get("excluded", [])
+    assert len(data["friend-token"]["playlists"]) == 1
 
 
 def test_scheduler_propagates_owner_categories_without_separate_automation(shared_library):
@@ -328,7 +343,7 @@ def test_synced_playlist_uses_recipient_plex_rating_for_heart(shared_library):
     assert detail["tracks"][1]["liked"] is False
 
 
-def test_forgetting_confirmed_missing_recipient_copy_keeps_opt_out(shared_library):
+def test_forgetting_confirmed_missing_recipient_copy_allows_recreation(shared_library):
     from helper.library_sharing import sync_recipient
     from helper.managed_cleanup_v0317 import forget_missing_managed_playlist
     from helper.scoped_store import ScopedStore
@@ -340,10 +355,11 @@ def test_forgetting_confirmed_missing_recipient_copy_keeps_opt_out(shared_librar
     del data["friend-token"]["playlists"][playlist_id]
 
     forget_missing_managed_playlist(runtime.engine("friend"), "qq:pop", playlist_id, "流行精选")
+    assert "qq:pop" not in (child.get("library_share_v1") or {}).get("excluded", [])
     result = sync_recipient(runtime, "default", "friend")
 
-    assert result["created"] == 0
-    assert "qq:pop" in child.get("library_share_v1")["excluded"]
+    assert result["created"] == 1
+    assert "qq:pop" not in (child.get("library_share_v1") or {}).get("excluded", [])
 
 
 def test_owner_additions_append_to_recipient_without_recreating(shared_library):
@@ -380,7 +396,7 @@ def test_share_status_exposes_protected_skip_to_admin(shared_library):
 
     runtime.run_due(now=1000)
 
-    assert share_status(runtime, "friend")["last_result"]["skipped"] == 1
+    assert share_status(runtime, "friend")["last_result"]["updated"] == 1
 
 
 def test_owner_removal_is_reflected_without_deleting_recipient_playlist(shared_library):
@@ -403,3 +419,187 @@ def test_owner_removal_is_reflected_without_deleting_recipient_playlist(shared_l
     assert result["updated"] == 1
     assert playlist_id in data["friend-token"]["playlists"]
     assert [row["id"] for row in data["friend-token"]["playlists"][playlist_id]["items"]] == ["1"]
+
+
+def test_delete_revision_survives_source_removal_and_same_title_rebuild(shared_library):
+    from helper.engine import fingerprint
+    from helper.library_sharing import confirm_owner_revision, queue_owner_revision, sync_recipient
+    from helper.scoped_store import ScopedStore
+
+    base, _registry, runtime, data = shared_library
+    sync_recipient(runtime, "default", "friend")
+    child = ScopedStore(base, "friend")
+    old_copy = child.get("managed")["qq:pop"]["id"]
+    owner = ScopedStore(base, "default")
+    old_source = owner.get("managed")["qq:pop"]
+    queue_owner_revision(runtime, "default", "qq:pop", "delete", old_source)
+    del data["owner-token"]["playlists"][old_source["id"]]
+    owner.set("managed", {})
+    confirm_owner_revision(runtime, "default", "qq:pop")
+    replacement = FakePlex("owner-token", data).create(
+        "流行精选", ["2"], runtime.engine("default").marker("qq:pop"),
+    )
+    new_source = {"id": replacement["id"], "title": replacement["title"],
+                  "fingerprint": fingerprint(replacement), "count": 1}
+    owner.set("managed", {"qq:pop": new_source})
+    queue_owner_revision(runtime, "default", "qq:pop", "publish", new_source)
+
+    result = sync_recipient(runtime, "default", "friend")
+
+    assert result["errors"] == []
+    assert old_copy not in data["friend-token"]["playlists"]
+    assert len(data["friend-token"]["playlists"]) == 1
+    assert [row["id"] for row in next(iter(data["friend-token"]["playlists"].values()))["items"]] == ["2"]
+
+
+def test_missing_recipient_marker_pauses_deletion_without_touching_playlist(shared_library):
+    from helper.library_sharing import sync_recipient
+    from helper.scoped_store import ScopedStore
+
+    base, _registry, runtime, data = shared_library
+    sync_recipient(runtime, "default", "friend")
+    child = ScopedStore(base, "friend")
+    copy_id = child.get("managed")["qq:pop"]["id"]
+    data["friend-token"]["playlists"][copy_id]["summary"] = ""
+    owner = ScopedStore(base, "default")
+    owner.set("managed", {})
+
+    result = sync_recipient(runtime, "default", "friend")
+
+    assert result["skipped"] == 1
+    assert copy_id in data["friend-token"]["playlists"]
+    assert child.get("managed")["qq:pop"]["id"] == copy_id
+
+
+def test_same_library_second_owner_profile_receives_categories(shared_library):
+    from helper.library_sharing import sync_recipient
+
+    _base, registry, runtime, data = shared_library
+    registry.create(
+        name="其他档案", kind="owner", profile_id="second-owner", token="second-owner-token",
+        account={"id": "other"}, server={"machine": "server-a", "url": "http://plex"},
+        library={"id": "11", "name": "音乐"},
+    )
+    runtime.engine("second-owner").plex_factory = lambda cfg: FakePlex(cfg["plex_token"], data)
+
+    result = sync_recipient(runtime, "default", "second-owner")
+
+    assert result["created"] == 1
+    assert len(data["second-owner-token"]["playlists"]) == 1
+
+
+def test_prepared_owner_delete_recovers_after_restart_without_old_copy(shared_library):
+    from helper.library_sharing import queue_owner_revision, sync_recipient
+    from helper.scoped_store import ScopedStore
+
+    base, registry, runtime, data = shared_library
+    sync_recipient(runtime, "default", "friend")
+    owner = ScopedStore(base, "default")
+    old = owner.get("managed")["qq:pop"]
+    queue_owner_revision(runtime, "default", "qq:pop", "delete", old)
+    del data["owner-token"]["playlists"][old["id"]]
+    owner.set("managed", {})
+    resumed = type(runtime)(base, registry)
+    for profile_id in ("default", "friend"):
+        resumed.engine(profile_id).plex_factory = lambda cfg, data=data: FakePlex(cfg["plex_token"], data)
+
+    resumed.sync_library_shares_due(now=1000)
+
+    assert not data["friend-token"]["playlists"]
+    assert not ScopedStore(base, "friend").get("managed")
+
+
+def test_unconfirmed_recipient_delete_blocks_same_title_recreation(shared_library):
+    from helper.engine import fingerprint
+    from helper.library_sharing import confirm_owner_revision, queue_owner_revision, sync_recipient
+    from helper.scoped_store import ScopedStore
+
+    base, _registry, runtime, data = shared_library
+    sync_recipient(runtime, "default", "friend")
+    owner = ScopedStore(base, "default")
+    old = owner.get("managed")["qq:pop"]
+    queue_owner_revision(runtime, "default", "qq:pop", "delete", old)
+    del data["owner-token"]["playlists"][old["id"]]
+    owner.set("managed", {})
+    confirm_owner_revision(runtime, "default", "qq:pop")
+    new = FakePlex("owner-token", data).create("流行精选", ["3"], runtime.engine("default").marker("qq:pop"))
+    record = {"id": new["id"], "title": new["title"], "fingerprint": fingerprint(new)}
+    owner.set("managed", {"qq:pop": record})
+    queue_owner_revision(runtime, "default", "qq:pop", "publish", record)
+    child = runtime.engine("friend").plex_factory({"plex_token": "friend-token"})
+    original_delete = child.delete_playlist
+
+    def stale_delete(_playlist_id):
+        # Plex accepted the request but still returns the old ID on direct reads.
+        return None
+
+    child.delete_playlist = stale_delete
+    runtime.engine("friend").plex_factory = lambda _cfg: child
+    result = sync_recipient(runtime, "default", "friend")
+
+    assert result["errors"]
+    assert len(data["friend-token"]["playlists"]) == 1
+    child.delete_playlist = original_delete
+
+
+def test_owner_title_change_queues_immediate_same_library_reconciliation(shared_library):
+    from helper.library_sharing import sync_recipient
+    from helper.scoped_store import ScopedStore
+
+    base, _registry, runtime, data = shared_library
+    sync_recipient(runtime, "default", "friend")
+    child = ScopedStore(base, "friend")
+    child_id = child.get("managed")["qq:pop"]["id"]
+    owner = ScopedStore(base, "default")
+    owner.set("sources", [{"id": "qq:pop", "name": "轻音乐夜晚", "enabled": True}])
+    plan = runtime.engine("default").preview_names()
+    assert plan["groups"][0]["action"] == "rename"
+    runtime.wake.clear()
+
+    runtime.engine("default").apply_names(plan["id"])
+
+    assert runtime.wake.is_set()
+    runtime.sync_library_shares_due(now=1000)
+    assert child.get("managed")["qq:pop"]["id"] == child_id
+    assert data["friend-token"]["playlists"][child_id]["title"] == data["owner-token"]["playlists"]["100"]["title"]
+
+
+def test_owner_app_delete_queues_verified_tombstone_and_preserves_native(shared_library):
+    from helper.daily_mix_v036 import remove_managed_playlist
+    from helper.library_sharing import REVISIONS_KEY, sync_recipient
+    from helper.scoped_store import ScopedStore
+
+    base, _registry, runtime, data = shared_library
+    sync_recipient(runtime, "default", "friend")
+    native = FakePlex("friend-token", data).create("流行精选", ["3"], "")
+    owner = ScopedStore(base, "default")
+
+    remove_managed_playlist(runtime.engine("default"), "qq:pop", "流行精选")
+    revision = owner.get(REVISIONS_KEY)["qq:pop"][-1]
+    assert revision["action"] == "delete"
+    assert revision["confirmed"] is True
+    runtime.sync_library_shares_due(now=1000)
+
+    assert native["id"] in data["friend-token"]["playlists"]
+    assert len(data["friend-token"]["playlists"]) == 1
+
+
+def test_one_invalid_target_does_not_block_other_same_library_profiles(shared_library):
+    from helper.library_sharing import queue_owner_revision, reconcile_owner_revision
+    from helper.scoped_store import ScopedStore
+
+    base, registry, runtime, data = shared_library
+    registry.create(
+        name="暂时无权", kind="shared", profile_id="a-bad", token="bad-token",
+        account={"id": "bad"}, server={"machine": "server-a", "url": "http://plex"},
+        library={"id": "11", "name": "音乐"},
+    )
+    source = ScopedStore(base, "default").get("managed")["qq:pop"]
+    queue_owner_revision(runtime, "default", "qq:pop", "publish", source)
+    registry.update("a-bad", library={"id": "22", "name": "其他曲库"})
+
+    outcomes = reconcile_owner_revision(runtime, "default")
+
+    assert outcomes["a-bad"]["errors"]
+    assert outcomes["friend"]["created"] == 1
+    assert len(data["friend-token"]["playlists"]) == 1

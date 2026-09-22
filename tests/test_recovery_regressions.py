@@ -11,6 +11,9 @@ class _Plex:
         return {"machine": "machine-a"}
 
     def playlist_state(self, _playlist_id):
+        if self.state is None:
+            from helper.clients import PlexNotFound
+            raise PlexNotFound("Plex 中没有这个项目")
         return {**self.state, "items": [dict(row) for row in self.state["items"]]}
 
     def tracks(self, _section):

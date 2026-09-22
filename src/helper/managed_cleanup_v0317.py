@@ -43,12 +43,6 @@ def forget_missing_managed_playlist(engine, category_id, playlist_id, confirm_ti
             source["enabled"] = False
             source["approved"] = False
     changes = {"managed": managed, "sources": sources, "plan": None}
-    if record.get("shared_from"):
-        from .library_sharing import STATE_KEY
-        share = dict(store.get(STATE_KEY, {}) or {})
-        if share.get("owner_id") == record["shared_from"]:
-            share["excluded"] = sorted(set(share.get("excluded") or []) | {category_id})
-            changes[STATE_KEY] = share
     store.set_many(changes)
     store.log("已只清除不存在的 Plex 歌单本地记录：" + saved_title)
     return {"message": "Plex 中的歌单已不存在；已只清除助手本地记录，歌曲和文件未作任何修改。"}

@@ -54,6 +54,7 @@ class ProfileRuntime:
                 # stable for the full duration of an operation that uses ActiveEngineProxy.
                 instance.gate = self.operation_gate
                 instance.job_gate = self.job_gate
+                instance.profile_runtime = self
                 self._engines[profile_id] = instance
             return self._engines[profile_id]
 
@@ -168,14 +169,12 @@ class ProfileRuntime:
     def sync_library_shares_due(self, now):
         """Default same-library category copies, independent of QQ/scan schedules."""
         from .engine import digest, safe_error
-        from .library_sharing import STATE_KEY, owner_for_recipient, sync_recipient
+        from .library_sharing import REVISIONS_KEY, STATE_KEY, owner_for_recipient, recover_owner_revisions, sync_recipient
 
         if self.job_gate.locked() or self.operation_gate.locked():
             return
         pairs = []
         for profile in self.registry.list_public(enabled_only=True):
-            if profile.get("kind") not in {"home", "shared"}:
-                continue
             owner_id = owner_for_recipient(self, profile["id"])
             if not owner_id:
                 continue
@@ -183,9 +182,14 @@ class ProfileRuntime:
             if not callable(getattr(owner_engine, "plex_factory", None)):
                 continue
             managed = owner_engine.store.get("managed", {}) or {}
+            revisions = owner_engine.store.get(REVISIONS_KEY, {}) or {}
+            pending_revision = any(
+                (row.get("targets") or {}).get(profile["id"]) == "pending"
+                for history in revisions.values() for row in history
+            )
             child_store = self.engine(profile["id"]).store
             shared = child_store.get("managed", {}) or {}
-            if not managed and not any(
+            if not managed and not pending_revision and not any(
                 isinstance(row, dict) and row.get("shared_from") == owner_id
                 for row in shared.values()
             ):
@@ -196,10 +200,10 @@ class ProfileRuntime:
                  sources.get(key, {}).get("enabled", True))
                 for key, row in sorted(managed.items()) if isinstance(row, dict)
             ]
-            revision = digest(manifest)
+            revision = digest([manifest, revisions])
             share = child_store.get(STATE_KEY, {}) or {}
             checked_at = float(share.get("checked_at") or 0)
-            if share.get("owner_digest") == revision and 0 <= now - checked_at < 900:
+            if not pending_revision and share.get("owner_digest") == revision and 0 <= now - checked_at < 900:
                 continue
             pairs.append((owner_id, profile["id"], revision, child_store))
         if not pairs or not self.job_gate.acquire(blocking=False):
@@ -208,6 +212,8 @@ class ProfileRuntime:
             self.job_gate.release()
             return
         try:
+            for owner_id in {owner_id for owner_id, _recipient_id, _revision, _store in pairs}:
+                recover_owner_revisions(self, owner_id)
             for owner_id, recipient_id, revision, store in pairs:
                 try:
                     outcome = sync_recipient(self, owner_id, recipient_id, now=now)

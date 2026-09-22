@@ -129,6 +129,10 @@ class RenamingMixin:
                                        'fingerprint': fingerprint(after), 'snapshot_id': snap['id'],
                                        'machine': plan['machine']}
                     self._commit_rename_snapshot(snap, new_managed)
+                    runtime = getattr(self, 'profile_runtime', None)
+                    if runtime is not None and runtime.registry.get(self.store.profile_id).get('kind') == 'owner':
+                        from .library_sharing import queue_owner_revision
+                        queue_owner_revision(runtime, self.store.profile_id, cid, 'publish', new_managed[cid])
                     managed = new_managed
                     result['renamed'] += 1
                     result['details'].append({**item, 'status': '已改名', 'reason': ''})

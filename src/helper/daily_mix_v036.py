@@ -192,8 +192,24 @@ def remove_managed_playlist(engine, category_id, confirm_title):
             "before_managed": record,
         }
         engine._save_snapshot(snapshot)
+        runtime = getattr(engine, "profile_runtime", None)
+        owner_removal = bool(runtime is not None and runtime.registry.get(store.profile_id).get("kind") == "owner"
+                             and not record.get("shared_from"))
+        if owner_removal:
+            from .library_sharing import queue_owner_revision
+            queue_owner_revision(runtime, store.profile_id, category_id, "delete", record)
         try:
             plex.delete_playlist(current["id"])
+            from .clients import PlexNotFound
+            try:
+                plex.playlist_state(current["id"])
+            except PlexNotFound:
+                pass
+            else:
+                raise SafetyError("Plex 尚未确认歌单删除")
+            if owner_removal:
+                from .library_sharing import confirm_owner_revision
+                confirm_owner_revision(runtime, store.profile_id, category_id)
             snapshot["status"] = "applied"
             engine._save_snapshot(snapshot)
             managed.pop(category_id, None)
@@ -211,12 +227,6 @@ def remove_managed_playlist(engine, category_id, confirm_title):
                 "managed": managed, "sources": sources, "retired_managed": retired,
                 "plan": None,
             }
-            if record.get("shared_from"):
-                from .library_sharing import STATE_KEY
-                share = dict(store.get(STATE_KEY, {}) or {})
-                if share.get("owner_id") == record["shared_from"]:
-                    share["excluded"] = sorted(set(share.get("excluded") or []) | {category_id})
-                    changes[STATE_KEY] = share
             store.set_many(changes)
             store.log("已移除助手托管分类歌单：" + title)
             return {
