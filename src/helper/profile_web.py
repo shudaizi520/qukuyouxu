@@ -220,7 +220,7 @@ def attach_profile_routes(app, base_store, registry: ProfileRegistry, body, ensu
             row["controls"] = read_controls(scoped)
             row["behavior_enabled"] = row["controls"]["learning"]
             suspension = scoped.get("daily_auto_suspension") or {}
-            if suspension and row["controls"]["daily"]:
+            if suspension:
                 row["daily_status"] = {"status": "needs_attention",
                                        "reason": str(suspension.get("reason") or "请核对每日推荐")[:160]}
             removal = scoped.get("profile_removal_v1") or {}

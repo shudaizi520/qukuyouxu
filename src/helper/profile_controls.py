@@ -26,6 +26,15 @@ def read_controls(store):
 def write_control(store, key, enabled):
     if key not in CONTROL_FIELDS or type(enabled) is not bool:
         raise ValueError("用户开关无效")
+    if key == "daily" and enabled:
+        suspension = store.get("daily_auto_suspension") or {}
+        if suspension:
+            raise ValueError(str(suspension.get("reason") or "每日推荐安全暂停") + "；请先手动预览并发布确认")
+        if store.get("daily_auto_opt_out"):
+            raise ValueError("该用户已退出每日推荐自动更新；请先手动预览并发布确认")
+        if any(row.get("kind") == "daily" and row.get("status") in ("prepared", "uncertain", "restoring")
+               for row in store.get("snapshots", []) or [] if isinstance(row, dict)):
+            raise ValueError("每日推荐变更尚待核对，不能开启自动更新")
     state_key, field = CONTROL_FIELDS[key]
     value = dict(store.get(state_key, {}) or {})
     changed = key == "learning" and (value.get(field, True) is not False) != enabled
@@ -55,6 +64,9 @@ def migrate_controls(runtime, base_store=None, registry=None):
         if store.get(MIGRATION_KEY):
             continue
         daily = bool((store.get("daily_settings", {}) or {}).get("enabled"))
+        daily = daily and not store.get("daily_auto_suspension") and not store.get("daily_auto_opt_out")
+        daily = daily and not any(row.get("kind") == "daily" and row.get("status") in ("prepared", "uncertain", "restoring")
+                                  for row in store.get("snapshots", []) or [] if isinstance(row, dict))
         smart = store.get("smart_mix_settings", {}) or {}
         smart_enabled = bool(smart.get("auto_enabled") or smart.get("weekly_auto_enabled"))
         write_control(store, "daily", global_daily and daily)

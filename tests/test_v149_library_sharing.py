@@ -197,6 +197,82 @@ def test_owner_removal_deletes_recipient_edited_copy_if_marker_is_intact(shared_
     assert playlist_id not in data["friend-token"]["playlists"]
 
 
+def test_owner_delete_and_same_title_rebuild_never_touch_native_playlist(shared_library):
+    from helper.engine import fingerprint
+    from helper.library_sharing import confirm_owner_revision, queue_owner_revision, sync_recipient
+    from helper.scoped_store import ScopedStore
+
+    base, _registry, runtime, data = shared_library
+    sync_recipient(runtime, "default", "friend")
+    native = FakePlex("friend-token", data).create("流行精选", ["3"], "")
+    owner = ScopedStore(base, "default")
+    old = owner.get("managed")["qq:pop"]
+    queue_owner_revision(runtime, "default", "qq:pop", "delete", old)
+    FakePlex("owner-token", data).delete_playlist(old["id"])
+    owner.set("managed", {})
+    confirm_owner_revision(runtime, "default", "qq:pop")
+    result = sync_recipient(runtime, "default", "friend")
+    assert result["removed"] == 1
+    assert native["id"] in data["friend-token"]["playlists"]
+    assert len(data["friend-token"]["playlists"]) == 1
+
+    rebuilt = FakePlex("owner-token", data).create(
+        "流行精选", ["1", "3"], runtime.engine("default").marker("qq:pop"))
+    owner.set("managed", {"qq:pop": {"id": rebuilt["id"], "title": rebuilt["title"],
+                                     "fingerprint": fingerprint(rebuilt), "count": 2}})
+    queue_owner_revision(runtime, "default", "qq:pop", "publish", owner.get("managed")["qq:pop"])
+    result = sync_recipient(runtime, "default", "friend")
+    assert result["created"] == 0
+    assert native["id"] in data["friend-token"]["playlists"]
+
+
+def test_two_libraries_and_two_recipients_keep_independent_profile_lifecycles(shared_library):
+    from helper.profile_cleanup import begin_profile_removal, resume_profile_removal
+    from helper.profile_controls import read_controls
+    from helper.profile_runtime import ProfileRuntime
+    from helper.profiles import ProfileRegistry
+    from helper.library_sharing import sync_recipient
+    from helper.scoped_store import ScopedStore
+    from helper.store import Store
+
+    base, registry, runtime, data = shared_library
+    registry.create(name="主账户经典", kind="owner", profile_id="owner-classic",
+                    account={"id": "owner"}, server={"machine": "server-a", "url": "http://plex"},
+                    library={"id": "12", "name": "经典音乐"}, token="owner-classic-token")
+    for profile_id, account, section, token in (
+        ("friend-two", "other", "11", "other-token"),
+        ("friend-classic", "friend", "12", "classic-token"),
+    ):
+        registry.create(name=profile_id, kind="shared", profile_id=profile_id,
+                        account={"id": account}, server={"machine": "server-a", "url": "http://plex"},
+                        library={"id": section, "name": "音乐" if section == "11" else "经典音乐"},
+                        token=token)
+        assert read_controls(ScopedStore(base, profile_id)) == {
+            "learning": True, "daily": True, "smart": True,
+        }
+        runtime.engine(profile_id).plex_factory = lambda cfg, data=data: FakePlex(cfg["plex_token"], data)
+    assert sync_recipient(runtime, "default", "friend")["created"] == 1
+    assert sync_recipient(runtime, "default", "friend-two")["created"] == 1
+
+    classic = runtime.engine("friend-classic")
+    owned = FakePlex("classic-token", data).create("每日推荐", ["1"], classic.marker("daily"))
+    classic.store.set("daily_managed", {"id": owned["id"], "title": owned["title"]})
+    native = FakePlex("classic-token", data).create("每日推荐", ["2"], "")
+    begin_profile_removal(runtime, "friend-classic")
+
+    # Restart against the same database before carrying out the pending remote cleanup.
+    restarted_base = Store(base.root)
+    restarted_registry = ProfileRegistry(restarted_base)
+    restarted = ProfileRuntime(restarted_base, restarted_registry)
+    restarted.engine("friend-classic").plex_factory = lambda cfg: FakePlex(cfg["plex_token"], data)
+    assert resume_profile_removal(restarted, "friend-classic")["status"] == "removed"
+    assert native["id"] in data["classic-token"]["playlists"]
+    assert owned["id"] not in data["classic-token"]["playlists"]
+    assert len(data["friend-token"]["playlists"]) == 1
+    assert len(data["other-token"]["playlists"]) == 1
+    assert restarted_registry.get("owner-classic")["enabled"] is True
+
+
 def test_other_library_is_never_written(shared_library):
     from helper.library_sharing import sync_recipient
 

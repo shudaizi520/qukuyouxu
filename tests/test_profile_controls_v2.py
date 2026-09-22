@@ -77,6 +77,45 @@ def test_invalid_control_update_does_not_change_saved_state(tmp_path):
     assert read_controls(scoped) == before
 
 
+def test_reenable_does_not_bypass_daily_safety_pause(tmp_path):
+    import pytest
+
+    base = Store(tmp_path)
+    registry = ProfileRegistry(base)
+    _profile(registry, "music", "11")
+    store = ScopedStore(base, "music", registry=registry)
+    write_control(store, "daily", False)
+    store.set("daily_auto_suspension", {"reason": "歌单需要核对"})
+    with pytest.raises(ValueError, match="歌单需要核对"):
+        write_control(store, "daily", True)
+    assert read_controls(store)["daily"] is False
+    store.set("daily_auto_suspension", None)
+    store.set("daily_auto_opt_out", True)
+    with pytest.raises(ValueError, match="先手动预览"):
+        write_control(store, "daily", True)
+    assert read_controls(store)["daily"] is False
+
+
+def test_safety_pause_is_visible_even_when_daily_control_is_off(tmp_path):
+    base = Store(tmp_path)
+    registry = ProfileRegistry(base)
+    _profile(registry, "music", "11")
+    scoped = ScopedStore(base, "music", registry=registry)
+    write_control(scoped, "daily", False)
+    scoped.set("daily_auto_suspension", {"reason": "歌单需要核对"})
+    app = FastAPI()
+
+    async def body(request):
+        return request.state.data
+
+    attach_profile_routes(app, base, registry, body, lambda: None)
+    routes = {route.path: route.endpoint for route in app.routes if hasattr(route, "path")}
+    result = asyncio.run(routes["/api/plex/profiles"]())
+    music = next(row for row in result["items"] if row["id"] == "music")
+    assert music["controls"]["daily"] is False
+    assert music["daily_status"] == {"status": "needs_attention", "reason": "歌单需要核对"}
+
+
 def test_disabled_smart_switch_blocks_managed_retry(tmp_path):
     base = Store(tmp_path)
     registry = ProfileRegistry(base)
