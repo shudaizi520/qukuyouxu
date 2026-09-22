@@ -8,8 +8,7 @@ ROOT = Path(__file__).parents[1]
 class ProfileUIV040Tests(unittest.TestCase):
     def test_settings_keeps_profile_manager_visible(self):
         html = (ROOT / "src/helper/static/settings.html").read_text(encoding="utf-8")
-        self.assertIn('id="plexProfile"', html)
-        self.assertIn('aria-label="Plex 用户"', html)
+        self.assertNotIn('id="plexProfile"', html)
         self.assertIn('id="profileManager"', html)
         start = html.index('id="profileManager"')
         self.assertNotIn(" open", html[start:start + 100])
@@ -47,7 +46,7 @@ class ProfileUIV040Tests(unittest.TestCase):
         self.assertLess(connection, people)
         self.assertIn("Plex 连接", html)
         self.assertNotIn("当前账户", html)
-        self.assertIn("每日推荐用户", html)
+        self.assertIn("用户管理", html)
         self.assertIn("添加用户", html)
         self.assertNotIn('id="findHomeUsers"', html)
         self.assertNotIn('id="findSharedUsers"', html)
@@ -62,9 +61,9 @@ class ProfileUIV040Tests(unittest.TestCase):
         self.assertLess(accounts, connection)
         self.assertLess(connection, system)
         self.assertIn('id="disconnectPlex"', html)
-        self.assertIn('id="profileSwitcher"', html)
+        self.assertNotIn('id="profileSwitcher"', html)
         self.assertIn("function profileLabel(row)", script)
-        self.assertIn("$('profileSwitcher').hidden=!plexProfiles.length", script)
+        self.assertIn("PCHAuth.profile()", script)
         self.assertIn("/api/plex/disconnect", script)
 
     def test_first_run_pages_link_directly_to_the_accounts_panel(self):
@@ -87,7 +86,7 @@ class ProfileUIV040Tests(unittest.TestCase):
         script = (ROOT / "src/helper/static/settings.js").read_text(encoding="utf-8")
 
         self.assertIn("row.existing_profile_id", script)
-        self.assertIn("remove.textContent='移除'", script)
+        self.assertIn("remove.textContent=row.removal?", script)
         self.assertIn("button.textContent='添加'", script)
         self.assertIn("/api/plex/profiles/remove", script)
         self.assertNotIn("/api/plex/profiles/restore", script)
@@ -99,10 +98,10 @@ class ProfileUIV040Tests(unittest.TestCase):
         script = (ROOT / "src/helper/static/settings.js").read_text(encoding="utf-8")
         rows = script.split("function renderManagedUsers(){", 1)[1].split("function renderRecipients(", 1)[0]
 
-        self.assertIn("$('plexProfile').onchange", script)
+        self.assertNotIn("$('plexProfile').onchange", script)
         self.assertNotIn("open.textContent=row.id===activeProfile?'当前':'打开'", rows)
         self.assertNotIn("open.onclick=", rows)
-        self.assertIn("remove.textContent='移除'", rows)
+        self.assertIn("remove.textContent=row.removal?", rows)
 
 
 if __name__ == "__main__":

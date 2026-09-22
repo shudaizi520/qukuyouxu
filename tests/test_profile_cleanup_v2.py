@@ -107,6 +107,8 @@ def test_failure_and_restart_keep_profile_for_retry(setup):
     first = resume_profile_removal(runtime, "friend-music")
     assert first["status"] == "needs_attention"
     assert runtime.registry.get("friend-music")["id"] == "friend-music"
+    retry = begin_profile_removal(runtime, "friend-music")
+    assert retry["status"] == "pending" and retry["next_retry_at"] == 0
     restarted = ProfileRuntime(runtime.base_store, runtime.registry)
     restarted.engine("friend-music").plex_factory = lambda _cfg: plex
     assert resume_profile_removal(restarted, "friend-music")["status"] == "removed"
@@ -191,6 +193,18 @@ def test_scheduler_resumes_removal_without_refreshing_user(setup):
     runtime.run_due()
     with pytest.raises(ValueError):
         runtime.registry.get("friend-music")
+
+
+def test_connection_factory_failure_stays_retryable(setup):
+    from helper.profile_cleanup import begin_profile_removal, resume_profile_removal
+
+    runtime, plex = setup
+    add_managed(runtime, plex, "friend-music", "daily", "daily", "101")
+    begin_profile_removal(runtime, "friend-music")
+    runtime.engine("friend-music").plex_factory = lambda _cfg: (_ for _ in ()).throw(ConnectionError("offline"))
+    result = resume_profile_removal(runtime, "friend-music")
+    assert result["status"] == "needs_attention"
+    assert runtime.registry.get("friend-music")["enabled"] is False
 
 
 def test_external_imported_playlist_is_removed_with_its_source_record(setup):

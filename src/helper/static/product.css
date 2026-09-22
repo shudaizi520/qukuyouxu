@@ -814,3 +814,30 @@ body[data-view=playlists] #workspace{grid-template-rows:64px minmax(0,1fr) 80px}
 body[data-view=playlists] .playlist-player{height:80px;grid-template-rows:18px minmax(0,1fr)}
 .playlist-progress-rail input[type=range]{height:18px}
 @media(max-width:700px){body[data-view=playlists] #workspace{grid-template-rows:56px minmax(0,1fr) 112px}body[data-view=playlists] .playlist-player{height:112px}}
+
+/* One profile-control surface: the column headings and user rows share a grid. */
+body[data-view=settings] .settings-shell,
+.pch-embedded body[data-view=settings] .settings-shell{max-width:1120px}
+body[data-view=settings] .settings-user-header,
+body[data-view=settings] #managedUserList .settings-user-row{display:grid;grid-template-columns:minmax(220px,1fr) repeat(3,108px) 78px;align-items:center;gap:14px;padding:12px 20px}
+body[data-view=settings] .settings-user-header{min-height:44px;color:#60777c;font-size:14px;font-weight:600;border-bottom:1px solid #e7edef}
+body[data-view=settings] .settings-user-header span:not(:first-child){text-align:center}
+body[data-view=settings] #managedUserList .settings-user-row{min-height:72px}
+body[data-view=settings] #managedUserList .settings-person strong{font-size:15px;white-space:normal;overflow-wrap:anywhere}
+body[data-view=settings] .settings-control-cell{display:flex;align-items:center;justify-content:center;min-height:44px;cursor:pointer}
+body[data-view=settings] .settings-control-cell .toggle{margin:0}
+body[data-view=settings] .settings-mobile-label{display:none}
+body[data-view=settings] .settings-person .settings-user-status{font-size:13px;color:#a0592e}
+body[data-view=settings] .connection-summary>span:last-child{grid-column:auto;padding-top:11px;padding-bottom:11px;border-top:0;font-size:14px}
+body[data-view=settings] #managedUserList .profile-actions{width:78px;max-width:none;justify-content:flex-end}
+body[data-view=settings] #managedUserList .profile-actions button{min-height:44px}
+body[data-view=settings] .settings-user-row :focus-visible,
+body[data-view=settings] .settings-user-header :focus-visible{outline:2px solid #0b7673;outline-offset:3px}
+@media(max-width:760px){
+ body[data-view=settings] .settings-user-header{display:none}
+ body[data-view=settings] #managedUserList .settings-user-row{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px 12px;padding:16px}
+ body[data-view=settings] #managedUserList .settings-person{grid-column:1/-1}
+ body[data-view=settings] .settings-control-cell{flex-direction:column;gap:6px;align-items:flex-start}
+ body[data-view=settings] .settings-mobile-label{display:inline;font-size:13px;color:#60777c}
+ body[data-view=settings] #managedUserList .profile-actions{grid-column:1/-1;width:auto;justify-content:flex-end}
+}

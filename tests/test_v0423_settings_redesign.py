@@ -115,7 +115,7 @@ class SettingsRedesignV0423Tests(unittest.TestCase):
         self.assertNotIn("账户与成员", parser.headings)
         self.assertNotIn("当前账户", parser.headings)
         self.assertIn("Plex 连接", parser.headings)
-        self.assertIn("每日推荐用户", parser.headings)
+        self.assertIn("用户管理", parser.headings)
         self.assertNotIn("panel-description", parser.classes)
         self.assertNotIn("people-next-step", parser.classes)
 

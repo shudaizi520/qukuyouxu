@@ -22,7 +22,7 @@ def rules(selector):
 
 def test_embedded_settings_use_one_centered_column():
     shell = rules(".pch-embedded body[data-view=settings] .settings-shell")
-    assert shell["max-width"] == "780px"
+    assert shell["max-width"] == "1120px"
     assert shell["grid-template-columns"] == "minmax(0,1fr)"
     assert shell["margin"] == "0 auto"
 

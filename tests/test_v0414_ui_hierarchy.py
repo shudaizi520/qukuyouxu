@@ -24,16 +24,12 @@ class UIHierarchyV0414Tests(unittest.TestCase):
         settings = (STATIC / "settings.html").read_text(encoding="utf-8")
         return mixes, settings
 
-    def test_batch_daily_is_admin_work_not_a_smart_mix(self):
+    def test_batch_daily_is_removed_from_settings(self):
         mixes, settings = self.pages()
         self.assertNotIn('id="batchPreview"', mixes)
         self.assertNotIn('id="batchPublish"', mixes)
-        self.assertIn('id="batchPreview"', settings)
-        self.assertIn('id="batchPublish"', settings)
-        accounts_start = settings.index('id="settings-accounts"')
-        accounts_end = settings.index('id="settings-recommend"', accounts_start)
-        self.assertGreater(settings.index('id="batchPreview"'), accounts_start)
-        self.assertLess(settings.index('id="batchPreview"'), accounts_end)
+        self.assertNotIn('id="batchPreview"', settings)
+        self.assertNotIn('id="batchPublish"', settings)
 
     def test_settings_uses_closed_disclosures_for_infrequent_work(self):
         _mixes, settings = self.pages()

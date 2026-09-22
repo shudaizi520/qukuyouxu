@@ -32,11 +32,10 @@
    <section id="settings-accounts" class="settings-panel">
     <section id="currentUser" class="settings-section">
      <div class="settings-section-title"><h3>Plex 连接</h3><span id="plexState" class="connection-state">未检测</span><div class="settings-actions"><button class="primary compact-button" type="button" id="connectPlex">连接 Plex</button><button class="danger compact-button" type="button" id="disconnectPlex" hidden>断开 Plex</button></div></div>
-     <label id="profileSwitcher" class="settings-row account-selector-row"><span>Plex 用户</span><select id="plexProfile" aria-label="Plex 用户"></select></label>
      <div id="plexSavedSummary" class="connection-summary" hidden>
-      <span><b id="savedAccount">Plex 账户</b></span><span><b id="savedServer">Plex 服务器</b></span><span><b id="savedLibrary">尚未选择</b></span><span id="savedHealth">连接资料已保存</span>
+      <span><b id="savedAccount">Plex 账户</b></span><span><b id="savedServer">Plex 服务器</b></span><span><b id="savedLibrary">尚未选择</b></span>
      </div>
-     <div id="plexLibraryPanel" class="settings-row account-selector-row account-library-row" hidden><label for="officialSection">音乐资料库</label><select id="officialSection"></select><button class="primary" type="button" id="savePlexLibrary" hidden>保存</button></div>
+     <div id="plexLibraryPanel" class="settings-row account-selector-row account-library-row" hidden><label for="officialSection">首次连接的音乐库</label><select id="officialSection"></select><button class="primary" type="button" id="savePlexLibrary" hidden>保存</button></div>
      <details id="plexConnectionTools" class="connection-tools-inline" hidden><summary>连接选项<span id="plexConnectionLabel" hidden></span></summary><div class="settings-expander-body">
      <p id="plexLoginStatus" class="inline-status" aria-live="polite" hidden></p><button id="showManualFallback" class="secondary" type="button">手动连接 Plex</button>
      <div id="plexServerPanel" class="plex-server-panel" hidden><label for="plexServer">Plex 服务器</label><select id="plexServer"></select><button class="primary" type="button" id="usePlexServer">使用</button></div>
@@ -45,11 +44,10 @@
     </section>
 
     <section id="people" class="settings-section">
-     <div class="settings-section-title"><h3>每日推荐用户</h3><button class="primary compact-button" type="button" id="openAddUser">添加用户</button></div>
+     <div class="settings-section-title"><h3>用户管理</h3><button class="primary compact-button" type="button" id="openAddUser">添加用户</button></div>
+     <div class="settings-user-header" aria-hidden="true"><span>用户 · 音乐库</span><span>播放学习</span><span>每日推荐</span><span>智能歌单</span><span>操作</span></div>
      <div id="managedUserList" class="settings-user-list" aria-live="polite"></div>
      <div id="webhookTools" class="profile-webhook-tools"><div class="settings-section-title"><h3>Plex 播放事件</h3><span id="webhookMessage" aria-live="polite">正在检查</span></div><div class="webhook-setup-action"><code id="webhookUrl" aria-label="Plex Webhook 地址"></code><span class="webhook-action-buttons"><button id="copyWebhook" class="secondary" type="button">复制地址</button><a id="openPlexWebhooks" class="secondary button" href="https://app.plex.tv/desktop/#!/settings/webhooks" target="_blank" rel="noopener noreferrer">打开 Webhook</a></span></div><p id="webhookLast" class="settings-status-line"></p></div>
-     <div id="batchDailyTools" class="settings-row batch-daily-tools" hidden><strong>批量每日推荐</strong><div class="settings-actions"><button id="batchPreview" class="secondary" type="button">生成预览</button><button id="batchPublish" class="primary" type="button" disabled>发布</button></div></div>
-     <div id="batchResults" class="batch-results compact-results" hidden></div>
     </section>
    </section>
 
@@ -69,9 +67,9 @@
    <section id="settings-automation" class="settings-panel">
     <div class="settings-page-head"><h2>自动任务</h2></div>
     <section class="settings-section automation-list">
-     <div id="dailyAutomation" class="automation-row"><strong>每日推荐（全部账户）</strong><div class="automation-controls"><span>每天</span><select id="dailyAutomationHour" class="automation-hour" aria-label="每日推荐执行时间"></select><input id="dailyAutomationEnabled" class="toggle" type="checkbox" aria-label="启用全部账户的每日推荐计划"></div></div>
-     <div id="smartAutomation" class="automation-row"><strong>智能歌单</strong><div class="automation-controls"><select id="smartIntervalDays" aria-label="智能歌单更新周期"><option value="1">每 1 天</option><option value="3">每 3 天</option><option value="5">每 5 天</option><option value="7">每 7 天</option><option value="10">每 10 天</option><option value="14">每 14 天</option><option value="20">每 20 天</option></select><select id="smartAutomationHour" class="automation-hour" aria-label="智能歌单执行时间"></select><input id="smartAutomationEnabled" class="toggle" type="checkbox" aria-label="启用智能歌单"></div></div>
-     <div id="libraryAutomation" class="automation-row"><strong>新增歌曲整理</strong><div class="automation-controls"><span>每天</span><select id="libraryAutomationHour" class="automation-hour" aria-label="新增歌曲整理执行时间"></select><input id="libraryAutomationEnabled" class="toggle" type="checkbox" aria-label="启用新增歌曲整理"></div></div>
+     <div id="dailyAutomation" class="automation-row"><strong>每日推荐时间</strong><div class="automation-controls"><span>每天</span><select id="dailyAutomationHour" class="automation-hour" aria-label="每日推荐执行时间"></select></div></div>
+     <div id="smartAutomation" class="automation-row"><strong>智能歌单周期</strong><div class="automation-controls"><select id="smartIntervalDays" aria-label="智能歌单更新周期"><option value="1">每 1 天</option><option value="3">每 3 天</option><option value="5">每 5 天</option><option value="7">每 7 天</option><option value="10">每 10 天</option><option value="14">每 14 天</option><option value="20">每 20 天</option></select><select id="smartAutomationHour" class="automation-hour" aria-label="智能歌单执行时间"></select></div></div>
+     <div id="libraryAutomation" class="automation-row"><strong>主账户新增歌曲整理</strong><div class="automation-controls"><span>每天</span><select id="libraryAutomationHour" class="automation-hour" aria-label="新增歌曲整理执行时间"></select><input id="libraryAutomationEnabled" class="toggle" type="checkbox" aria-label="启用主账户新增歌曲整理"></div></div>
     </section>
    </section>
 

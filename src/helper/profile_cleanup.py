@@ -102,6 +102,9 @@ def begin_profile_removal(runtime, profile_id: str) -> dict:
         state = {"status": "pending", "items": owned_playlist_inventory(runtime, profile_id),
                  "completed": [], "error": "", "started_at": time.time(), "next_retry_at": 0}
         store.set(STATE_KEY, state)
+    else:
+        state = {**state, "status": "pending", "error": "", "next_retry_at": 0}
+        store.set(STATE_KEY, state)
     if profile.get("enabled") is not False:
         runtime.registry.archive(profile_id)
     runtime.wake.set()
@@ -114,7 +117,13 @@ def resume_profile_removal(runtime, profile_id: str) -> dict:
     state = dict(store.get(STATE_KEY) or begin_profile_removal(runtime, profile_id))
     if runtime.registry.get(profile_id).get("enabled") is not False:
         runtime.registry.archive(profile_id)
-    plex = engine.plex_factory(store.get("settings") or {})
+    try:
+        plex = engine.plex_factory(store.get("settings") or {})
+    except Exception as exc:
+        state.update(status="needs_attention", error=safe_error(exc),
+                     next_retry_at=time.time() + 60)
+        store.set(STATE_KEY, state)
+        return dict(state)
     completed = set(state.get("completed") or [])
     for item in state.get("items") or []:
         identifier = f"{item['kind']}:{item['key']}:{item['playlist_id']}"

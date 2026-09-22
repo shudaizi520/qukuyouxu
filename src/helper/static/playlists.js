@@ -246,7 +246,7 @@ async function loadPlaylists(preferred,requestId=profileRequest){
  openSection(preferred?.section||'smart');
 }
 async function loadProfiles(){
- const data=await json('/api/plex/profiles');profiles=Array.isArray(data.items)?data.items:[];
+ const data=await json('/api/plex/profiles');profiles=Array.isArray(data.items)?data.items.filter(row=>row.enabled):[];
  const selected=PCHAuth.profile()||String(data.active_profile_id||profiles[0]?.id||'');
  const select=$('playlistProfile');select.replaceChildren();
  for(const row of profiles){const option=document.createElement('option');option.value=row.id;option.textContent=profileLabel(row);select.append(option);}

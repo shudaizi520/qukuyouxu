@@ -52,7 +52,7 @@ class HttpAndUiV047Tests(unittest.TestCase):
         self.assertNotIn('name="year_max" type="number" min="1000" max="3000" value=', page)
         self.assertNotIn("/api/profiles/daily/batch-preview", script)
         settings_script = (static / "settings.js").read_text(encoding="utf-8")
-        self.assertIn("/api/profiles/daily/batch-preview", settings_script)
+        self.assertNotIn("/api/profiles/daily/batch-preview", settings_script)
         home = (static / "playlists.html").read_text(encoding="utf-8")
         sections = (static / "playlist-sections.js").read_text(encoding="utf-8")
         self.assertIn('id="smartHubButton"', home)
@@ -84,7 +84,7 @@ class HttpAndUiV047Tests(unittest.TestCase):
         self.assertIn('startWebhookPolling', script)
         self.assertIn("connected?'接收正常':lastReceived?'等待验证':'需要设置'", script)
         self.assertIn("verification_needed:'待验证'", status_script)
-        self.assertIn("profile-learning-toggle", script)
+        self.assertIn("settings-control-cell", script)
         self.assertNotIn("not_connected:'学习中'", script)
         self.assertIn("a.primary.link{color:#fff", styles)
 

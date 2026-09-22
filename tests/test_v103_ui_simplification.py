@@ -79,7 +79,7 @@ class UISimplificationV103Tests(unittest.TestCase):
         self.assertIn(current, page.by_id("connectPlex")["ancestors"])
         self.assertTrue(page.by_id("plexSavedSummary")["hidden"])
         self.assertTrue(page.by_id("plexConnectionTools")["hidden"])
-        self.assertIn(page.by_id("people"), page.by_id("batchDailyTools")["ancestors"])
+        self.assertIn(page.by_id("people"), page.by_id("managedUserList")["ancestors"])
 
     def test_learning_controls_live_with_profile_rows_without_repeated_explanation_rows(self):
         page = self.parse("settings.html")

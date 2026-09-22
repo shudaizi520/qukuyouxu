@@ -41,13 +41,12 @@ class ProfileLibraryUIV108Tests(unittest.TestCase):
         page.feed((ROOT / "src/helper/static" / name).read_text(encoding="utf-8"))
         return page
 
-    def test_current_account_owns_profile_and_library_selectors(self):
+    def test_connection_keeps_first_library_choice_without_duplicate_user_switcher(self):
         page = self.parse("settings.html")
         current = page.by_id("currentUser")
 
-        self.assertIn(current, page.by_id("plexProfile")["ancestors"])
+        self.assertFalse(any(node["id"] == "plexProfile" for node in page.nodes))
         self.assertIn(current, page.by_id("officialSection")["ancestors"])
-        self.assertIn("account-selector-row", page.by_id("profileSwitcher")["classes"])
         self.assertIn("account-selector-row", page.by_id("plexLibraryPanel")["classes"])
         self.assertTrue(page.by_id("savePlexLibrary")["hidden"])
 
@@ -63,10 +62,10 @@ class ProfileLibraryUIV108Tests(unittest.TestCase):
         self.assertNotIn("'/api/plex/profiles/restore'", script)
         self.assertIn("actions.className='settings-actions profile-actions'", script)
 
-    def test_daily_safety_pause_reason_is_visible_in_batch_results(self):
+    def test_daily_safety_pause_reason_is_visible_in_profile_row(self):
         script = (ROOT / "src/helper/static/settings.js").read_text(encoding="utf-8")
-        self.assertIn("row.suspension_reason?`安全暂停", script)
-        self.assertIn("'/api/profiles/daily/schedule'", script)
+        self.assertIn("row.daily_status?.status==='needs_attention'", script)
+        self.assertIn("badge.title=row.daily_status.reason", script)
 
     def test_add_user_dialog_has_separate_people_and_library_steps(self):
         page = self.parse("settings.html")
@@ -93,12 +92,12 @@ class ProfileLibraryUIV108Tests(unittest.TestCase):
         self.assertNotIn("library_id:String(owner.library?.id||'')", script)
         self.assertIn("PCHAuth.setProfile", script)
 
-    def test_opening_a_managed_user_stays_on_accounts_and_batch_state_is_restored(self):
+    def test_opening_a_managed_user_stays_on_accounts_without_batch_state(self):
         page = self.parse("settings.html")
         script = (ROOT / "src/helper/static/settings.js").read_text(encoding="utf-8")
 
         self.assertNotIn("showSettingsPanel('recommend')", script)
-        self.assertIn("/api/profiles/daily/batch-status", script)
+        self.assertNotIn("/api/profiles/daily/batch-status", script)
         self.assertNotIn("/api/profiles/daily/batch-schedule", script)
         self.assertNotIn('id="batchDailyAuto"', (ROOT / "src/helper/static/settings.html").read_text(encoding="utf-8"))
 
@@ -112,8 +111,8 @@ class ProfileLibraryUIV108Tests(unittest.TestCase):
         self.assertNotIn('id="behaviorUser"', html)
         self.assertNotIn('id="behaviorSave"', html)
         self.assertIn(page.by_id("people"), page.by_id("webhookTools")["ancestors"])
-        self.assertIn("profile-learning-toggle", script)
-        self.assertIn("/api/plex/profiles/learning", script)
+        self.assertIn("settings-control-cell", script)
+        self.assertIn("/api/plex/profiles/control", script)
 
 
 if __name__ == "__main__":

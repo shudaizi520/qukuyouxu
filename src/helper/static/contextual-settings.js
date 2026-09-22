@@ -4,7 +4,7 @@
  const smart=document.body.dataset.view==='mixes';
  const library=document.body.dataset.view==='library';
  if(!smart&&!library)return;
- let automation=null,dailyStatus=null,busy=false,pollTimer=0;
+ let automation=null,profileControls=null,dailyStatus=null,busy=false,pollTimer=0;
  async function api(path,method='GET',body){
   const response=await PCHAuth.request(path,method,body);
   const data=await response.json();
@@ -24,22 +24,28 @@
   if(!automation)return;
   if(smart){
    $('dailyAutomationHour').value=String(automation.daily.hour);
-   $('dailyAutomationEnabled').checked=!!automation.daily.enabled;
+   $('dailyAutomationEnabled').checked=profileControls?.daily!==false;
    $('smartAutomationHour').value=String(automation.smart.hour);
    $('smartIntervalDays').value=String(automation.smart.interval_days);
-   $('smartAutomationEnabled').checked=!!automation.smart.enabled;
+   $('smartAutomationEnabled').checked=profileControls?.smart!==false;
   }
   if(library){$('libraryAutomationHour').value=String(automation.library.hour);$('libraryAutomationEnabled').checked=!!automation.library.enabled;}
  }
  async function saveAutomation(){
   const next=await api('/api/automation');
   if(smart){
-   next.daily={enabled:$('dailyAutomationEnabled').checked,hour:Number($('dailyAutomationHour').value)};
-   next.smart={enabled:$('smartAutomationEnabled').checked,hour:Number($('smartAutomationHour').value),interval_days:Number($('smartIntervalDays').value)};
+   next.daily={...next.daily,hour:Number($('dailyAutomationHour').value)};
+   next.smart={...next.smart,hour:Number($('smartAutomationHour').value),interval_days:Number($('smartIntervalDays').value)};
   }
   if(library)next.library={enabled:$('libraryAutomationEnabled').checked,hour:Number($('libraryAutomationHour').value)};
-  try{automation=await api('/api/automation','POST',next);PCHUI.notify('自动更新设置已保存');}
+  try{automation=await api('/api/automation','POST',next);}
   finally{automation=await api('/api/automation');renderAutomation();}
+ }
+ async function saveControl(key,input){
+  const next=input.checked;input.disabled=true;
+  try{const result=await api('/api/plex/profiles/control','POST',{profile_id:PCHAuth.profile(),key,enabled:next});profileControls=result.controls;}
+  catch(error){input.checked=!next;PCHUI.notify(error.message||'保存失败',{error:true});}
+  finally{input.disabled=false;}
  }
  function renderDaily(){
   const status=dailyStatus||{},plan=status.daily_plan||{},managed=status.daily_managed||{};
@@ -94,6 +100,7 @@
    if(library&&await renderSharedLibrary())return;
    automation=await api('/api/automation');renderAutomation();
    if(smart){
+    const result=await api('/api/plex/profiles/controls?profile_id='+encodeURIComponent(PCHAuth.profile()));profileControls=result.controls;renderAutomation();
     const policy=await api('/api/daily/policy');
     $('dailySize').value=policy.size??30;$('rediscoveryDays').value=policy.rediscovery_days??90;
     $('artistCap').value=policy.artist_cap??2;$('favoritePercent').value=policy.favorite_percent??20;
@@ -118,7 +125,9 @@
    if(!await PCHUI.confirm('删除 Plex 歌单“'+title+'”？不会删除音乐文件。',{confirmText:'删除歌单'}))return;
    await api('/api/playlists/remove','POST',{kind:'daily',key:'daily',title,confirm:true});PCHUI.notify('每日推荐歌单已删除');await watchDaily();
   });
-  for(const id of ['dailyAutomationHour','dailyAutomationEnabled','smartAutomationHour','smartIntervalDays','smartAutomationEnabled'])$(id).onchange=()=>action(saveAutomation);
+  for(const id of ['dailyAutomationHour','smartAutomationHour','smartIntervalDays'])$(id).onchange=()=>action(saveAutomation);
+  $('dailyAutomationEnabled').onchange=()=>saveControl('daily',$('dailyAutomationEnabled'));
+  $('smartAutomationEnabled').onchange=()=>saveControl('smart',$('smartAutomationEnabled'));
  }else{
   hours('libraryAutomationHour');
   for(const id of ['libraryAutomationHour','libraryAutomationEnabled'])$(id).onchange=()=>action(saveAutomation);
