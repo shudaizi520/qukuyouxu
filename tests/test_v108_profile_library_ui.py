@@ -64,8 +64,8 @@ class ProfileLibraryUIV108Tests(unittest.TestCase):
 
     def test_daily_safety_pause_reason_is_visible_in_profile_row(self):
         script = (ROOT / "src/helper/static/settings.js").read_text(encoding="utf-8")
-        self.assertIn("row.daily_status?.status==='needs_attention'", script)
-        self.assertIn("badge.title=row.daily_status.reason", script)
+        self.assertIn("row.removal||row.preparation||row.daily_status", script)
+        self.assertIn("status.error||status.reason", script)
 
     def test_add_user_dialog_has_separate_people_and_library_steps(self):
         page = self.parse("settings.html")

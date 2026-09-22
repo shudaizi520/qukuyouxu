@@ -97,6 +97,30 @@ def test_removal_deletes_only_verified_profile_playlists(setup):
         runtime.registry.get("friend-music")
 
 
+def test_owner_cannot_be_removed_while_other_profiles_depend_on_its_category_copies(setup):
+    from helper.profile_cleanup import begin_profile_removal
+
+    runtime, plex = setup
+    runtime.registry.create(
+        name="主用户", kind="owner", profile_id="owner-music",
+        account={"id": "owner"}, server={"machine": "server-a", "url": "http://plex"},
+        library={"id": "11", "name": "音乐"}, token="owner-token",
+    )
+    add_managed(runtime, plex, "owner-music", "category", "work", "301")
+    add_managed(runtime, plex, "friend-music", "category", "work", "302")
+    child_store = runtime.engine("friend-music").store
+    child = dict(child_store.get("managed"))
+    child["work"]["shared_from"] = "owner-music"
+    child_store.set("managed", child)
+
+    with pytest.raises(ValueError, match="分类歌单"):
+        begin_profile_removal(runtime, "owner-music")
+
+    assert runtime.registry.get("owner-music")["enabled"] is True
+    assert runtime.engine("owner-music").store.get("profile_removal_v1") is None
+    assert plex.deleted == []
+
+
 def test_failure_and_restart_keep_profile_for_retry(setup):
     from helper.profile_cleanup import begin_profile_removal, resume_profile_removal
 
@@ -202,6 +226,22 @@ def test_connection_factory_failure_stays_retryable(setup):
     add_managed(runtime, plex, "friend-music", "daily", "daily", "101")
     begin_profile_removal(runtime, "friend-music")
     runtime.engine("friend-music").plex_factory = lambda _cfg: (_ for _ in ()).throw(ConnectionError("offline"))
+    result = resume_profile_removal(runtime, "friend-music")
+    assert result["status"] == "needs_attention"
+    assert runtime.registry.get("friend-music")["enabled"] is False
+
+
+@pytest.mark.parametrize("unresolved", [
+    ("favorite_smart_v2", {"status": "pending", "playlist_id": "", "section": "11"}),
+    ("favorite_smart_v2", {"status": "needs_review", "playlist_id": "", "section": "11", "message": "Plex 创建结果不确定"}),
+    ("snapshots", [{"kind": "daily", "status": "uncertain"}]),
+])
+def test_unresolved_remote_write_cannot_be_forgotten_during_removal(setup, unresolved):
+    from helper.profile_cleanup import begin_profile_removal, resume_profile_removal
+
+    runtime, _plex = setup
+    runtime.engine("friend-music").store.set(*unresolved)
+    begin_profile_removal(runtime, "friend-music")
     result = resume_profile_removal(runtime, "friend-music")
     assert result["status"] == "needs_attention"
     assert runtime.registry.get("friend-music")["enabled"] is False

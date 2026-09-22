@@ -50,14 +50,16 @@ class BehaviorMigrationV120Tests(unittest.TestCase):
         self.repo.save_track_state("friend", "2", {"positive_evidence": 2})
         self.repo.save_user_state("friend", {"valid_outcomes": 2})
 
-    def test_resetting_one_profile_does_not_delete_another_profile_behavior(self):
+    def test_new_library_profile_preserves_both_existing_profiles_behavior(self):
         self._seed()
 
-        self.registry.switch_unmanaged_library("default", {"id": "16", "name": "Classical"})
+        sibling = self.registry.create_for_library("default", {"id": "16", "name": "Classical"})
 
-        self.assertEqual([], self.repo.list_events("default", NOW))
-        self.assertEqual({}, self.repo.load_track_states("default"))
-        self.assertEqual({}, self.repo.load_user_state("default"))
+        self.assertEqual([], self.repo.list_events(sibling["id"], NOW))
+        self.assertEqual({}, self.repo.load_track_states(sibling["id"]))
+        self.assertEqual({}, self.repo.load_user_state(sibling["id"]))
+        self.assertEqual(["1"], [row["track_id"] for row in self.repo.list_events("default", NOW)])
+        self.assertIn("1", self.repo.load_track_states("default"))
         self.assertEqual(["2"], [row["track_id"] for row in self.repo.list_events("friend", NOW)])
         self.assertIn("2", self.repo.load_track_states("friend"))
         self.assertEqual(2, self.repo.load_user_state("friend")["valid_outcomes"])

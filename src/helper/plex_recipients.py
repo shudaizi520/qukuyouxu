@@ -356,7 +356,7 @@ class PlexRecipientService:
             return {"profile": refreshed, "mode": "switched"}
 
         scoped = ScopedStore(self.store, profile_id)
-        if connection_is_protected(scoped):
+        if str((profile.get("library") or {}).get("id") or "") or connection_is_protected(scoped):
             created = self.registry.create_for_library(profile_id, library)
             return {"profile": created, "mode": "created"}
         switched = self.registry.switch_unmanaged_library(profile_id, library)

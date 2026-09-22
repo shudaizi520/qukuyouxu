@@ -167,3 +167,103 @@ def test_import_route_queues_only_the_new_identity(tmp_path, monkeypatch):
     runtime.engine("new-user").store.set("profile_prepare_v1", {"status": "done", "completed": [], "errors": {}})
     asyncio.run(routes["/api/plex/recipients/shared/import"](request))
     assert runtime.engine("new-user").store.get("profile_prepare_v1")["status"] == "done"
+
+
+def test_failed_preparation_is_visible_and_can_be_retried_for_one_profile(tmp_path):
+    base, registry = _registry(tmp_path)
+    runtime = ProfileRuntime(base, registry, engine_factory=lambda store: _Engine(store, []))
+    app = FastAPI()
+    app.state.profile_runtime = runtime
+
+    async def body(request):
+        return request.state.data
+
+    attach_profile_routes(app, base, registry, body, lambda: None)
+    routes = {route.path: route.endpoint for route in app.routes if hasattr(route, "path")}
+    runtime.engine("new-user").store.set("profile_prepare_v1", {
+        "status": "needs_attention", "completed": ["daily"],
+        "errors": {"weekly": "Plex 暂时离线"}, "next_retry_at": 9999999999,
+    })
+
+    listed = asyncio.run(routes["/api/plex/profiles"]())
+    new_user = next(row for row in listed["items"] if row["id"] == "new-user")
+    assert new_user["preparation"]["status"] == "needs_attention"
+    assert new_user["preparation"]["errors"] == {"weekly": "Plex 暂时离线"}
+
+    request = Request({"type": "http", "method": "POST",
+                       "path": "/api/plex/profiles/prepare/retry", "headers": []})
+    request.state.data = {"profile_id": "new-user"}
+    result = asyncio.run(routes["/api/plex/profiles/prepare/retry"](request))
+    assert result["preparation"]["status"] == "pending"
+    assert result["preparation"]["next_retry_at"] == 0
+    assert result["preparation"]["completed"] == ["daily"]
+    assert runtime.wake.is_set()
+
+
+def test_creating_independent_owner_does_not_switch_active_profile(tmp_path):
+    base = Store(tmp_path)
+    registry = ProfileRegistry(base)
+    app = FastAPI()
+
+    async def body(request):
+        return request.state.data
+
+    attach_profile_routes(app, base, registry, body, lambda: None)
+    routes = {route.path: route.endpoint for route in app.routes if hasattr(route, "path")}
+    request = Request({"type": "http", "method": "POST",
+                       "path": "/api/plex/profiles/create", "headers": []})
+    request.state.data = {"name": "第二个 Plex 账户"}
+
+    result = asyncio.run(routes["/api/plex/profiles/create"](request))
+    assert result["profile"]["id"] != "default"
+    assert registry.active_id() == "default"
+
+
+def test_remove_waits_for_new_user_publication_gate(tmp_path):
+    import pytest
+
+    base, registry = _registry(tmp_path)
+    runtime = ProfileRuntime(base, registry, engine_factory=lambda store: _Engine(store, []))
+    app = FastAPI()
+    app.state.profile_runtime = runtime
+
+    async def body(request):
+        return request.state.data
+
+    attach_profile_routes(app, base, registry, body, lambda: None)
+    routes = {route.path: route.endpoint for route in app.routes if hasattr(route, "path")}
+    request = Request({"type": "http", "method": "POST",
+                       "path": "/api/plex/profiles/remove", "headers": []})
+    request.state.data = {"profile_id": "new-user", "confirm": True}
+
+    assert runtime.job_gate.acquire(blocking=False)
+    try:
+        with pytest.raises(ValueError, match="正在生成或更新"):
+            asyncio.run(routes["/api/plex/profiles/remove"](request))
+        assert registry.get("new-user")["enabled"] is True
+        assert runtime.engine("new-user").store.get("profile_removal_v1") is None
+    finally:
+        runtime.job_gate.release()
+
+    asyncio.run(routes["/api/plex/profiles/remove"](request))
+    assert registry.get("new-user")["enabled"] is False
+
+
+def test_onboarding_stops_if_profile_is_frozen_during_preview(tmp_path, monkeypatch):
+    import helper.smart_mix_web as smart
+
+    base, registry = _registry(tmp_path)
+    calls = []
+    runtime = ProfileRuntime(base, registry, engine_factory=lambda store: _Engine(store, calls))
+
+    def preview(engine, kind, _options):
+        if kind == "weekly":
+            registry.archive("new-user")
+        return {"id": kind + "-plan", "items": [{"id": "1"}], "blocked": []}
+
+    monkeypatch.setattr(smart, "preview_smart_mix", preview)
+    monkeypatch.setattr(smart, "publish_smart_mix", lambda *_args: calls.append(("new-user", "smart-publish")))
+    queue_new_profile(runtime, "new-user")
+    result = prepare_new_profile(runtime, "new-user")
+    assert result["status"] != "done"
+    assert ("new-user", "smart-publish") not in calls

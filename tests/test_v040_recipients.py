@@ -77,6 +77,24 @@ class PlexRecipientsV040Tests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
+    def test_selecting_second_library_preserves_first_profile_learning(self):
+        from helper.plex_recipients import PlexRecipientService
+        from helper.scoped_store import ScopedStore
+
+        first = ScopedStore(self.store, "default")
+        first.set("behavior_events", [{"track_id": "old-song"}])
+        service = PlexRecipientService(self.store, self.registry, session=_Session({}))
+        service._libraries = lambda *_: [{"id": "15", "name": "Music"},
+                                          {"id": "16", "name": "Classic"}]
+
+        result = service.select_profile_library("default", "16")
+
+        self.assertEqual("created", result["mode"])
+        self.assertNotEqual("default", result["profile"]["id"])
+        self.assertEqual("15", self.registry.get("default")["library"]["id"])
+        self.assertEqual([{"track_id": "old-song"}], first.get("behavior_events"))
+        self.assertEqual([], ScopedStore(self.store, result["profile"]["id"]).get("behavior_events"))
+
     def test_archived_recipient_cannot_be_readded_before_verified_cleanup(self):
         from helper.plex_recipients import PlexRecipientService
         from helper.scoped_store import ScopedStore

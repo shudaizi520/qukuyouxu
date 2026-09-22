@@ -223,6 +223,12 @@ def attach_profile_routes(app, base_store, registry: ProfileRegistry, body, ensu
             if suspension:
                 row["daily_status"] = {"status": "needs_attention",
                                        "reason": str(suspension.get("reason") or "请核对每日推荐")[:160]}
+            preparation = scoped.get("profile_prepare_v1") or {}
+            if preparation and preparation.get("status") != "done":
+                row["preparation"] = {
+                    "status": preparation.get("status"),
+                    "errors": dict(preparation.get("errors") or {}),
+                }
             removal = scoped.get("profile_removal_v1") or {}
             if removal:
                 row["removal"] = {"status": removal.get("status"),
@@ -250,6 +256,23 @@ def attach_profile_routes(app, base_store, registry: ProfileRegistry, body, ensu
     def get_profile_prepare(profile_id: str):
         store = enabled_store(profile_id)
         return {"profile_id": profile_id, "preparation": store.get("profile_prepare_v1")}
+
+    @app.post("/api/plex/profiles/prepare/retry")
+    async def retry_profile_prepare(request: Request):
+        data = await body(request)
+        profile_id = str(data.get("profile_id") or "").strip()
+        ensure_idle()
+        with operation():
+            store = enabled_store(profile_id)
+            preparation = dict(store.get("profile_prepare_v1") or {})
+            if not preparation or preparation.get("status") == "done":
+                raise ValueError("该用户没有待重试的新用户生成任务")
+            preparation.update(status="pending", next_retry_at=0)
+            store.set("profile_prepare_v1", preparation)
+        runtime = getattr(app.state, "profile_runtime", None)
+        if runtime is not None:
+            runtime.wake.set()
+        return {"profile_id": profile_id, "preparation": preparation}
 
     @app.post("/api/plex/profiles/control")
     async def set_profile_control(request: Request):
@@ -298,7 +321,6 @@ def attach_profile_routes(app, base_store, registry: ProfileRegistry, body, ensu
             profile = registry.create(
                 name=data.get("name"), kind="owner", profile_id=data.get("profile_id") or None
             )
-            registry.select(profile["id"])
         return {"profile": profile, "message": "Plex 档案已建立，请完成官方授权。"}
 
     @app.post("/api/plex/profiles/remove")
@@ -311,8 +333,13 @@ def attach_profile_routes(app, base_store, registry: ProfileRegistry, body, ensu
         runtime = getattr(app.state, "profile_runtime", None)
         if runtime is None:
             raise ValueError("用户清理服务暂不可用")
-        with operation():
-            removal = begin_profile_removal(runtime, data.get("profile_id"))
+        if not runtime.job_gate.acquire(blocking=False):
+            raise ValueError("该用户的歌单正在生成或更新，请稍后再移除")
+        try:
+            with operation():
+                removal = begin_profile_removal(runtime, data.get("profile_id"))
+        finally:
+            runtime.job_gate.release()
         return {"profile_id": data.get("profile_id"), "removal": removal,
                 "message": "已停止更新，正在核实并清理该用户下由程序创建的 Plex 歌单。"}
 

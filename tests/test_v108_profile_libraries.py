@@ -118,11 +118,12 @@ class ProfileLibrariesV108Tests(unittest.TestCase):
         self.assertEqual("11", self.registry.get("default")["library"]["id"])
         self.assertEqual("uncertain", scoped.get("snapshots")[0]["status"])
 
-    def test_unmanaged_library_selection_switches_existing_profile(self):
+    def test_bound_library_selection_creates_independent_profile(self):
         result = self.service.select_profile_library("shared-248098626", "15")
 
-        self.assertEqual("switched", result["mode"])
-        self.assertEqual("shared-248098626", result["profile"]["id"])
+        self.assertEqual("created", result["mode"])
+        self.assertNotEqual("shared-248098626", result["profile"]["id"])
+        self.assertEqual("11", self.registry.get("shared-248098626")["library"]["id"])
 
     def test_selecting_existing_sibling_refreshes_registry_and_runtime_token(self):
         from helper.scoped_store import ScopedStore

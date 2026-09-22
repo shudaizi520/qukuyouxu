@@ -53,7 +53,18 @@ def prepare_new_profile(runtime, profile_id):
         state["completed"] = list(state.get("completed") or [])
         state["errors"] = dict(state.get("errors") or {})
         store.set(STATE_KEY, state)
+
+        def stop_if_frozen():
+            if (runtime.registry.get(profile_id).get("enabled") is False
+                    or store.get("profile_removal_v1")):
+                state["status"] = "paused"
+                store.set(STATE_KEY, state)
+                return True
+            return False
+
         for kind in KINDS:
+            if stop_if_frozen():
+                return state
             if kind in state["completed"]:
                 continue
             try:
@@ -62,6 +73,8 @@ def prepare_new_profile(runtime, profile_id):
                 else:
                     plan = (engine.preview_daily() if kind == "daily" else
                             preview_smart_mix(engine, kind, SMART_DEFAULTS[kind]))
+                    if stop_if_frozen():
+                        return state
                     if not plan.get("items"):
                         state["errors"][kind] = "waiting_for_data"
                         continue
@@ -79,6 +92,8 @@ def prepare_new_profile(runtime, profile_id):
             finally:
                 store.set(STATE_KEY, state)
         # A verified owner may already have category copies to push. No scan runs here.
+        if stop_if_frozen():
+            return state
         try:
             from .library_sharing import owner_for_recipient, sync_recipient
             owner_id = owner_for_recipient(runtime, profile_id)

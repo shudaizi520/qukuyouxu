@@ -36,6 +36,17 @@ def test_new_libraries_start_with_independent_enabled_controls(tmp_path):
     assert read_controls(classic) == {"learning": True, "daily": False, "smart": True}
 
 
+def test_new_library_does_not_inherit_another_library_disabled_switch(tmp_path):
+    base = Store(tmp_path)
+    registry = ProfileRegistry(base)
+    _profile(registry, "music", "11")
+    write_control(ScopedStore(base, "music", registry=registry), "daily", False)
+    created = registry.create_for_library("music", {"id": "12", "name": "经典音乐"})
+    assert read_controls(ScopedStore(base, created["id"], registry=registry)) == {
+        "learning": True, "daily": True, "smart": True,
+    }
+
+
 def test_legacy_switches_migrate_effective_state_only_once(tmp_path):
     base = Store(tmp_path)
     registry = ProfileRegistry(base)

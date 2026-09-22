@@ -87,7 +87,7 @@ class ProfileUIV040Tests(unittest.TestCase):
 
         self.assertIn("row.existing_profile_id", script)
         self.assertIn("remove.textContent=row.removal?", script)
-        self.assertIn("button.textContent='添加'", script)
+        self.assertIn("button.textContent=row.archived_profile_id?'待清理':'添加'", script)
         self.assertIn("/api/plex/profiles/remove", script)
         self.assertNotIn("/api/plex/profiles/restore", script)
         self.assertIn("responseJson('/api/plex/recipients')", script)

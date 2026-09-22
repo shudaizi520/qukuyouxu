@@ -149,7 +149,10 @@ def _library_reset_state(profile, source=None):
     """Build clean library state while retaining only portable preferences."""
     clean = _initial_state(profile)
     if source is not None:
-        clean["daily_settings"] = dict(source.get("daily_settings", {}) or clean["daily_settings"])
+        clean["daily_settings"] = {
+            **dict(source.get("daily_settings", {}) or clean["daily_settings"]),
+            "enabled": True,
+        }
         clean["base_settings"] = dict(source.get("base_settings", {}) or clean["base_settings"])
         previous = dict(source.get("settings", {}) or {})
         for key in ("interval_minutes", "source_hours", "min_tracks"):
@@ -374,6 +377,9 @@ class ProfileRegistry:
         scoped = ScopedStore(self.store, profile_id)
         from .profile_web import connection_is_protected
 
+        current = self.get(profile_id)
+        if (current.get("library") or {}).get("id"):
+            raise ValueError("该用户已有独立曲库档案，请为新曲库另建档案")
         if connection_is_protected(scoped):
             raise ValueError("该档案已有托管歌单，不能直接切换音乐资料库")
         library = {

@@ -92,10 +92,27 @@ def forget_owned_record(runtime, profile_id: str, item: dict) -> None:
         ExternalRepository(store).save_managed(profile_id, key, None)
 
 
+def _dependent_category_copies(runtime, profile_id: str) -> bool:
+    """Keep another profile's live category copy anchored to its owner."""
+    profile = runtime.registry.get(profile_id)
+    if profile.get("kind") != "owner":
+        return False
+    for recipient in runtime.registry.list_public():
+        if recipient["id"] == profile_id:
+            continue
+        managed = runtime.engine(recipient["id"]).store.get("managed", {}) or {}
+        if any(isinstance(record, dict) and record.get("shared_from") == profile_id
+               for record in managed.values()):
+            return True
+    return False
+
+
 def begin_profile_removal(runtime, profile_id: str) -> dict:
     if profile_id == "default":
         raise ValueError("默认 Plex 档案不能移除")
     profile = runtime.registry.get(profile_id)
+    if _dependent_category_copies(runtime, profile_id):
+        raise ValueError("其他用户仍有此主账户同步的分类歌单；请先删除主账户的分类歌单并等待同步完成")
     store = runtime.engine(profile_id).store
     state = store.get(STATE_KEY)
     if not isinstance(state, dict):
@@ -111,12 +128,33 @@ def begin_profile_removal(runtime, profile_id: str) -> dict:
     return dict(state)
 
 
+def _unresolved_write(store) -> str:
+    favorite = store.get("favorite_smart_v2") or {}
+    if favorite.get("status") in ("pending", "needs_review"):
+        return str(favorite.get("message") or "我喜欢歌单创建结果待核对")
+    for snapshot in store.get("snapshots", []) or []:
+        if isinstance(snapshot, dict) and snapshot.get("status") in ("prepared", "uncertain", "restoring"):
+            return "有 Plex 歌单写入结果待核对"
+    return ""
+
+
 def resume_profile_removal(runtime, profile_id: str) -> dict:
     engine = runtime.engine(profile_id)
     store = engine.store
     state = dict(store.get(STATE_KEY) or begin_profile_removal(runtime, profile_id))
+    if _dependent_category_copies(runtime, profile_id):
+        state.update(status="needs_attention", error="其他用户仍有此主账户同步的分类歌单，请先完成分类同步",
+                     next_retry_at=time.time() + 60)
+        store.set(STATE_KEY, state)
+        return dict(state)
     if runtime.registry.get(profile_id).get("enabled") is not False:
         runtime.registry.archive(profile_id)
+    unresolved = _unresolved_write(store)
+    if unresolved:
+        state.update(status="needs_attention", error=unresolved,
+                     next_retry_at=time.time() + 60)
+        store.set(STATE_KEY, state)
+        return dict(state)
     try:
         plex = engine.plex_factory(store.get("settings") or {})
     except Exception as exc:

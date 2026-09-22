@@ -68,6 +68,7 @@ class ProfileIdentityV108Tests(unittest.TestCase):
         self.assertEqual(2, len(self.registry.list_public()))
 
     def test_unmanaged_switch_is_atomic_and_clears_only_library_derived_state(self):
+        self.registry.update("default", library={})
         self.source.set_many({
             "catalog": [{"id": "song-1"}],
             "daily_history": [{"plan_id": "old"}],
@@ -83,6 +84,7 @@ class ProfileIdentityV108Tests(unittest.TestCase):
         self.assertEqual([], self.source.get("daily_history"))
 
     def test_unmanaged_switch_removes_unlisted_library_state_and_prefix_caches(self):
+        self.registry.update("default", library={})
         self.source.set_many({
             "single_result:old-scope:1": {"id": "1", "status": "matched"},
             "name_plan": {"id": "old-name-plan"},
@@ -100,12 +102,19 @@ class ProfileIdentityV108Tests(unittest.TestCase):
             self.assertIsNone(self.source.get(key))
 
     def test_protected_profile_cannot_switch_in_place(self):
+        self.registry.update("default", library={})
         self.source.set("daily_managed", {"id": "playlist-1"})
 
         with self.assertRaisesRegex(ValueError, "已有托管歌单"):
             self.registry.switch_unmanaged_library(
                 "default", {"id": "15", "name": "经典音乐"}
             )
+
+    def test_bound_profile_cannot_switch_in_place_even_without_managed_playlists(self):
+        self.source.set("behavior_events", [{"track_id": "old-song"}])
+        with self.assertRaisesRegex(ValueError, "另建档案"):
+            self.registry.switch_unmanaged_library("default", {"id": "15", "name": "经典音乐"})
+        self.assertEqual([{"track_id": "old-song"}], self.source.get("behavior_events"))
 
 
 if __name__ == "__main__":
