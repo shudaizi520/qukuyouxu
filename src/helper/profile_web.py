@@ -194,6 +194,16 @@ def attach_profile_routes(app, base_store, registry: ProfileRegistry, body, ensu
     from .profile_runtime import ProfileRuntime
     recipients = PlexRecipientService(base_store, registry)
 
+    def queue_if_created(before_ids, profile):
+        if profile["id"] in before_ids:
+            return
+        from .profile_onboarding import queue_new_profile
+        runtime = getattr(getattr(app, "state", None), "profile_runtime", None)
+        if runtime is None:
+            runtime = ProfileRuntime(base_store, registry)
+        queue_new_profile(runtime, profile["id"])
+        runtime.wake.set()
+
     def ensure_controls_migrated():
         # Do this before the first control read/write, not while registering routes.
         runtime = getattr(getattr(app, "state", None), "profile_runtime", None)
@@ -224,6 +234,11 @@ def attach_profile_routes(app, base_store, registry: ProfileRegistry, body, ensu
     @app.get("/api/plex/profiles/controls")
     def get_profile_controls(profile_id: str):
         return {"profile_id": profile_id, "controls": read_controls(enabled_store(profile_id))}
+
+    @app.get("/api/plex/profiles/prepare")
+    def get_profile_prepare(profile_id: str):
+        store = enabled_store(profile_id)
+        return {"profile_id": profile_id, "preparation": store.get("profile_prepare_v1")}
 
     @app.post("/api/plex/profiles/control")
     async def set_profile_control(request: Request):
@@ -320,19 +335,24 @@ def attach_profile_routes(app, base_store, registry: ProfileRegistry, body, ensu
     async def select_profile_library(request: Request):
         data = await body(request)
         ensure_idle()
+        before_ids = {row["id"] for row in registry.list_public()}
         with operation():
-            return recipients.select_profile_library(
+            result = recipients.select_profile_library(
                 data.get("profile_id"), data.get("library_id")
             )
+        queue_if_created(before_ids, result["profile"])
+        return result
 
     @app.post("/api/plex/recipients/home/import")
     async def import_home_recipient(request: Request):
         data = await body(request)
         ensure_idle()
+        before_ids = {row["id"] for row in registry.list_public()}
         with operation():
             profile = recipients.import_home_user(
                 data.get("owner_profile_id", "default"), data.get("user_id"), data.get("library_id")
             )
+        queue_if_created(before_ids, profile)
         return {"profile": profile, "message": "Plex Home 用户已建立独立推荐档案。"}
 
     @app.get("/api/plex/recipients/shared")
@@ -343,8 +363,10 @@ def attach_profile_routes(app, base_store, registry: ProfileRegistry, body, ensu
     async def import_shared_recipient(request: Request):
         data = await body(request)
         ensure_idle()
+        before_ids = {row["id"] for row in registry.list_public()}
         with operation():
             profile = recipients.import_shared_user(
                 data.get("owner_profile_id", "default"), data.get("user_id"), data.get("library_id")
             )
+        queue_if_created(before_ids, profile)
         return {"profile": profile, "message": "共享用户已建立独立推荐档案。"}

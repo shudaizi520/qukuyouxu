@@ -41,6 +41,7 @@ class ProfileRuntime:
         self.operation_gate = threading.Lock()
         self.job_gate = threading.Lock()
         self.stop = threading.Event()
+        self.wake = threading.Event()
 
     def engine(self, profile_id):
         self.registry.get(profile_id)
@@ -100,6 +101,12 @@ class ProfileRuntime:
         now = time.time() if now is None else float(now)
         if self.job_gate.locked():
             return []
+        from .profile_onboarding import prepare_new_profile, STATE_KEY as PREPARE_KEY
+        for profile in self.registry.list_public(enabled_only=True):
+            state = ScopedStore(self.base_store, profile["id"], registry=self.registry).get(PREPARE_KEY)
+            if (isinstance(state, dict) and state.get("status") != "done"
+                    and float(state.get("next_retry_at") or 0) <= now):
+                prepare_new_profile(self, profile["id"])
         settings = automation_settings(self.base_store, self.registry, self, now=now)
         results = []
         profiles = [row for row in self.registry.list_public() if row.get("enabled") is not False]
@@ -294,11 +301,16 @@ class ProfileRuntime:
         return {"kinds": failed, "next_at": min(times)} if times else None
 
     def scheduler(self):
-        while not self.stop.wait(60):
+        while not self.stop.is_set():
+            self.wake.wait(60)
+            self.wake.clear()
+            if self.stop.is_set():
+                break
             self.run_due()
 
     def close(self):
         self.stop.set()
+        self.wake.set()
         with self._lock:
             for engine in self._engines.values():
                 engine.stop.set()
