@@ -1036,3 +1036,31 @@ html[data-appearance=night] body[data-view=mixes] .custom-mix>summary small,
 html[data-appearance=night] .daily-main-card .daily-message{color:var(--theme-muted)}
 html[data-appearance=night] body[data-view=daily] #dailyJobFeedback.is-error,
 html[data-appearance=night] body[data-view=daily] #dailyFeedback .pch-inline-feedback.is-error{color:var(--theme-danger)}
+
+/* One consistent top-right menu replaces separate navigation and theme controls. */
+.topbar nav[hidden]{display:none!important}
+.topbar-menu-picker{margin-left:auto}
+.topbar-menu-picker .appearance-trigger{width:auto;min-width:78px;height:38px;min-height:38px;display:flex;align-items:center;justify-content:center;gap:7px;padding:0 11px;font-size:13px;font-weight:700}
+.topbar-menu-picker .appearance-trigger svg{width:16px;height:16px}
+.topbar-menu-picker .appearance-menu{width:210px;gap:2px;padding:8px}
+.topbar-menu-picker .topbar-menu-action{display:flex;align-items:center;width:100%;min-height:38px;margin:0;padding:7px 10px;border:0;border-radius:7px;background:transparent;color:var(--theme-text);text-align:left;text-decoration:none;font-size:13px;font-weight:600;cursor:pointer}
+.topbar-menu-picker .topbar-menu-action:hover,.topbar-menu-picker .topbar-menu-action:focus-visible{background:var(--theme-soft);color:var(--theme-accent)}
+.topbar-menu-picker .topbar-menu-action.active{background:var(--theme-soft);color:var(--theme-accent)}
+.topbar-menu-picker .appearance-menu-heading{margin:6px 2px 3px;padding:8px 8px 2px;border-top:1px solid var(--theme-line);color:var(--theme-muted);font-size:11px;font-weight:700}
+.topbar-menu-picker .logout{margin-top:5px;border-top:1px solid var(--theme-line);border-radius:0;color:var(--theme-danger)}
+.topbar-menu-picker .logout[hidden]{display:none}
+body[data-view=playlists] .topbar .topbar-menu-picker .topbar-menu-action{color:var(--theme-text)}
+body[data-view=playlists] .topbar .topbar-menu-picker .logout{color:var(--theme-danger)}
+body[data-view=playlists] .topbar .topbar-menu-picker .topbar-menu-action.active{color:var(--theme-accent)}
+body[data-view=playlists] .topbar .topbar-menu-picker .logout:hover:not(:disabled),body[data-view=playlists] .topbar .topbar-menu-picker .logout:focus-visible{background:var(--theme-danger-soft);color:var(--theme-danger)}
+@media(pointer:coarse){.topbar-menu-picker .topbar-menu-action,.topbar-menu-picker .appearance-option{min-height:44px}}
+
+/* Import controls and results share a continuous, full-width alignment. */
+body[data-view=external] .external-import-card{width:100%;max-width:none;margin:0 0 14px;padding:16px 18px;border:1px solid var(--theme-line);border-radius:14px;background:var(--theme-surface);box-shadow:none}
+body[data-view=external] .external-workspace{width:100%;max-width:none;margin:0;padding:0 18px 18px;border:1px solid var(--theme-line);border-radius:14px;background:var(--theme-surface)}
+body[data-view=external] .external-command-bar{width:100%;max-width:none;margin:0;border-color:var(--theme-line)}
+body[data-view=external] .external-command-bar:last-of-type{border-bottom-color:var(--theme-line)}
+@media(max-width:560px){body[data-view=external] .external-import-card{padding:14px 12px}body[data-view=external] .external-workspace{padding:0 12px 14px}}
+
+/* The speaker path needs a one-pixel optical adjustment inside its centered button. */
+.playlist-volume-control #playerMute .player-icon{transform:translateY(1px)}

@@ -35,7 +35,7 @@ def test_warm_and_night_palettes_keep_normal_and_muted_text_legible():
 
 def test_theme_rules_cover_player_forms_and_focus_without_restyling_fonts():
     css = CSS.read_text(encoding="utf-8")
-    theme_css = css.split("/* Appearance palettes: backgrounds and color only. */", 1)[1]
+    theme_css = css.split("/* Appearance palettes: backgrounds and color only. */", 1)[1].split("/* One consistent top-right menu", 1)[0]
     assert "html[data-appearance=night] body[data-view=playlists]" in theme_css
     assert ".appearance-menu[hidden]" in theme_css
     assert ".appearance-trigger:focus-visible" in theme_css

@@ -27,11 +27,13 @@ def test_embedded_settings_use_one_centered_column():
     assert shell["margin"] == "0 auto"
 
 
-def test_import_commands_stay_inset_from_both_sides():
+def test_import_commands_share_the_results_outer_edge():
     commands = rules("body[data-view=external] .external-command-bar")
-    assert commands["max-width"] == "920px"
-    assert commands["margin"] == "0 auto"
+    assert commands["max-width"] == "none"
+    assert commands["margin"] == "0"
     assert commands["width"] == "100%"
+    assert rules("body[data-view=external] .external-import-card")["max-width"] == "none"
+    assert rules("body[data-view=external] .external-workspace")["border-radius"] == "14px"
 
 
 def test_download_choices_share_the_same_alignment_and_hit_area():

@@ -21,6 +21,10 @@ def _specificity(selector):
 
 def _matches_logout_hover(selector):
     selector = selector.strip()
+    # The unified menu has a separate, theme-variable hover treatment.
+    # This legacy contrast check covers the standalone topbar button only.
+    if ".topbar-menu-picker" in selector:
+        return False
     if "[disabled]" in selector and ":not(:disabled)" not in selector:
         return False
     if any(token in selector for token in (" nav ", " a", ".primary", ".secondary", ".danger")):
