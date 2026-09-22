@@ -56,3 +56,78 @@ def test_night_palette_covers_header_navigation_and_secondary_surfaces():
     overview_rule = theme_css.split("html[data-appearance=night] body[data-view=library] .library-overview,", 1)[1].split("}", 1)[0]
     assert "background:var(--theme-soft)" in overview_rule
     assert "color:var(--theme-text)" in overview_rule
+
+
+def test_night_theme_keeps_native_dropdown_options_readable():
+    css = CSS.read_text(encoding="utf-8")
+    theme_css = css.split("/* Appearance palettes: backgrounds and color only. */", 1)[1]
+    assert "html[data-appearance=night] :is(select option,select optgroup)" in theme_css
+    assert "background:var(--theme-surface);color:var(--theme-text)" in theme_css
+    assert "html[data-appearance=night] select option:disabled" in theme_css
+
+
+def test_night_theme_covers_light_only_status_and_choice_surfaces():
+    css = CSS.read_text(encoding="utf-8")
+    theme_css = css.split("/* Appearance palettes: backgrounds and color only. */", 1)[1]
+    for selector in (
+        ".theme-choice-grid label", ".theme-choice-grid label:has(input:checked)",
+        ".flow-step", ".flow-step.active", ".flow-step.done",
+        ".mix-state", ".status-chip", ".daily-meta-target",
+    ):
+        assert selector in theme_css
+
+
+def test_night_theme_keeps_warning_and_import_status_text_legible():
+    css = CSS.read_text(encoding="utf-8")
+    theme_css = css.split("/* Appearance palettes: backgrounds and color only. */", 1)[1]
+    for selector in (
+        ".source-warning", ".theme-missing", ".warning-block dt",
+        ".step-head p", ".mini-stats span", ".mix-warning",
+        ".bucket.warn", ".daily-main-card #publishHint:not([hidden])",
+        ".external-command-bar .danger-text", "#missingSummary",
+    ):
+        assert selector in theme_css
+
+
+def test_night_theme_keeps_settings_badges_readable():
+    css = CSS.read_text(encoding="utf-8")
+    theme_css = css.split("/* Appearance palettes: backgrounds and color only. */", 1)[1]
+    for selector in (
+        ".settings-avatar", ".mix-icon", ".webhook-guide li span",
+        ".settings-save.is-saved", ".batch-auto-partial",
+    ):
+        assert selector in theme_css
+    assert "html[data-appearance=night] :is(.settings-avatar,.mix-icon,.webhook-guide li span){color:var(--theme-accent)}" in theme_css
+
+
+def test_night_theme_covers_account_errors_import_count_and_explanations():
+    css = CSS.read_text(encoding="utf-8")
+    theme_css = css.split("/* Appearance palettes: backgrounds and color only. */", 1)[1]
+    for selector in (
+        "body[data-view=settings] .settings-person .settings-user-status",
+        "body[data-view=settings] .settings-user-status p",
+        "body[data-view=external] #reviewSelectedCount",
+        "body[data-view=mixes] .custom-mix>summary small",
+        ".daily-main-card .daily-message",
+    ):
+        assert selector in theme_css
+    assert _contrast(_palette(css, "night")["--theme-warning"], _palette(css, "night")["--theme-surface"]) >= 4.5
+
+
+def test_mobile_sidebar_artwork_and_grid_are_reduced_together():
+    css = CSS.read_text(encoding="utf-8")
+    mobile_css = css.rsplit("@media(max-width:700px){#customPlaylistList button", 1)[1]
+    assert "grid-template-columns:30px minmax(0,1fr)" in mobile_css
+    assert ".playlist-cover-sidebar{width:28px;height:28px}" in mobile_css
+
+
+def test_night_daily_failure_feedback_uses_readable_error_color():
+    css = CSS.read_text(encoding="utf-8")
+    theme_css = css.split("/* Appearance palettes: backgrounds and color only. */", 1)[1]
+    for selector in (
+        "body[data-view=daily] #dailyJobFeedback.is-error",
+        "body[data-view=daily] #dailyFeedback .pch-inline-feedback.is-error",
+    ):
+        assert selector in theme_css
+    palette = _palette(css, "night")
+    assert _contrast(palette["--theme-danger"], palette["--theme-surface"]) >= 4.5

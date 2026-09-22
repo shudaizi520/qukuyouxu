@@ -19,11 +19,14 @@ def css_rules(selector):
     return result
 
 
-def test_sidebar_playlists_do_not_stack_decorative_music_icons_above_titles():
+def test_sidebar_playlists_place_artwork_beside_titles_without_extra_music_icons():
     sections = (STATIC / "playlist-sections.js").read_text()
     render_custom = sections.split("function renderCustom(){", 1)[1].split("function renderSection", 1)[0]
     assert "playlist-side-icon" not in render_custom
-    assert css_rules("#customPlaylistList button")["grid-template-columns"] == "minmax(0,1fr)"
+    assert "button.append(createArtwork(item,'sidebar'),text)" in render_custom
+    css = (STATIC / "product.css").read_text()
+    assert "#customPlaylistList button{grid-template-columns:40px minmax(0,1fr)}" in css
+    assert "@media(max-width:700px){#customPlaylistList button{grid-template-columns:30px minmax(0,1fr)}" in css
 
 
 def test_heart_click_uses_optimistic_toggle_without_generic_busy_spinner():

@@ -223,7 +223,7 @@ body[data-view=playlists] .topbar nav button:hover,body[data-view=playlists] .to
 .playlist-side-list{display:grid;gap:2px}.playlist-side-list button{display:grid;grid-template-columns:32px minmax(0,1fr);align-items:center;gap:9px;width:100%;min-height:42px;border:0;border-radius:8px;padding:5px 8px;background:transparent;color:var(--playlist-text);text-align:left;cursor:pointer}
 .playlist-side-list button:hover{background:color-mix(in srgb,var(--playlist-surface-soft) 65%,transparent)}.playlist-side-list button.active{background:var(--playlist-surface-soft);color:var(--playlist-accent)}.playlist-side-list button.unavailable:not(.active){color:var(--playlist-danger)}
 .playlist-side-list button.pch-pending::before{content:none}
-#customPlaylistList button{grid-template-columns:minmax(0,1fr)}
+#customPlaylistList button{grid-template-columns:40px minmax(0,1fr)}
 .playlist-side-list button>span:not(.playlist-side-icon){display:grid;min-width:0}.playlist-side-list strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}.playlist-side-list small{font-size:11px;color:var(--playlist-muted)}
 .playlist-side-icon{width:30px;height:30px;display:grid;place-items:center;border-radius:8px;background:var(--playlist-surface-soft);color:var(--playlist-accent);font-size:12px;font-weight:800}.playlist-side-empty{display:block;padding:14px 8px;color:var(--playlist-muted);font-size:13px}
 .playlist-main{min-width:0;min-height:0;position:relative;display:grid;overflow:hidden;background:color-mix(in srgb,var(--playlist-surface) 78%,transparent)}
@@ -578,7 +578,7 @@ button.playlist-section-card:hover:not(:disabled){background:var(--playlist-surf
 .playlist-track-identity strong{min-width:0}
 .playlist-track-identity .playlist-heart{flex:none;width:25px;height:29px;font-size:19px}
 .playlist-search-identity{display:grid;min-width:0}.playlist-search-title-line{display:flex!important;align-items:center;gap:6px;min-width:0}.playlist-search-title-line strong{min-width:0}.playlist-search-title-line .playlist-heart{flex:none;width:25px;height:29px;font-size:19px}
-#customPlaylistList button.has-unseen{grid-template-columns:minmax(0,1fr) auto}
+#customPlaylistList button.has-unseen{grid-template-columns:40px minmax(0,1fr) auto}
 .playlist-favorite-dot{width:7px;height:7px;border-radius:50%;background:#ec5c5a;box-shadow:0 0 0 2px var(--playlist-surface)}
 .playlist-now-info{display:grid;grid-template-columns:minmax(0,1fr) 25px;align-items:center;gap:1px 3px;min-width:0}
 .playlist-now-info strong,.playlist-now-info>span{grid-column:1}
@@ -745,7 +745,7 @@ body[data-view=external] .external-command-actions .external-more{flex:none}
 .playlist-section-head h1{margin:0;font-size:27px}
 .playlist-section-head>button{margin:0}
 .playlist-section-cards{gap:10px;padding:8px 30px 30px}
-.playlist-section-card{min-height:76px;display:block;padding:14px 18px;border-radius:10px}
+.playlist-section-card{min-height:104px;display:grid;grid-template-columns:72px minmax(0,1fr);align-items:center;gap:14px;padding:14px 16px;border-radius:10px}
 .playlist-section-card-body{gap:3px}
 .playlist-section-card-body strong{font-size:15px}
 body[data-view=settings] .settings-nav{padding-top:8px}
@@ -853,7 +853,7 @@ body[data-view=settings] #managedUserList .profile-actions{grid-column:1/-1;widt
 .playlist-cover.is-2{grid-template-columns:repeat(2,1fr);grid-template-rows:1fr}
 .playlist-cover.is-3 img:last-child{grid-column:1/-1}
 .playlist-cover.is-placeholder{display:grid;grid-template-columns:1fr;grid-template-rows:1fr;place-items:center;background:linear-gradient(145deg,color-mix(in srgb,var(--playlist-accent) 14%,var(--playlist-surface)),var(--playlist-surface-soft));border:1px solid var(--playlist-line);font-size:20px;font-weight:600}
-.playlist-cover-sidebar{width:30px;height:30px;border-radius:6px}
+.playlist-cover-sidebar{width:38px;height:38px;border-radius:7px}
 .playlist-cover-sidebar.is-placeholder{font-size:15px}
 .playlist-cover-card{width:72px;height:72px;border-radius:11px}
 .playlist-cover-card.is-placeholder{font-size:27px}
@@ -862,6 +862,8 @@ body[data-view=settings] #managedUserList .profile-actions{grid-column:1/-1;widt
 .playlist-cover-hero{width:62px;height:62px;border-radius:11px}
 .playlist-cover-hero.is-placeholder{font-size:25px}
 @media(max-width:700px){.playlist-cover-hero{width:48px;height:48px}.playlist-hero-intro{gap:10px}}
+@media(max-width:700px){.playlist-section-card{grid-template-columns:58px minmax(0,1fr);min-height:88px;gap:11px;padding:11px 13px}.playlist-cover-card{width:58px;height:58px}}
+@media(max-width:700px){#customPlaylistList button{grid-template-columns:30px minmax(0,1fr)}#customPlaylistList button.has-unseen{grid-template-columns:30px minmax(0,1fr) auto}.playlist-cover-sidebar{width:28px;height:28px}}
 
 /* Appearance palettes: backgrounds and color only. */
 html{
@@ -883,6 +885,7 @@ html[data-appearance=night]{
  --theme-text:#eef4f5;--theme-muted:#b7c9ce;--theme-line:#334651;
  --theme-accent:#72c9c4;--theme-accent-strong:#8adbd4;--theme-on-accent:#09272a;
  --theme-danger:#f3a999;--theme-danger-soft:#3c2930;
+ --theme-warning:#eec98d;
  --ink:var(--theme-text);--muted:var(--theme-muted);--brand:var(--theme-accent);--line:var(--theme-line);
  color-scheme:dark;
 }
@@ -1004,3 +1007,32 @@ html[data-appearance=warm] body[data-view=library] .library-overview,
 html[data-appearance=night] body[data-view=library] .library-overview,
 html[data-appearance=warm] body[data-view=mixes] .mix-automation-row,
 html[data-appearance=night] body[data-view=mixes] .mix-automation-row{background:var(--theme-soft);color:var(--theme-text);border-color:var(--theme-line)}
+html[data-appearance=night] select{color-scheme:dark}
+html[data-appearance=night] :is(select option,select optgroup){background:var(--theme-surface);color:var(--theme-text)}
+html[data-appearance=night] select option:disabled{background:var(--theme-surface);color:var(--theme-muted)}
+html[data-appearance=night] .theme-choice-grid label{background:var(--theme-surface);color:var(--theme-text);border-color:var(--theme-line)}
+html[data-appearance=night] .theme-choice-grid label:has(input:checked){background:var(--theme-soft);color:var(--theme-accent);border-color:var(--theme-accent)}
+html[data-appearance=night] .flow-step{color:var(--theme-muted)}
+html[data-appearance=night] .flow-step.active{color:var(--theme-accent)}
+html[data-appearance=night] .flow-step.done{color:var(--theme-text)}
+html[data-appearance=night] .flow-step>span{background:var(--theme-soft)}
+html[data-appearance=night] .flow-step.active>span{background:var(--theme-accent);color:var(--theme-on-accent)}
+html[data-appearance=night] .flow-step.done>span{background:var(--theme-soft);color:var(--theme-accent)}
+html[data-appearance=night] .flow-line{background:var(--theme-line)}
+html[data-appearance=night] :is(.mix-state,.status-chip,.daily-meta-target,.health-icon){background:var(--theme-soft);color:var(--theme-accent)}
+html[data-appearance=night] .daily-meta-target{background:transparent}
+html[data-appearance=night] .status-chip:is([data-state=disabled],[data-state=not_connected],[data-state=verification_needed]){background:var(--theme-soft);color:var(--theme-muted)}
+html[data-appearance=night] :is(.step-head p,.warning-block dt,.mini-stats span,#missingSummary){color:var(--theme-muted)}
+html[data-appearance=night] :is(.source-warning,.theme-missing,.mix-warning){color:var(--theme-warning)}
+html[data-appearance=night] :is(.bucket.warn,.daily-main-card #publishHint:not([hidden])){background:color-mix(in srgb,var(--theme-warning) 13%,var(--theme-surface));color:var(--theme-warning);border-color:var(--theme-line)}
+html[data-appearance=night] body[data-view=external] .external-command-bar .danger-text{color:var(--theme-danger)}
+html[data-appearance=night] :is(.settings-avatar,.mix-icon,.webhook-guide li span){color:var(--theme-accent)}
+html[data-appearance=night] body[data-view=settings] .settings-save.is-saved{background:var(--theme-soft);color:var(--theme-accent)}
+html[data-appearance=night] body[data-view=settings] .batch-auto-partial{background:color-mix(in srgb,var(--theme-warning) 13%,var(--theme-surface));color:var(--theme-warning)}
+html[data-appearance=night] body[data-view=settings] .settings-person .settings-user-status,
+html[data-appearance=night] body[data-view=settings] .settings-user-status p{color:var(--theme-warning)}
+html[data-appearance=night] body[data-view=external] #reviewSelectedCount,
+html[data-appearance=night] body[data-view=mixes] .custom-mix>summary small,
+html[data-appearance=night] .daily-main-card .daily-message{color:var(--theme-muted)}
+html[data-appearance=night] body[data-view=daily] #dailyJobFeedback.is-error,
+html[data-appearance=night] body[data-view=daily] #dailyFeedback .pch-inline-feedback.is-error{color:var(--theme-danger)}
