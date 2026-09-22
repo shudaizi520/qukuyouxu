@@ -4,6 +4,7 @@ import sys
 from html.parser import HTMLParser
 from contextlib import contextmanager
 from pathlib import Path
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -91,6 +92,53 @@ class PlaylistHubRowsTests(unittest.TestCase):
         self.assertEqual("未建立", daily["status"])
         self.assertEqual("/mixes", daily["manage_url"])
 
+    def test_category_counts_do_not_decode_the_full_plan_on_each_list_load(self):
+        from helper.playlist_hub import assistant_playlist_rows
+
+        original_get = self.store.get
+
+        def get_without_plan(key, default=None):
+            if key == "plan":
+                raise AssertionError("歌单列表不应解码整份计划")
+            return original_get(key, default)
+
+        with patch.object(self.store, "get", side_effect=get_without_plan):
+            rows = assistant_playlist_rows(self.store)
+        category = next(row for row in rows if row["kind"] == "category")
+        self.assertEqual(3, category["count"])
+
+    def test_scoped_plan_counts_keep_missing_and_other_profile_data_separate(self):
+        from helper.scoped_store import ScopedStore
+
+        self.store.set("plan", {"groups": [
+            {"id": "theme:drive", "desired": ["1", "2", "3"]},
+            {"id": "theme:empty", "desired": []},
+            {"id": "theme:unknown", "desired": None},
+            {"category_id": "theme:legacy", "desired": ["7"]},
+            "obsolete row",
+        ]})
+        other = ScopedStore(self.base, "other")
+        other.set("plan", {"groups": [{"id": "other", "desired": ["9"]}]})
+
+        self.assertEqual({"theme:drive": 3, "theme:empty": 0,
+                          "theme:unknown": None, "theme:legacy": 1},
+                         self.store.plan_group_counts())
+        self.assertEqual({"other": 1}, other.plan_group_counts())
+
+    def test_catalog_track_lookup_returns_only_requested_profile_rows(self):
+        from helper.scoped_store import ScopedStore
+
+        self.store.set("catalog", [
+            {"id": "10", "title": "当前曲库"}, {"id": "20", "title": "其他歌曲"},
+        ])
+        other = ScopedStore(self.base, "other")
+        other.set("catalog", [{"id": "10", "title": "另一个曲库"}])
+        self.assertEqual({"10": {"id": "10", "title": "当前曲库"}},
+                         self.store.catalog_tracks(["10", "missing"]))
+        self.assertEqual({"10": {"id": "10", "title": "另一个曲库"}},
+                         other.catalog_tracks(["10"]))
+        self.assertEqual({}, self.store.catalog_tracks([]))
+
     def test_every_automatic_playlist_writer_applies_manual_track_choices(self):
         for name in ("daily.py", "smart_mix_web.py", "engine.py", "external_service.py"):
             source = (ROOT / "src/helper" / name).read_text(encoding="utf-8")
@@ -121,10 +169,14 @@ class _PlaylistPlex:
         return self.open_audio_part(track_id, range_header)
 
     def track_section(self, track_id):
-        return "1" if str(track_id) == "10" else "22"
+        return "1" if str(track_id) in {"10", "20"} else "22"
 
     def track_metadata(self, track_id):
-        return {"id": str(track_id), "thumb": "/library/metadata/10/thumb", "library_section_id": self.track_section(track_id)}
+        return {
+            "id": str(track_id),
+            "thumb": "/library/metadata/10/thumb/1" if str(track_id) == "10" else "",
+            "library_section_id": self.track_section(track_id),
+        }
 
     def open_artwork(self, path):
         self.last_artwork = str(path)
@@ -223,6 +275,39 @@ class PlaylistHubPlaybackTests(unittest.TestCase):
         self.assertEqual([180, 200], [row["duration"] for row in result["tracks"]])
         self.assertEqual("/library/metadata/10/thumb/1", result["tracks"][0]["thumb"])
 
+    def test_detail_uses_only_selected_catalog_rows(self):
+        from helper.playlist_hub import playlist_detail
+
+        original_get = self.store.get
+        def get_without_catalog(key, default=None):
+            if key == "catalog":
+                raise AssertionError("打开歌单不应解码整个曲库")
+            return original_get(key, default)
+
+        with patch.object(self.store, "get", side_effect=get_without_catalog):
+            result = playlist_detail(self.engine, "daily", "daily")
+        self.assertEqual(["第一首", "第二首"], [row["title"] for row in result["tracks"]])
+        self.assertEqual("/library/metadata/10/thumb/1", result["tracks"][0]["thumb"])
+
+    def test_cover_falls_back_to_cached_thumb_without_loading_full_catalog(self):
+        from helper.playlist_hub import playlist_cover_candidates, stream_playlist_artwork
+        from tests.test_v130_external_audio import FakeAudioResponse
+
+        self.plex.artwork = FakeAudioResponse(status=200, headers={
+            "Content-Type": "image/jpeg", "Content-Length": "4",
+        }, chunks=[b"jpeg"])
+        original_get = self.store.get
+        def get_without_catalog(key, default=None):
+            if key == "catalog":
+                raise AssertionError("封面请求不应解码整个曲库")
+            return original_get(key, default)
+
+        with patch.object(self.store, "get", side_effect=get_without_catalog):
+            self.assertEqual({"track_ids": ["10"]}, playlist_cover_candidates(self.engine, "daily", "daily"))
+            response = stream_playlist_artwork(self.engine, "daily", "daily", "10")
+        self.assertEqual("/library/metadata/10/thumb/1", self.plex.last_artwork)
+        self.assertEqual("image/jpeg", response.media_type)
+
     def test_detail_migrates_an_unchanged_legacy_daily_marker_after_restore(self):
         from helper.engine import fingerprint
         from helper.playlist_hub import playlist_detail
@@ -244,6 +329,7 @@ class PlaylistHubPlaybackTests(unittest.TestCase):
         from helper.engine import fingerprint
         from helper.playlist_hub import playlist_cover_candidates
 
+        self.state["items"][0]["thumb"] = "/library/metadata/10/thumb/1"
         self.state["summary"] = "[PCH:11111111111111111111111111111111:daily]\n旧说明"
         record = dict(self.store.get("daily_managed"))
         record["fingerprint"] = fingerprint(self.state)
@@ -252,6 +338,42 @@ class PlaylistHubPlaybackTests(unittest.TestCase):
         self.assertEqual({"track_ids": ["10"]}, playlist_cover_candidates(self.engine, "daily", "daily"))
         self.assertEqual([], self.plex.summary_updates)
         self.assertEqual(record, self.store.get("daily_managed"))
+
+    def test_cover_candidates_use_playlist_items_without_decoding_catalog(self):
+        from helper.playlist_hub import playlist_cover_candidates
+
+        self.state["items"][0]["thumb"] = "/library/metadata/10/thumb/1"
+        original_get = self.store.get
+
+        def get_without_catalog(key, default=None):
+            if key == "catalog":
+                raise AssertionError("封面候选不应解码整个曲库")
+            return original_get(key, default)
+
+        with patch.object(self.store, "get", side_effect=get_without_catalog):
+            result = playlist_cover_candidates(self.engine, "daily", "daily")
+        self.assertEqual({"track_ids": ["10"]}, result)
+
+    def test_playlist_artwork_checks_membership_without_decoding_catalog(self):
+        from helper.playlist_hub import stream_playlist_artwork
+        from tests.test_v130_external_audio import FakeAudioResponse
+
+        self.state["items"][0]["thumb"] = "/library/metadata/10/thumb/1"
+        self.plex.artwork = FakeAudioResponse(status=200, headers={
+            "Content-Type": "image/jpeg", "Content-Length": "4",
+        }, chunks=[b"jpeg"])
+        original_get = self.store.get
+
+        def get_without_catalog(key, default=None):
+            if key == "catalog":
+                raise AssertionError("歌单封面不应解码整个曲库")
+            return original_get(key, default)
+
+        with patch.object(self.store, "get", side_effect=get_without_catalog):
+            response = stream_playlist_artwork(self.engine, "daily", "daily", "10")
+            with self.assertRaisesRegex(ValueError, "当前歌单"):
+                stream_playlist_artwork(self.engine, "daily", "daily", "999")
+        self.assertEqual("image/jpeg", response.media_type)
 
     def test_detail_never_adopts_an_unmarked_same_name_playlist(self):
         from helper.engine import fingerprint
@@ -300,6 +422,28 @@ class PlaylistHubPlaybackTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "当前歌单"):
             stream_playlist_audio(self.engine, "daily", "daily", "999", "", "session")
 
+    def test_playlist_audio_checks_membership_without_decoding_catalog(self):
+        import asyncio
+        from helper.playlist_hub import stream_playlist_audio
+        from tests.test_v130_external_audio import FakeAudioResponse, close_response
+
+        self.plex.audio = FakeAudioResponse(status=200, headers={
+            "Content-Type": "audio/mpeg", "Content-Length": "1024",
+        })
+        original_get = self.store.get
+
+        def get_without_catalog(key, default=None):
+            if key == "catalog":
+                raise AssertionError("歌单播放不应解码整个曲库")
+            return original_get(key, default)
+
+        with patch.object(self.store, "get", side_effect=get_without_catalog):
+            response = stream_playlist_audio(self.engine, "daily", "daily", "10", "", "memory-playlist")
+            with self.assertRaisesRegex(ValueError, "当前歌单"):
+                stream_playlist_audio(self.engine, "daily", "daily", "999", "", "memory-outsider")
+        self.assertEqual(200, response.status_code)
+        asyncio.run(close_response(response))
+
     def test_library_audio_uses_live_plex_membership_even_if_catalog_is_stale(self):
         import asyncio
         from helper.playlist_hub import stream_library_audio
@@ -324,20 +468,68 @@ class PlaylistHubPlaybackTests(unittest.TestCase):
         response = stream_library_audio(self.engine, "10", "", "session-disabled")
         asyncio.run(close_response(response))
 
-    def test_library_artwork_uses_the_validated_catalog_row(self):
+    def test_library_audio_does_not_load_the_whole_catalog(self):
+        import asyncio
+        from helper.playlist_hub import stream_library_audio
+        from tests.test_v130_external_audio import FakeAudioResponse, close_response
+
+        self.plex.audio = FakeAudioResponse(status=200, headers={
+            "Content-Type": "audio/mpeg", "Content-Length": "1024",
+        })
+        original_get = self.store.get
+
+        def get_without_catalog(key, default=None):
+            if key == "catalog":
+                raise AssertionError("播放单曲不应解码整个曲库")
+            return original_get(key, default)
+
+        with patch.object(self.store, "get", side_effect=get_without_catalog):
+            response = stream_library_audio(self.engine, "10", "", "memory-test")
+        self.assertEqual(200, response.status_code)
+        asyncio.run(close_response(response))
+
+    def test_library_artwork_uses_live_metadata_without_loading_catalog(self):
         from helper.playlist_hub import stream_library_artwork
         from tests.test_v130_external_audio import FakeAudioResponse
 
         self.plex.artwork = FakeAudioResponse(status=200, headers={
             "Content-Type": "image/jpeg", "Content-Length": "4",
         }, chunks=[b"jpeg"])
-        response = stream_library_artwork(self.engine, "10")
+        original_get = self.store.get
+
+        def get_without_catalog(key, default=None):
+            if key == "catalog":
+                raise AssertionError("封面请求不应解码整个曲库")
+            return original_get(key, default)
+
+        with patch.object(self.store, "get", side_effect=get_without_catalog):
+            response = stream_library_artwork(self.engine, "10")
         self.assertEqual("/library/metadata/10/thumb/1", self.plex.last_artwork)
         self.assertEqual("image/jpeg", response.media_type)
         with self.assertRaisesRegex(ValueError, "当前曲库"):
             stream_library_artwork(self.engine, "999")
         with self.assertRaisesRegex(ValueError, "没有可用封面"):
             stream_library_artwork(self.engine, "20")
+
+    def test_library_artwork_falls_back_to_cached_thumb_after_live_scope_check(self):
+        from helper.playlist_hub import stream_library_artwork
+        from tests.test_v130_external_audio import FakeAudioResponse
+
+        self.plex.artwork = FakeAudioResponse(status=200, headers={
+            "Content-Type": "image/jpeg", "Content-Length": "4",
+        }, chunks=[b"jpeg"])
+        live_metadata = self.plex.track_metadata
+        self.plex.track_metadata = lambda track_id: {**live_metadata(track_id), "thumb": ""}
+        original_get = self.store.get
+        def get_without_catalog(key, default=None):
+            if key == "catalog":
+                raise AssertionError("封面请求不应解码整个曲库")
+            return original_get(key, default)
+
+        with patch.object(self.store, "get", side_effect=get_without_catalog):
+            response = stream_library_artwork(self.engine, "10")
+        self.assertEqual("/library/metadata/10/thumb/1", self.plex.last_artwork)
+        self.assertEqual("image/jpeg", response.media_type)
 
     def test_daily_delete_validates_ownership_and_never_deletes_music_files(self):
         from helper.playlist_hub import remove_playlist

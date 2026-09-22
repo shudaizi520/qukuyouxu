@@ -115,16 +115,11 @@ def assistant_playlist_rows(store):
         "status": "上次已同步 Plex" if favorite_synced else "未同步 Plex",
     })
 
-    groups = {
-        str(group.get("id") or group.get("category_id") or ""): group
-        for group in ((store.get("plan") or {}).get("groups") or [])
-        if isinstance(group, dict)
-    }
+    managed = store.get("managed", {}) or {}
+    groups = store.plan_group_counts() if managed else {}
     snapshots = list(store.get("snapshots", []) or [])
-    for category_id, record in (store.get("managed", {}) or {}).items():
-        group = groups.get(str(category_id), {})
-        desired = group.get("desired")
-        count = len(desired) if isinstance(desired, list) else None
+    for category_id, record in managed.items():
+        count = groups.get(str(category_id))
         updated = max([
             float(row.get("created_at") or 0) for row in snapshots
             if str(row.get("category_id") or "") == str(category_id)
@@ -612,7 +607,7 @@ def set_track_liked(engine, track_id, liked, now=None):
     return {"track_id": track_id, "liked": liked, "user_rating": expected}
 
 
-def playlist_detail(engine, kind, key, hidden_playlist_ids=(), *, migrate_ownership=True):
+def playlist_detail(engine, kind, key, hidden_playlist_ids=(), *, migrate_ownership=True, include_catalog=True):
     if str(kind) == "favorite" and str(key) == "liked":
         return favorite_playlist_detail_live(engine)
     if str(kind) == "plex":
@@ -622,10 +617,11 @@ def playlist_detail(engine, kind, key, hidden_playlist_ids=(), *, migrate_owners
         plex = engine.plex_factory(engine.store.get("settings"))
         section = str((engine.store.get("settings") or {}).get("section") or "")
         listed, state = _native_playlist(plex, key, section, hidden_playlist_ids)
-        catalog = {
-            str(row.get("id")): row for row in (engine.store.get("catalog", []) or [])
-            if isinstance(row, dict) and row.get("available", True)
-        }
+        catalog = engine.store.catalog_tracks(
+            [row.get("id") for row in state.get("items") or []]
+        ) if include_catalog else {}
+        catalog = {track_id: row for track_id, row in catalog.items()
+                   if row.get("available", True)}
         tracks = []
         for playlist_row in state.get("items") or []:
             track_id = str(playlist_row.get("id") or "")
@@ -669,10 +665,9 @@ def playlist_detail(engine, kind, key, hidden_playlist_ids=(), *, migrate_owners
         engine, str(kind), str(key), record, state, marker, plex,
         migrate=migrate_ownership,
     )
-    catalog = {
-        str(row.get("id")): row for row in (engine.store.get("catalog", []) or [])
-        if isinstance(row, dict) and row.get("id") is not None
-    }
+    catalog = engine.store.catalog_tracks(
+        [row.get("id") for row in state.get("items") or []]
+    ) if include_catalog else {}
     tracks = []
     for position, playlist_row in enumerate(state.get("items") or [], 1):
         track_id = str(playlist_row.get("id") or "")
@@ -698,7 +693,8 @@ def playlist_detail(engine, kind, key, hidden_playlist_ids=(), *, migrate_owners
 
 def playlist_cover_candidates(engine, kind, key, hidden_playlist_ids=()):
     """Return a small, profile-scoped set of tracks with Plex artwork."""
-    detail = playlist_detail(engine, kind, key, hidden_playlist_ids, migrate_ownership=False)
+    detail = playlist_detail(engine, kind, key, hidden_playlist_ids,
+                             migrate_ownership=False)
     track_ids = []
     for row in detail.get("tracks") or []:
         track_id = str(row.get("id") or "")
@@ -710,7 +706,7 @@ def playlist_cover_candidates(engine, kind, key, hidden_playlist_ids=()):
 
 
 def stream_playlist_audio(engine, kind, key, track_id, range_header, session_key, offset_seconds=0, hidden_playlist_ids=()):
-    detail = playlist_detail(engine, kind, key, hidden_playlist_ids)
+    detail = playlist_detail(engine, kind, key, hidden_playlist_ids, include_catalog=False)
     track_id = str(track_id or "")
     if track_id not in {row["id"] for row in detail["tracks"]}:
         raise ValueError("当前歌单中没有这首可试听歌曲")
@@ -718,17 +714,6 @@ def stream_playlist_audio(engine, kind, key, track_id, range_header, session_key
         engine.store, engine.plex_factory, track_id, range_header, session_key,
         offset_seconds, allow_uncached=True,
     )
-
-
-def _library_track(store, track_id):
-    track_id = str(track_id or "")
-    track = next((
-        row for row in (store.get("catalog", []) or [])
-        if isinstance(row, dict) and str(row.get("id") or "") == track_id
-    ), None)
-    if not track or not track.get("available", True):
-        raise ValueError("这首歌已不在当前曲库中，请先检查新增歌曲")
-    return track
 
 
 def stream_library_audio(engine, track_id, range_header, session_key, offset_seconds=0):
@@ -782,14 +767,15 @@ def stream_playlist_artwork(engine, kind, key, track_id, hidden_playlist_ids=())
 
 
 def stream_library_artwork(engine, track_id):
-    try:
-        track = _library_track(engine.store, track_id)
-    except ValueError:
-        settings = engine.store.get("settings") or {}
-        section = str(settings.get("section") or "")
-        track = engine.plex_factory(settings).track_metadata(track_id)
-        if not section.isdigit() or str(track.get("library_section_id") or "") != section:
-            raise ValueError("这首歌不属于当前曲库")
+    settings = engine.store.get("settings") or {}
+    section = str(settings.get("section") or "")
+    track = engine.plex_factory(settings).track_metadata(track_id)
+    if (not section.isdigit() or str(track.get("library_section_id") or "") != section
+            or not track.get("available", True)):
+        raise ValueError("这首歌不属于当前曲库")
+    if not track.get("thumb"):
+        cached = engine.store.catalog_tracks([track_id]).get(str(track_id)) or {}
+        track = {**track, "thumb": cached.get("thumb") or ""}
     return _stream_artwork(engine, track)
 
 

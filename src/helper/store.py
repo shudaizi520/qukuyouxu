@@ -83,6 +83,35 @@ class Store:
         with self.lock, self._db() as db:
             r=db.execute('SELECT v FROM state WHERE k=?',(key,)).fetchone()
             return json.loads(r[0]) if r else default
+    def catalog_tracks(self, track_ids, key='catalog'):
+        """Decode requested catalog entries, not the complete profile catalog."""
+        wanted={str(track_id) for track_id in track_ids if track_id is not None}
+        if not wanted:return {}
+        found={}
+        with self.lock, self._db() as db:
+            rows=db.execute('''
+                SELECT CAST(json_extract(track.value, '$.id') AS TEXT), track.value
+                FROM state AS entry, json_each(entry.v) AS track
+                WHERE entry.k = ? AND track.type = 'object'
+            ''',(key,))
+            for track_id, raw in rows:
+                if track_id in wanted:
+                    found[track_id]=json.loads(raw)
+        return found
+    def plan_group_counts(self,key='plan'):
+        """Read only category IDs and song counts without decoding the full plan in Python."""
+        with self.lock, self._db() as db:
+            rows=db.execute('''
+                SELECT CASE WHEN group_row.type = 'object'
+                            THEN coalesce(nullif(json_extract(group_row.value, '$.id'), ''),
+                                          json_extract(group_row.value, '$.category_id')) END,
+                       CASE WHEN group_row.type = 'object'
+                                 AND json_type(group_row.value, '$.desired') = 'array'
+                            THEN json_array_length(group_row.value, '$.desired') END
+                FROM state AS entry, json_each(entry.v, '$.groups') AS group_row
+                WHERE entry.k = ?
+            ''',(key,)).fetchall()
+        return {str(group_id): count for group_id,count in rows if group_id is not None}
     def get_prefix(self,prefix):
         if not isinstance(prefix,str) or not prefix:raise ValueError('需要非空状态前缀')
         with self.lock,self._db() as db:

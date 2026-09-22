@@ -104,12 +104,10 @@ def stream_track_audio(store, plex_factory, track_id, range_header, session_key,
         raise ValueError('当前歌单中没有这首可试听歌曲')
     range_header = validate_audio_range(range_header)
     offset_seconds = validate_audio_offset(offset_seconds)
-    catalog = {
-        str(row.get('id')): row for row in (store.get('catalog', []) or [])
-        if isinstance(row, dict) and row.get('id') is not None
-    }
-    if not allow_uncached and (track_id not in catalog or not catalog[track_id].get('available', True)):
-        raise ValueError('这首歌已不在当前曲库中，请先检查新增歌曲')
+    if not allow_uncached:
+        catalog = store.catalog_tracks([track_id])
+        if track_id not in catalog or not catalog[track_id].get('available', True):
+            raise ValueError('这首歌已不在当前曲库中，请先检查新增歌曲')
     settings = store.get('settings', {}) or {}
     key = _stream_key(profile_id, session_key)
     _acquire(key)

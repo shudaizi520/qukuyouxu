@@ -12,8 +12,8 @@ from .plex_webhook import (
     ACTIVE_SESSION_TTL,
     MAX_BEHAVIOR_SESSIONS,
     TERMINAL_SESSION_TTL,
+    _number,
     active_session_count,
-    catalog_duration,
 )
 from .scoped_store import ScopedStore, validate_profile_id
 
@@ -49,11 +49,8 @@ def _parse_payload(store, profile, payload, plex_factory=None):
     track_id = str(payload.get("track_id") or "")
     if not track_id.isdigit():
         raise ValueError("网页播放歌曲标识无效")
-    track = next((
-        row for row in (store.get("catalog", []) or [])
-        if isinstance(row, dict) and str(row.get("id") or "") == track_id
-        and row.get("available", True)
-    ), None)
+    cached_track = store.catalog_tracks([track_id]).get(track_id)
+    track = cached_track if cached_track and cached_track.get("available", True) else None
     if not track:
         settings = store.get("settings") or {}
         section = str(settings.get("section") or "")
@@ -68,7 +65,7 @@ def _parse_payload(store, profile, payload, plex_factory=None):
         raise ValueError("网页播放事件标识无效")
     position = _seconds(payload.get("position", 0), "位置")
     duration = _seconds(payload.get("duration", 0), "时长")
-    known_duration = catalog_duration(store, track_id)
+    known_duration = _number(cached_track.get("duration"), 0) if cached_track else 0
     effective_duration = known_duration or duration
     if effective_duration and position > effective_duration + 5:
         raise ValueError("网页播放位置超过歌曲时长")

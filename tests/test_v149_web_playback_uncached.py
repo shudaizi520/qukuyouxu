@@ -9,6 +9,9 @@ class _Store:
     def get(self, key, default=None):
         return {"catalog": [], "settings": {"section": "11"}}.get(key, default)
 
+    def catalog_tracks(self, _track_ids):
+        return {}
+
 
 class UncachedWebPlaybackTests(unittest.TestCase):
     def test_verified_plex_track_can_generate_learning_event(self):

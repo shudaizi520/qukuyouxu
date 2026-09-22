@@ -40,6 +40,12 @@ class ScopedStore:
     def get(self, key, default=None):
         return self.base.get(self._key(key), default)
 
+    def plan_group_counts(self):
+        return self.base.plan_group_counts(self._key("plan"))
+
+    def catalog_tracks(self, track_ids):
+        return self.base.catalog_tracks(track_ids, self._key("catalog"))
+
     def get_prefix(self, prefix):
         prefix = str(prefix)
         full = f"profile:{self.profile_id}:{prefix}"
@@ -79,6 +85,12 @@ class ActiveProfileStore:
 
     def get(self, key, default=None):
         return self.fixed().get(key, default)
+
+    def plan_group_counts(self):
+        return self.fixed().plan_group_counts()
+
+    def catalog_tracks(self, track_ids):
+        return self.fixed().catalog_tracks(track_ids)
 
     def get_prefix(self, prefix):
         return self.fixed().get_prefix(prefix)

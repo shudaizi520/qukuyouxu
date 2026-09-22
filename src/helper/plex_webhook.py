@@ -204,6 +204,9 @@ def _event_key(signal, playback_id):
 
 def catalog_duration(store, track_id):
     track_id = str(track_id or "")
+    lookup = getattr(store, "catalog_tracks", None)
+    if lookup is not None:
+        return _number((lookup([track_id]).get(track_id) or {}).get("duration"), 0) or 0
     for row in store.get("catalog", []) or []:
         if isinstance(row, dict) and str(row.get("id") or "") == track_id:
             return _number(row.get("duration"), 0) or 0

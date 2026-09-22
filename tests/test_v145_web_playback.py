@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from helper.behavior_store import BehaviorRepository
@@ -85,6 +86,32 @@ class WebPlaybackV145Tests(unittest.TestCase):
 
         self.assertEqual(("recorded", "duplicate"), (first["status"], second["status"]))
         self.assertEqual(1, len(self.repo.list_events("default", 100)))
+
+    def test_progress_event_never_decodes_the_complete_catalog(self):
+        original_get = ScopedStore.get
+        def get_without_catalog(store, key, default=None):
+            if key == "catalog":
+                raise AssertionError("播放进度不应解码整个曲库")
+            return original_get(store, key, default)
+
+        with patch.object(ScopedStore, "get", get_without_catalog):
+            self.assertEqual("accepted", self.apply(event("play"), 1)["status"])
+            self.assertEqual("accepted", self.apply(event("progress", position=20), 20)["status"])
+
+    def test_stale_cached_duration_still_limits_live_verified_playback(self):
+        from helper.web_playback import _parse_payload
+
+        self.owner.set("catalog", [{"id": "7", "duration": 100, "available": False}])
+        self.owner.set("settings", {**self.owner.get("settings"), "section": "15"})
+        class Plex:
+            def track_section(self, _track_id):
+                return "15"
+
+        profile = self.registry.get("default")
+        with self.assertRaisesRegex(ValueError, "超过歌曲时长"):
+            _parse_payload(self.owner, profile,
+                           event("play", track="7", position=150, duration=200),
+                           plex_factory=lambda _settings: Plex())
 
     def test_selected_profile_is_the_only_profile_updated(self):
         result = self.apply(event("play"), 100, profile="friend")

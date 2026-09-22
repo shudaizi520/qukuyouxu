@@ -20,6 +20,11 @@ class _Store:
     def get(self, key, default=None):
         return self.values.get(key, default)
 
+    def catalog_tracks(self, track_ids):
+        wanted = {str(track_id) for track_id in track_ids}
+        return {str(row["id"]): row for row in self.values["catalog"]
+                if str(row.get("id")) in wanted}
+
     def set(self, key, value):
         self.values[key] = value
 

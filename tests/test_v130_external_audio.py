@@ -1,6 +1,7 @@
 import asyncio
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
@@ -110,6 +111,17 @@ class ExternalAudioV130Tests(unittest.TestCase):
         self.assertEqual([("10", "bytes=0-1023", 0)], plex.browser_calls)
         asyncio.run(close_response(response))
         self.assertTrue(plex.response.closed)
+
+    def test_playback_checks_only_the_selected_cached_track(self):
+        original_get = self.store.get
+        def get_without_catalog(key, default=None):
+            if key == "catalog":
+                raise AssertionError("播放导入歌单不应解码整个曲库")
+            return original_get(key, default)
+
+        with patch.object(self.store, "get", side_effect=get_without_catalog):
+            _plex, response = self.stream(session="selected-only")
+        asyncio.run(close_response(response))
 
     def test_review_candidate_must_belong_to_that_row(self):
         plex, response = self.stream(track="d", candidate="40")
