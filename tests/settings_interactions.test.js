@@ -145,7 +145,7 @@ async function runSettingsTests(source) {
   await check('durable generation warnings do not poll every three seconds', async () => {
     const first = source.indexOf('let profileStatusTimer=null');
     const last = source.indexOf('function render(s,saved)', first);
-    const delayFor = status => {
+    const delayFor = (status, removalStatus) => {
       const delays = [];
       const auth = { profile: () => 'default', setProfile() {} };
       const view = new Function('document', 'PCHAuth', 'responseJson', 'refresh',
@@ -156,13 +156,16 @@ async function runSettingsTests(source) {
           document, auth, responseJson, refresh,
           (_callback, delay) => { delays.push(delay); return delays.length; }, () => {}, () => {});
       view.renderProfiles({ active_profile_id: 'default', items: [
-        { id: 'new-profile', enabled: true, preparation: { status } },
+        { id: 'new-profile', enabled: !removalStatus, preparation: { status },
+          ...(removalStatus ? { removal: { status: removalStatus } } : {}) },
       ] });
       return delays[0];
     };
     assert(delayFor('running') <= 5000, 'Active generation is not checked promptly');
     assert(delayFor('needs_attention') >= 15000, 'Needs-attention state polls too often');
     assert(delayFor('waiting_for_data') >= 60000, 'Long wait polls too often');
+    assert(delayFor('paused', 'needs_attention') >= 15000,
+      'Paused generation keeps polling rapidly during a stalled removal');
   });
   return checks;
 }

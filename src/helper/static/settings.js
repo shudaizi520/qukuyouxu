@@ -60,7 +60,7 @@ let profileStatusTimer=null,profileStatusDelay=0;
 function stopProfileStatusPolling(){if(profileStatusTimer!==null)clearTimeout(profileStatusTimer);profileStatusTimer=null;profileStatusDelay=0;}
 function scheduleProfileStatusPoll(){
  if(document.hidden||!plexProfiles.some(row=>row.preparation||(row.removal&&row.removal.status!=='legacy_cleanup_required'))){stopProfileStatusPolling();return;}
- const active=plexProfiles.some(row=>['pending','running','paused'].includes(row.preparation?.status)||(row.removal&&!['needs_attention','legacy_cleanup_required'].includes(row.removal.status)));
+ const active=plexProfiles.some(row=>['pending','running'].includes(row.preparation?.status)||(row.removal&&!['needs_attention','legacy_cleanup_required'].includes(row.removal.status)));
  const attention=plexProfiles.some(row=>row.preparation?.status==='needs_attention'||row.removal?.status==='needs_attention');
  const delay=active?3000:attention?30000:300000;
  if(profileStatusTimer!==null&&profileStatusDelay<=delay)return;
