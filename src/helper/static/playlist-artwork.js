@@ -1,12 +1,15 @@
 const encoded=value=>encodeURIComponent(String(value||''));
+const MAX_ACTIVE_IMAGES=6;
 
 export function artworkUrl(trackId,profileId){
  return '/api/playlists/library/tracks/'+encoded(trackId)+'/artwork?profile_id='+encoded(profileId);
 }
 
-export function createPlaylistArtwork({document,request,profileId}){
+export function createPlaylistArtwork({document,request,profileId,cacheUser=()=>'',cacheScope=()=>''}){
  let selectedProfile='',generation=0,active=0;
  let queue=[],cache=new Map(),items=new WeakMap();
+ let imageQueue=[],activeImages=0,drainingImages=false;
+ const loadingImages=new Set();
  const observer=typeof IntersectionObserver==='function'?new IntersectionObserver(entries=>{
   for(const entry of entries){
    if(!entry.isIntersecting)continue;
@@ -19,7 +22,47 @@ export function createPlaylistArtwork({document,request,profileId}){
  function style(node,count){
   node.className='playlist-cover playlist-cover-'+(node.dataset.variant||'card')+' is-'+(count||'placeholder');
  }
+ function pumpImages(){
+  if(drainingImages)return;
+  drainingImages=true;
+  try{
+   for(const task of [...loadingImages]){
+    if(task.image.isConnected)continue;
+    task.finish();task.image.removeAttribute('src');
+   }
+  while(activeImages<MAX_ACTIVE_IMAGES&&imageQueue.length){
+   const task=imageQueue.shift();
+   if(task.generation!==generation||!task.image.isConnected)continue;
+   activeImages++;loadingImages.add(task);
+   task.finish=()=>{
+    if(task.done)return;
+    task.done=true;task.image.onload=null;task.image.onerror=null;
+    clearTimeout(task.timer);
+    loadingImages.delete(task);activeImages--;pumpImages();
+   };
+   task.image.onload=task.finish;
+   const failed=()=>{
+    const node=task.image.parentNode;
+    task.image.remove();
+    if(node){delete node.dataset.coverIds;if(!node.children.length)placeholder(node);else style(node,node.children.length);}
+    task.finish();
+   };
+   task.image.onerror=failed;
+   task.timer=setTimeout(failed,12000);
+   task.image.src=task.url;
+  }
+  }finally{drainingImages=false;}
+ }
+ function cancelNodeImages(node){
+  imageQueue=imageQueue.filter(task=>task.image.parentNode!==node);
+  for(const task of [...loadingImages]){
+   if(task.image.parentNode!==node)continue;
+   task.finish();task.image.removeAttribute('src');
+  }
+ }
  function placeholder(node){
+  cancelNodeImages(node);
+  delete node.dataset.coverIds;delete node.dataset.coverProfile;
   node.replaceChildren();node.textContent='♫';style(node,0);
  }
  function paintIds(node,ids,profile){
@@ -31,19 +74,35 @@ export function createPlaylistArtwork({document,request,profileId}){
    if(valid.length===4)break;
   }
   if(!valid.length){placeholder(node);return;}
-  node.replaceChildren();style(node,valid.length);
+  const signature=valid.join(',');
+  if(node.dataset.coverIds===signature&&node.dataset.coverProfile===profile&&node.children.length===valid.length)return;
+  cancelNodeImages(node);node.replaceChildren();style(node,valid.length);
+  node.dataset.coverIds=signature;node.dataset.coverProfile=profile;
   for(const id of valid){
-   const image=document.createElement('img');image.alt='';image.loading='lazy';image.decoding='async';
-   image.src=artworkUrl(id,profile);
-   image.onerror=()=>{
-    if(image.parentNode!==node)return;
-    image.remove();
-    if(!node.children.length)placeholder(node);
-    else style(node,node.children.length);
-   };
+   const image=document.createElement('img');image.alt='';image.loading='eager';image.decoding='async';
    node.append(image);
+   imageQueue.push({image,url:artworkUrl(id,profile),generation,done:false,finish:null});
   }
+  pumpImages();
  }
+ function savedKey(profile,item){
+  const scope=String(cacheScope(profile)||'');
+  if(!scope)return '';
+  return 'pch-cover:v2:'+encoded(cacheUser())+':'+encoded(profile)+':'+encoded(scope)+':'+encoded(item.kind)+':'+encoded(item.key);
+ }
+ function savedIds(profile,item){
+  try{
+   const key=savedKey(profile,item);if(!key)return null;
+   const record=JSON.parse(sessionStorage.getItem(key)||'null');
+   return record&&Date.now()-record.saved<3600000&&Array.isArray(record.ids)?record.ids:null;
+  }catch{return null;}
+ }
+ function saveIds(profile,item,ids){
+  try{const key=savedKey(profile,item);if(key)sessionStorage.setItem(key,JSON.stringify({saved:Date.now(),ids}));}catch{}
+ }
+ globalThis.addEventListener?.('pch-auth-logout',()=>{
+  try{for(let i=sessionStorage.length-1;i>=0;i--){const key=sessionStorage.key(i);if(key?.startsWith('pch-cover:v2:'))sessionStorage.removeItem(key);}}catch{}
+ });
  function pump(){
   while(active<3&&queue.length){
    const task=queue.shift();
@@ -57,6 +116,7 @@ export function createPlaylistArtwork({document,request,profileId}){
     cache.set(cacheKey,pending);
    }
    pending.then(ids=>{
+    if(task.generation===generation)saveIds(task.profile,task.item,ids);
     if(task.generation===generation&&task.profile===selectedProfile&&task.node.isConnected)paintIds(task.node,ids,task.profile);
    }).catch(()=>{
     cache.delete(cacheKey);
@@ -66,7 +126,10 @@ export function createPlaylistArtwork({document,request,profileId}){
  }
  function enqueue(node,item){
   if(!item.can_play){placeholder(node);return;}
-  queue.push({node,item,profile:selectedProfile||String(profileId()||''),generation});pump();
+  const profile=selectedProfile||String(profileId()||'');
+  const ids=savedIds(profile,item);
+  if(ids)paintIds(node,ids,profile);
+  queue.push({node,item,profile,generation});pump();
  }
  function create(item,variant='card'){
   const node=document.createElement('span');node.dataset.variant=variant;
@@ -85,7 +148,8 @@ export function createPlaylistArtwork({document,request,profileId}){
   paintIds(node,ids,selectedProfile||String(profileId()||''));
  }
  function reset(nextProfile){
-  generation++;selectedProfile=String(nextProfile||'');queue=[];cache.clear();items=new WeakMap();
+  generation++;selectedProfile=String(nextProfile||'');queue=[];imageQueue=[];cache.clear();items=new WeakMap();
+  for(const task of [...loadingImages]){task.finish();task.image.removeAttribute('src');}
   if(observer)observer.disconnect();
  }
  return {create,paintTracks,reset,placeholder};

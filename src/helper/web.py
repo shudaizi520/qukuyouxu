@@ -34,6 +34,23 @@ from .playlist_hub import attach_playlist_hub_routes
 from .web_playback import attach_web_playback_route
 STATIC = Path(__file__).with_name('static')
 
+_ARTWORK_CACHE_PATH = re.compile(
+    r'^/api/playlists/(?:library/tracks/\d+/artwork|[^/]+/[^/]+/tracks/\d+/artwork)$'
+)
+_COVER_CACHE_PATH = re.compile(r'^/api/playlists/[^/]+/[^/]+/cover$')
+
+
+def artwork_cache_policy(path, method, status_code, *, authenticated=False, scoped=False):
+    """Keep scoped images locally, but revalidate authorization on every load."""
+    if method == 'GET' and status_code in (200, 304) and authenticated and scoped:
+        if _ARTWORK_CACHE_PATH.fullmatch(path):
+            return {'Cache-Control': 'private, no-cache',
+                    'Vary': 'Cookie, X-Plex-Profile'}
+        if _COVER_CACHE_PATH.fullmatch(path):
+            return {'Cache-Control': 'private, no-cache',
+                    'Vary': 'Cookie, X-Plex-Profile'}
+    return {'Cache-Control': 'no-store'}
+
 def _origin(value):
     value = str(value or '').strip().rstrip('/')
     if not value:
@@ -105,6 +122,7 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
         public_api = ('/api/auth/status', '/api/auth/login', '/api/auth/setup', '/api/auth/logout')
         profile_context = profiles.fixed_active()
         requested_profile = ''
+        session_user = None
         if path.startswith('/api/') and path != '/api/plex/webhook':
             if path not in public_api:
                 session_user = auth.session_user(req.cookies.get(COOKIE_NAME))
@@ -149,7 +167,12 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
             if requested_profile and message in ('Plex 档案已停用', 'Plex 档案不存在'):
                 payload['code'] = 'profile_unavailable'
             return JSONResponse(payload, status_code=400)
-        r.headers['Cache-Control'] = 'no-store'
+        scoped = bool(requested_profile or req.query_params.get('profile_id'))
+        for name, value in artwork_cache_policy(
+            path, req.method, r.status_code,
+            authenticated=bool(session_user), scoped=scoped,
+        ).items():
+            r.headers[name] = value
         r.headers['X-Content-Type-Options'] = 'nosniff'
         embedded = req.query_params.get('embedded') == '1' and path in (
             '/daily', '/mixes', '/external', '/library', '/status', '/settings',

@@ -4,9 +4,11 @@ from __future__ import annotations
 import time
 import uuid
 import math
+import hashlib
+import hmac
 from urllib.parse import quote
 
-from fastapi import Request
+from fastapi import Request, Response
 from starlette.background import BackgroundTask
 from starlette.responses import StreamingResponse
 
@@ -31,6 +33,17 @@ KIND_LABELS = {
 }
 
 MAX_ARTWORK_BYTES = 12 * 1024 * 1024
+
+
+def artwork_etag(store, session_key, profile_id, profile_revision, path, representation, period, *, now=None):
+    """A short-lived validator bound to one login and one profile incarnation."""
+    if not session_key:
+        return ''
+    now = time.time() if now is None else float(now)
+    secret = str(store.get('installation_id') or '').encode()
+    message = '\0'.join((str(session_key), str(profile_id), str(profile_revision),
+                         str(path), str(representation), str(int(now // period)))).encode()
+    return 'W/"' + hmac.new(secret, message, hashlib.sha256).hexdigest()[:32] + '"'
 
 
 def _safe_number(value, default=0.0):
@@ -758,15 +771,23 @@ def _stream_artwork(engine, track):
 
 
 def stream_playlist_artwork(engine, kind, key, track_id, hidden_playlist_ids=()):
+    return _stream_artwork(engine, playlist_artwork_track(engine, kind, key, track_id, hidden_playlist_ids))
+
+
+def playlist_artwork_track(engine, kind, key, track_id, hidden_playlist_ids=()):
     detail = playlist_detail(engine, kind, key, hidden_playlist_ids)
     track_id = str(track_id or "")
     track = next((row for row in detail["tracks"] if row["id"] == track_id), None)
     if not track:
         raise ValueError("当前歌单中没有这首歌曲")
-    return _stream_artwork(engine, track)
+    return track
 
 
 def stream_library_artwork(engine, track_id):
+    return _stream_artwork(engine, library_artwork_track(engine, track_id))
+
+
+def library_artwork_track(engine, track_id):
     settings = engine.store.get("settings") or {}
     section = str(settings.get("section") or "")
     track = engine.plex_factory(settings).track_metadata(track_id)
@@ -776,7 +797,7 @@ def stream_library_artwork(engine, track_id):
     if not track.get("thumb"):
         cached = engine.store.catalog_tracks([track_id]).get(str(track_id)) or {}
         track = {**track, "thumb": cached.get("thumb") or ""}
-    return _stream_artwork(engine, track)
+    return track
 
 
 def _remove_daily(engine, confirm_title, now=None):
@@ -918,10 +939,20 @@ def attach_playlist_hub_routes(app, store, runtime, profiles, body, ensure_idle)
             )
 
     @app.get("/api/playlists/library/tracks/{track_id}/artwork")
-    def library_artwork(track_id: str, profile_id: str = ""):
+    def library_artwork(track_id: str, request: Request, profile_id: str = ""):
         selected_profile = str(profile_id or store.profile_id)
         with profiles.fixed_active(selected_profile, enabled_only=True):
-            return stream_library_artwork(runtime.engine(selected_profile), track_id)
+            profile = profiles.get(selected_profile)
+            target = runtime.engine(selected_profile)
+            track = library_artwork_track(target, track_id)
+            tag = artwork_etag(store, request.cookies.get(COOKIE_NAME), selected_profile,
+                               profile.get('created_at'), request.url.path, track.get('thumb'), 300)
+            if tag and hmac.compare_digest(request.headers.get('if-none-match', ''), tag):
+                return Response(status_code=304, headers={'ETag': tag})
+            result = _stream_artwork(target, track)
+            if tag:
+                result.headers['ETag'] = tag
+            return result
 
     @app.get("/api/playlists/{kind}/{key}")
     def playlist(kind: str, key: str):
@@ -935,10 +966,20 @@ def attach_playlist_hub_routes(app, store, runtime, profiles, body, ensure_idle)
             return playlist_detail(target, kind, key, hidden_ids)
 
     @app.get("/api/playlists/{kind}/{key}/cover")
-    def playlist_cover(kind: str, key: str):
+    def playlist_cover(kind: str, key: str, request: Request, response: Response):
         target = fixed_engine()
-        hidden_ids = sibling_owned_playlist_ids(profiles, runtime, str(store.profile_id)) if kind == "plex" else ()
-        return playlist_cover_candidates(target, kind, key, hidden_ids)
+        profile_id = str(store.profile_id)
+        profile = profiles.get(profile_id)
+        hidden_ids = sibling_owned_playlist_ids(profiles, runtime, profile_id) if kind == "plex" else ()
+        result = playlist_cover_candidates(target, kind, key, hidden_ids)
+        tag = artwork_etag(store, request.cookies.get(COOKIE_NAME), profile_id,
+                           profile.get('created_at'), request.url.path,
+                           ','.join(result.get('track_ids') or ()), 30)
+        if tag and hmac.compare_digest(request.headers.get('if-none-match', ''), tag):
+            return Response(status_code=304, headers={'ETag': tag})
+        if tag:
+            response.headers['ETag'] = tag
+        return result
 
     @app.get("/api/playlists/{kind}/{key}/tracks/{track_id}/audio")
     def playlist_audio(
@@ -959,14 +1000,23 @@ def attach_playlist_hub_routes(app, store, runtime, profiles, body, ensure_idle)
 
     @app.get("/api/playlists/{kind}/{key}/tracks/{track_id}/artwork")
     def playlist_artwork(
-        kind: str, key: str, track_id: str, profile_id: str = "",
+        kind: str, key: str, track_id: str, request: Request, profile_id: str = "",
     ):
         selected_profile = str(profile_id or store.profile_id)
         with profiles.fixed_active(selected_profile, enabled_only=True):
+            profile = profiles.get(selected_profile)
             target = runtime.engine(selected_profile)
             hidden_ids = sibling_owned_playlist_ids(profiles, runtime, selected_profile) if kind == "plex" else ()
             with target.exclusive():
-                return stream_playlist_artwork(target, kind, key, track_id, hidden_ids)
+                track = playlist_artwork_track(target, kind, key, track_id, hidden_ids)
+            tag = artwork_etag(store, request.cookies.get(COOKIE_NAME), selected_profile,
+                               profile.get('created_at'), request.url.path, track.get('thumb'), 300)
+            if tag and hmac.compare_digest(request.headers.get('if-none-match', ''), tag):
+                return Response(status_code=304, headers={'ETag': tag})
+            result = _stream_artwork(target, track)
+            if tag:
+                result.headers['ETag'] = tag
+            return result
 
     @app.post("/api/playlists/remove")
     async def remove(request: Request):

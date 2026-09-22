@@ -59,7 +59,10 @@ async function navigate(fn){
  catch(error){notify(error.message||'操作失败',true);}
 }
 async function json(path,method='GET',body){return (await PCHAuth.request(path,method,body)).json();}
-const playlistArtwork=createPlaylistArtwork({document,request:json,profileId:()=>loadedProfileId});
+const playlistArtwork=createPlaylistArtwork({
+ document,request:json,profileId:()=>loadedProfileId,cacheUser:()=>PCHAuth.status()?.username||'',
+ cacheScope:id=>{const p=profiles.find(row=>String(row.id)===String(id));return p?.account?.id&&p?.server?.machine&&p?.library?.id?[p.account.id,p.server.machine,p.library.id,p.created_at].join(':'):'';},
+});
 const playlistSections=createPlaylistSections({
  document,
  createArtwork:(item,variant)=>playlistArtwork.create(item,variant),

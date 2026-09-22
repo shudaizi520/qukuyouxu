@@ -4,6 +4,7 @@ from unittest.mock import patch
 import sys
 
 import pytest
+from fastapi import Request, Response
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
@@ -62,6 +63,9 @@ def test_cover_route_does_not_take_the_interactive_playlist_gate():
     attach_playlist_hub_routes(app, store, runtime, profiles, None, None)
 
     with patch("helper.playlist_hub.playlist_cover_candidates", return_value={"track_ids": ["11"]}) as candidates:
-        result = app.routes["/api/playlists/{kind}/{key}/cover"]("daily", "daily")
+        request = Request({"type": "http", "method": "GET", "scheme": "http",
+                           "server": ("testserver", 80), "path": "/api/playlists/daily/daily/cover",
+                           "query_string": b"", "headers": []})
+        result = app.routes["/api/playlists/{kind}/{key}/cover"]("daily", "daily", request, Response())
     assert result == {"track_ids": ["11"]}
     candidates.assert_called_once_with(engine, "daily", "daily", ())
