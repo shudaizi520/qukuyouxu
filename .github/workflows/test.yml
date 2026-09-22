@@ -44,6 +44,8 @@ jobs:
           node-version: "22"
       - name: Settings interaction tests
         run: node tests/settings_interactions.test.js
+      - name: Appearance menu tests
+        run: node --test tests/appearance.test.js
 
   smoke:
     runs-on: ubuntu-latest
