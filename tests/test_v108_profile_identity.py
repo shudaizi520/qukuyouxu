@@ -49,7 +49,7 @@ class ProfileIdentityV108Tests(unittest.TestCase):
 
         self.assertEqual(50, target.get("daily_settings")["size"])
         self.assertEqual(7, target.get("daily_settings")["hour"])
-        self.assertFalse(target.get("daily_settings")["enabled"])
+        self.assertTrue(target.get("daily_settings")["enabled"])
         self.assertEqual([], target.get("catalog", []))
         self.assertEqual({}, target.get("cache"))
         self.assertEqual({"tracks": {}, "artists": {}}, target.get("feedback"))

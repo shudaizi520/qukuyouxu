@@ -67,6 +67,8 @@ def automation_settings(base_store, registry, runtime, now=None):
         saved["daily"]["enabled"] = True
         saved["revision"] = 2
         base_store.set(AUTOMATION_KEY, saved)
+    from .profile_controls import migrate_controls
+    migrate_controls(runtime, base_store, registry)
     return _public(saved)
 
 
@@ -145,6 +147,9 @@ def ensure_profile_schedule(store, settings, now):
     revision_changed = state.get("revision") != settings["revision"]
     for task in TASK_ORDER:
         config = copy.deepcopy(settings[task])
+        if task in ("daily", "smart"):
+            # Enablement is scoped to the user/library; these fields now set time only.
+            config["enabled"] = True
         previous = tasks.get(task) if isinstance(tasks.get(task), dict) else {}
         changed = revision_changed or previous.get("config") != config
         if not config["enabled"]:
@@ -156,7 +161,7 @@ def ensure_profile_schedule(store, settings, now):
             tasks[task] = {**previous, "config": config}
     profile = store.get("settings", {}) or {}
     bootstrap_scheduled = bool(state.get("daily_bootstrap_scheduled"))
-    if (settings["daily"]["enabled"] and not bootstrap_scheduled
+    if (not bootstrap_scheduled
             and not store.get("daily_managed")
             and not store.get("daily_auto_opt_out")
             and not store.get("daily_last_attempt")

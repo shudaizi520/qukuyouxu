@@ -250,6 +250,7 @@ class SmartMixControlsV0420Tests(unittest.TestCase):
 
     def test_profile_scheduler_dispatches_a_due_weekly_update_once(self):
         from helper.automation import PROFILE_STATE_KEY, save_automation_settings
+        from helper.profile_controls import write_control
         from helper.profile_runtime import ProfileRuntime
         from helper.profiles import ProfileRegistry
         from helper.scoped_store import ScopedStore
@@ -275,6 +276,7 @@ class SmartMixControlsV0420Tests(unittest.TestCase):
                 "settings": settings,
                 "smart_mix_managed": {"weekly": {"id": "playlist-1"}},
             })
+            write_control(owner, "smart", True)
             runtime = ProfileRuntime(base, registry, engine_factory=RuntimeEngine)
             saved = save_automation_settings(base, {
                 "daily": {"enabled": False, "hour": 6},

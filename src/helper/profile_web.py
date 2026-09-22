@@ -190,21 +190,51 @@ def resolve_owner_profile_id(registry, profile_id=None):
 
 def attach_profile_routes(app, base_store, registry: ProfileRegistry, body, ensure_idle, engine=None):
     from .plex_recipients import PlexRecipientService
+    from .profile_controls import migrate_controls, read_controls, write_control
+    from .profile_runtime import ProfileRuntime
     recipients = PlexRecipientService(base_store, registry)
+
+    def ensure_controls_migrated():
+        # Do this before the first control read/write, not while registering routes.
+        runtime = getattr(getattr(app, "state", None), "profile_runtime", None)
+        migrate_controls(runtime or ProfileRuntime(base_store, registry))
 
     def operation():
         return engine.exclusive() if engine is not None else nullcontext()
 
     def public_profiles():
+        ensure_controls_migrated()
         rows = registry.list_public(enabled_only=True)
         for row in rows:
-            settings = ScopedStore(base_store, row["id"]).get("product_settings", {}) or {}
-            row["behavior_enabled"] = settings.get("behavior_enabled", True) is not False
+            row["controls"] = read_controls(ScopedStore(base_store, row["id"]))
+            row["behavior_enabled"] = row["controls"]["learning"]
         return rows
+
+    def enabled_store(profile_id):
+        ensure_controls_migrated()
+        profile = registry.get(profile_id)
+        if profile.get("enabled") is False:
+            raise ValueError("该用户已停用")
+        return ScopedStore(base_store, profile_id, registry=registry)
 
     @app.get("/api/plex/profiles")
     async def list_profiles():
         return {"active_profile_id": registry.active_id(), "items": public_profiles()}
+
+    @app.get("/api/plex/profiles/controls")
+    def get_profile_controls(profile_id: str):
+        return {"profile_id": profile_id, "controls": read_controls(enabled_store(profile_id))}
+
+    @app.post("/api/plex/profiles/control")
+    async def set_profile_control(request: Request):
+        data = await body(request)
+        profile_id = str(data.get("profile_id") or "").strip()
+        if not profile_id:
+            raise ValueError("请选择用户")
+        ensure_idle()
+        with operation():
+            controls = write_control(enabled_store(profile_id), data.get("key"), data.get("enabled"))
+        return {"profile_id": profile_id, "controls": controls}
 
     @app.post("/api/plex/profiles/learning")
     async def set_profile_learning(request: Request):
@@ -216,17 +246,7 @@ def attach_profile_routes(app, base_store, registry: ProfileRegistry, body, ensu
             raise ValueError("播放学习开关状态无效")
         ensure_idle()
         with operation():
-            profile = registry.get(profile_id)
-            if profile.get("enabled") is False:
-                raise ValueError("该用户已停用")
-            scoped = ScopedStore(base_store, profile_id)
-            settings = dict(scoped.get("product_settings", {}) or {})
-            changed = (settings.get("behavior_enabled", True) is not False) != data["enabled"]
-            settings["behavior_enabled"] = data["enabled"]
-            values = {"product_settings": settings}
-            if changed:
-                values.update(daily_plan=None, smart_mix_plans={})
-            scoped.set_many(values)
+            write_control(enabled_store(profile_id), "learning", data["enabled"])
         return {
             "profile_id": profile_id,
             "behavior_enabled": data["enabled"],

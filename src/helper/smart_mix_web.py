@@ -472,6 +472,9 @@ def run_weekly_auto(engine, now=None):
 
 def run_smart_mix_auto(engine, now=None, due_kinds=None, slot=None):
     """Run all three built-in weekly jobs independently under one switch."""
+    from .profile_controls import read_controls
+    if not read_controls(engine.store)["smart"]:
+        raise SafetyError("该用户已关闭智能歌单自动更新")
     now = time.time() if now is None else float(now)
     due = smart_mix_auto_due(engine, now) if due_kinds is None else [kind for kind in due_kinds if kind in AUTO_KINDS]
     if not due:

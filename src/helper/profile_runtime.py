@@ -109,7 +109,7 @@ class ProfileRuntime:
             state = ensure_profile_schedule(engine.store, settings, now)
             scheduled_profiles.append((profile, engine, state))
         for task in TASK_ORDER:
-            if not settings[task]["enabled"]:
+            if task == "library" and not settings[task]["enabled"]:
                 continue
             for profile, engine, state in scheduled_profiles:
                 profile_settings = engine.store.get("settings", {}) or {}
@@ -220,9 +220,14 @@ class ProfileRuntime:
 
     @staticmethod
     def _eligible_for_task(engine, task):
+        from .profile_controls import read_controls
+        controls = read_controls(engine.store)
         if task == "library":
-            from .external_store import ExternalRepository
+            registry = getattr(engine.store, "registry", None)
             profile_id = str(getattr(engine.store, "profile_id", "default") or "default")
+            if registry is not None and registry.get(profile_id).get("kind") != "owner":
+                return False
+            from .external_store import ExternalRepository
             managed = engine.store.get("managed", {}) or {}
             own_categories = any(
                 not isinstance(record, dict) or not record.get("shared_from")
@@ -230,7 +235,7 @@ class ProfileRuntime:
             )
             return own_categories or ExternalRepository(engine.store).has_managed(profile_id)
         if task == "daily":
-            if not (engine.store.get("daily_settings", {}) or {}).get("enabled"):
+            if not controls["daily"]:
                 return False
             if engine.store.get("daily_auto_opt_out"):
                 return False
@@ -247,7 +252,7 @@ class ProfileRuntime:
         keys = {
             "smart": "smart_mix_managed",
         }
-        if engine.store.get(keys[task], {}) or {}:
+        if controls["smart"] and (engine.store.get(keys[task], {}) or {}):
             return True
         return False
 

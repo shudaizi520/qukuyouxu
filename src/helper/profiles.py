@@ -114,6 +114,7 @@ def _public(profile):
 def _initial_state(profile):
     from .base_mixin import DEFAULT_BASE
     from .recommend import DEFAULT_DAILY
+    from .profile_controls import MIGRATION_KEY
 
     settings = dict(DEFAULT_SETTINGS)
     settings.update({
@@ -126,10 +127,12 @@ def _initial_state(profile):
         "settings": settings,
         "sources": [], "snapshots": [], "events": [],
         "cache": {}, "managed": {}, "overrides": {}, "metadata_overrides": {},
-        "daily_settings": dict(DEFAULT_DAILY), "base_settings": dict(DEFAULT_BASE),
+        "daily_settings": {**DEFAULT_DAILY, "enabled": True}, "base_settings": dict(DEFAULT_BASE),
         "feedback": {"tracks": {}, "artists": {}}, "daily_history": [],
         "behavior_events": [], "behavior_sessions": {}, "behavior_status": {},
         "product_settings": {"behavior_enabled": True},
+        "smart_mix_settings": {"auto_enabled": True, "weekly_auto_enabled": True},
+        MIGRATION_KEY: {"version": 2},
     }
 
 
@@ -147,7 +150,6 @@ def _library_reset_state(profile, source=None):
     clean = _initial_state(profile)
     if source is not None:
         clean["daily_settings"] = dict(source.get("daily_settings", {}) or clean["daily_settings"])
-        clean["daily_settings"]["enabled"] = False
         clean["base_settings"] = dict(source.get("base_settings", {}) or clean["base_settings"])
         previous = dict(source.get("settings", {}) or {})
         for key in ("interval_minutes", "source_hours", "min_tracks"):
@@ -173,7 +175,7 @@ def _library_reset_state(profile, source=None):
         "daily_managed": None,
         "daily_detached_playlists": [],
         "retired_managed": {},
-        "smart_mix_settings": {},
+        "smart_mix_settings": {"auto_enabled": True, "weekly_auto_enabled": True},
         "smart_mix_plans": {},
         "smart_mix_managed": {},
         "smart_mix_removed": {},

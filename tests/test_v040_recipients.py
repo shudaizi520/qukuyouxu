@@ -106,7 +106,7 @@ class PlexRecipientsV040Tests(unittest.TestCase):
         clean = ScopedStore(self.store, fresh["id"])
         self.assertFalse(clean.get("daily_managed"))
         self.assertEqual([], clean.get("behavior_events", []))
-        self.assertFalse((clean.get("daily_settings") or {}).get("enabled"))
+        self.assertTrue((clean.get("daily_settings") or {}).get("enabled"))
         self.assertEqual(fresh["id"], self.registry.find_identity("shared", "42", "machine-a", "15")["id"])
 
     def test_people_list_marks_existing_profiles_and_explains_the_source(self):

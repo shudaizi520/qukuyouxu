@@ -156,10 +156,12 @@ def test_explicitly_disabled_daily_schedule_stays_disabled():
 
 def test_same_time_jobs_run_library_then_smart_then_daily():
     from helper.automation import PROFILE_STATE_KEY, save_automation_settings
+    from helper.profile_controls import write_control
 
     temp, base, _registry, runtime, scoped, calls = _configured_runtime()
     now = datetime(2027, 1, 10, 6, tzinfo=BEIJING).timestamp()
     try:
+        write_control(scoped, "smart", True)
         saved = save_automation_settings(base, {
             "daily": {"enabled": True, "hour": 6},
             "smart": {"enabled": True, "interval_days": 7, "hour": 6},
@@ -338,7 +340,7 @@ def test_preupgrade_deleted_daily_playlist_is_not_recreated():
     assert not eligible
 
 
-def test_one_profile_failure_does_not_stop_remaining_profiles():
+def test_library_scan_is_owner_only_even_if_a_recipient_is_due():
     from helper.automation import save_automation_settings
 
     temp, base, registry, runtime, owner, calls = _configured_runtime()
@@ -360,16 +362,18 @@ def test_one_profile_failure_does_not_stop_remaining_profiles():
         temp.cleanup()
 
     assert any(row.get("error") for row in results)
-    assert ("second", "library") in calls
+    assert ("second", "library") not in calls
 
 
 def test_smart_mix_partial_failure_keeps_original_slot_and_uses_retry_time():
     from helper.automation import PROFILE_STATE_KEY, save_automation_settings
+    from helper.profile_controls import write_control
 
     temp, base, _registry, runtime, scoped, _calls = _configured_runtime()
     now = datetime(2027, 1, 10, 6, tzinfo=BEIJING).timestamp()
     retry_at = now + 900
     try:
+        write_control(scoped, "smart", True)
         saved = save_automation_settings(base, {
             "daily": {"enabled": False, "hour": 6},
             "smart": {"enabled": True, "interval_days": 7, "hour": 6},
@@ -397,11 +401,13 @@ def test_smart_mix_partial_failure_keeps_original_slot_and_uses_retry_time():
 
 def test_smart_retry_does_not_starve_healthy_kinds_at_next_normal_cycle():
     from helper.automation import PROFILE_STATE_KEY, save_automation_settings
+    from helper.profile_controls import write_control
 
     temp, base, _registry, runtime, scoped, _calls = _configured_runtime()
     now = datetime(2027, 1, 10, 6, tzinfo=BEIJING).timestamp()
     invocations = []
     try:
+        write_control(scoped, "smart", True)
         scoped.set("smart_mix_managed", {
             "weekly": {"id": "smart-1"},
             "time_capsule": {"id": "smart-2"},
