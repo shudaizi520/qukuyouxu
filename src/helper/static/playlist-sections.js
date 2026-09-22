@@ -6,7 +6,7 @@ export function groupPlaylists(items){
  };
 }
 
-export function createPlaylistSections({document,onOpenPlaylist,onOpenTool}){
+export function createPlaylistSections({document,onOpenPlaylist,onOpenTool,createArtwork}){
  let groups=groupPlaylists([]);
  let favoriteUnseen=false;
  const byId=id=>document.getElementById(id);
@@ -26,7 +26,7 @@ export function createPlaylistSections({document,onOpenPlaylist,onOpenTool}){
   for(const item of groups.custom){
    const button=document.createElement('button');button.type='button';button.dataset.kind=item.kind;button.dataset.key=item.key;
    const text=document.createElement('span'),title=document.createElement('strong'),meta=document.createElement('small');
-   title.textContent=item.title;meta.textContent=countLabel(item);text.append(title,meta);button.append(text);
+   title.textContent=item.title;meta.textContent=countLabel(item);text.append(title,meta);button.append(createArtwork(item,'sidebar'),text);
    if(item.kind==='favorite'&&favoriteUnseen){button.classList.add('has-unseen');const dot=document.createElement('span');dot.className='playlist-favorite-dot';dot.setAttribute('aria-label','有新收藏歌曲');button.append(dot);}
    button.onclick=()=>onOpenPlaylist(item);box.append(button);
   }
@@ -41,7 +41,7 @@ export function createPlaylistSections({document,onOpenPlaylist,onOpenTool}){
    card.dataset.kind=item.kind;card.dataset.key=item.key;card.setAttribute('aria-label','打开'+item.title);
    const body=document.createElement('span');body.className='playlist-section-card-body';
    const title=document.createElement('strong');title.textContent=item.title;
-   const count=document.createElement('small');count.textContent=countLabel(item);body.append(title,count);card.append(body);
+   const count=document.createElement('small');count.textContent=countLabel(item);body.append(title,count);card.append(createArtwork(item,'card'),body);
    card.onclick=()=>activate(item);box.append(card);
   }
   if(!rows.length){

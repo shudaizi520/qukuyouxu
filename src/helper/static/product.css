@@ -843,5 +843,22 @@ body[data-view=settings] .settings-user-header :focus-visible{outline:2px solid 
  body[data-view=settings] #managedUserList .settings-person{grid-column:1/-1}
  body[data-view=settings] .settings-control-cell{flex-direction:column;gap:6px;align-items:flex-start}
  body[data-view=settings] .settings-mobile-label{display:inline;font-size:13px;color:#60777c}
- body[data-view=settings] #managedUserList .profile-actions{grid-column:1/-1;width:auto;justify-content:flex-end}
+body[data-view=settings] #managedUserList .profile-actions{grid-column:1/-1;width:auto;justify-content:flex-end}
 }
+
+/* Plex artwork stays secondary to playlist titles and falls back cleanly. */
+.playlist-cover{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));flex:none;overflow:hidden;border-radius:9px;background:var(--playlist-surface-soft);color:var(--playlist-accent)}
+.playlist-cover img{display:block;width:100%;height:100%;min-width:0;min-height:0;object-fit:cover}
+.playlist-cover.is-1{grid-template-columns:1fr;grid-template-rows:1fr}
+.playlist-cover.is-2{grid-template-columns:repeat(2,1fr);grid-template-rows:1fr}
+.playlist-cover.is-3 img:last-child{grid-column:1/-1}
+.playlist-cover.is-placeholder{display:grid;grid-template-columns:1fr;grid-template-rows:1fr;place-items:center;background:linear-gradient(145deg,color-mix(in srgb,var(--playlist-accent) 14%,var(--playlist-surface)),var(--playlist-surface-soft));border:1px solid var(--playlist-line);font-size:20px;font-weight:600}
+.playlist-cover-sidebar{width:30px;height:30px;border-radius:6px}
+.playlist-cover-sidebar.is-placeholder{font-size:15px}
+.playlist-cover-card{width:72px;height:72px;border-radius:11px}
+.playlist-cover-card.is-placeholder{font-size:27px}
+.playlist-hero-intro{display:flex;align-items:center;gap:14px;min-width:0}
+.playlist-hero-intro>div{min-width:0}
+.playlist-cover-hero{width:62px;height:62px;border-radius:11px}
+.playlist-cover-hero.is-placeholder{font-size:25px}
+@media(max-width:700px){.playlist-cover-hero{width:48px;height:48px}.playlist-hero-intro{gap:10px}}
