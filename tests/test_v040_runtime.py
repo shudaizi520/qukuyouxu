@@ -61,6 +61,7 @@ class ProfileRuntimeV040Tests(unittest.TestCase):
         for profile_id in profile_ids:
             scoped = ScopedStore(self.base, profile_id)
             scoped.set("daily_managed", {"id": f"daily-{profile_id}"})
+            scoped.set("daily_settings", {"enabled": True, "hour": 6})
             scoped.set(PROFILE_STATE_KEY, {
                 "revision": saved["revision"],
                 "tasks": {

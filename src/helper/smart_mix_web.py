@@ -561,6 +561,7 @@ def _batch_daily_row(profile, engine):
         "name": profile.get("name") or profile["id"],
         "display_name": profile_daily_display_name(profile),
         "auto_enabled": bool((engine.store.get("daily_settings", {}) or {}).get("enabled")),
+        "suspension_reason": str((engine.store.get("daily_auto_suspension") or {}).get("reason") or ""),
     }
     if plan.get("id") and not plan.get("applied"):
         blocked = list(plan.get("blocked") or [])
@@ -590,6 +591,11 @@ def batch_daily_status(runtime, registry):
 
 
 def _daily_schedule_blocker(engine):
+    suspension = engine.store.get("daily_auto_suspension") or {}
+    if suspension:
+        return str(suspension.get("reason") or "自动更新已暂停") + "；请先手动预览并发布确认"
+    if engine.store.get("daily_auto_opt_out"):
+        return "该用户已退出自动更新；请先手动预览并发布确认"
     managed = engine.store.get("daily_managed") or {}
     if not managed or managed.get("scope") != engine.daily_scope():
         return "请先预览并发布一次"
@@ -600,6 +606,23 @@ def _daily_schedule_blocker(engine):
         if isinstance(row, dict)
     )
     return "有待核对的发布变更" if unresolved else ""
+
+
+def set_profile_daily_schedule(runtime, registry, profile_id, enabled):
+    """Set one profile's daily switch without changing the global schedule."""
+    if not isinstance(enabled, bool):
+        raise ValueError("每日自动更新开关无效")
+    profile = next((row for row in registry.list_public()
+                    if row.get("id") == profile_id and row.get("enabled") is not False), None)
+    if profile is None:
+        raise ValueError("用户不存在或已停用")
+    engine = runtime.engine(profile_id)
+    with engine.exclusive():
+        if enabled and (reason := _daily_schedule_blocker(engine)):
+            raise SafetyError(reason)
+        saved = dict(engine.store.get("daily_settings", {}) or {})
+        engine.store.set("daily_settings", {**saved, "enabled": enabled})
+    return batch_daily_status(runtime, registry)
 
 
 def set_batch_daily_schedule(runtime, registry, enabled):
@@ -826,3 +849,8 @@ def attach_smart_mix_routes(app, store, engine, runtime, registry, body, ensure_
     async def daily_batch_schedule(request: Request):
         data = await body(request)
         return set_batch_daily_schedule(runtime, registry, data.get("enabled"))
+
+    @app.post("/api/profiles/daily/schedule")
+    async def daily_profile_schedule(request: Request):
+        data = await body(request)
+        return set_profile_daily_schedule(runtime, registry, str(data.get("profile_id") or ""), data.get("enabled"))

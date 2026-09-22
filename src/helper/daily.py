@@ -44,6 +44,25 @@ def claimed_by_another_profile(store, playlist_id, machine):
     return False
 
 
+def claimed_by_archived_same_identity(store, playlist_id, machine):
+    registry = getattr(store, 'registry', None)
+    base = getattr(store, 'base', None)
+    if registry is None or base is None:
+        return False
+    from .profiles import profile_identity
+    from .scoped_store import ScopedStore
+    current = registry.get(store.profile_id)
+    identity = profile_identity(current)
+    for profile in registry.list_public(enabled_only=False):
+        if profile.get('enabled') is not False or profile_identity(profile) != identity:
+            continue
+        record = ScopedStore(base, profile['id']).get('daily_managed') or {}
+        if (str(record.get('id') or '') == str(playlist_id)
+                and (not record.get('machine') or record.get('machine') == machine)):
+            return True
+    return False
+
+
 def rolling_preserve_ids(before, tracks, behavior_events, published_at, history=None,
                          max_consecutive=2):
     """Keep current playlist members that have no play/skip signal after publish."""
@@ -177,7 +196,12 @@ class DailyMixin:
             same_name = next((row for row in playlists if row.get('title') == target_title), None)
             same_name_id = str((same_name or {}).get('id') or (same_name or {}).get('ratingKey') or '')
             derived_target = False
+            archived_claim = bool(same_name_id and claimed_by_archived_same_identity(
+                self.store, same_name_id, identity['machine']))
+            if archived_claim:
+                blocked.append('旧用户的每日歌单仍在 Plex；请先核对，不会自动另建歌单')
             if (same_name_id and not self.store.get('daily_playlist_target')
+                    and not archived_claim
                     and claimed_by_another_profile(self.store, same_name_id, identity['machine'])):
                 # One Plex account can expose several music libraries. Keep the
                 # first library's existing list and give this library a stable,
@@ -190,7 +214,7 @@ class DailyMixin:
                 derived_target = True
                 same_name = next((row for row in playlists if row.get('title') == target_title), None)
                 same_name_id = str((same_name or {}).get('id') or (same_name or {}).get('ratingKey') or '')
-            if same_name_id:
+            if same_name_id and not archived_claim:
                 candidate = p.playlist_state(same_name_id)
                 if (derived_target or claimed_by_another_profile(
                         self.store, same_name_id, identity['machine'])):
@@ -478,7 +502,7 @@ class DailyMixin:
         now = time.time() if now is None else now
         daily = {**DEFAULT_DAILY, **self.store.get('daily_settings', {})}
         if schedule:
-            daily.update({key: schedule[key] for key in ('enabled', 'hour') if key in schedule})
+            daily.update({key: schedule[key] for key in ('hour',) if key in schedule})
         record = self.store.get('daily_managed')
         pending = self.store.get('daily_plan') or {}
         manual_waiting = bool(pending.get('origin') == 'manual' and (not pending.get('applied')) and (pending.get('date') == day_at(now)) and (0 <= now - number_time(pending.get('created_at')) <= 1800))
@@ -492,7 +516,7 @@ class DailyMixin:
             now = time.time() if now is None else float(now)
             daily = {**DEFAULT_DAILY, **self.store.get('daily_settings', {})}
             if schedule:
-                daily.update({key: schedule[key] for key in ('enabled', 'hour') if key in schedule})
+                daily.update({key: schedule[key] for key in ('hour',) if key in schedule})
             if self.store.get('daily_auto_suspension'):
                 return {'status': 'suspended', 'message': '该用户的自动更新已暂停，请手动发布一次确认恢复'}
             pending = self.store.get('daily_plan') or {}

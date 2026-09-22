@@ -49,6 +49,24 @@ class ProfileLibraryUIV108Tests(unittest.TestCase):
         self.assertIn(current, page.by_id("officialSection")["ancestors"])
         self.assertIn("account-selector-row", page.by_id("profileSwitcher")["classes"])
         self.assertIn("account-selector-row", page.by_id("plexLibraryPanel")["classes"])
+        self.assertTrue(page.by_id("savePlexLibrary")["hidden"])
+
+    def test_library_change_requires_explicit_save(self):
+        script = (ROOT / "src/helper/static/settings.js").read_text(encoding="utf-8")
+        self.assertNotIn("$('officialSection').onchange=()=>action(saveOfficialLibrary)", script)
+        self.assertIn("$('savePlexLibrary').onclick=()=>action(saveOfficialLibrary)", script)
+        self.assertIn("$('savePlexLibrary').hidden=", script)
+
+    def test_removed_user_add_uses_fresh_import_and_owner_keeps_action_slot(self):
+        script = (ROOT / "src/helper/static/settings.js").read_text(encoding="utf-8")
+        self.assertNotIn("重新添加", script)
+        self.assertNotIn("'/api/plex/profiles/restore'", script)
+        self.assertIn("actions.className='settings-actions profile-actions'", script)
+
+    def test_daily_safety_pause_reason_is_visible_in_batch_results(self):
+        script = (ROOT / "src/helper/static/settings.js").read_text(encoding="utf-8")
+        self.assertIn("row.suspension_reason?`安全暂停", script)
+        self.assertIn("'/api/profiles/daily/schedule'", script)
 
     def test_add_user_dialog_has_separate_people_and_library_steps(self):
         page = self.parse("settings.html")

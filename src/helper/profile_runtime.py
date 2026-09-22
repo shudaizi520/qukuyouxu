@@ -230,6 +230,8 @@ class ProfileRuntime:
             )
             return own_categories or ExternalRepository(engine.store).has_managed(profile_id)
         if task == "daily":
+            if not (engine.store.get("daily_settings", {}) or {}).get("enabled"):
+                return False
             if engine.store.get("daily_auto_opt_out"):
                 return False
             if engine.store.get("daily_managed"):

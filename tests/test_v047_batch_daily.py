@@ -93,6 +93,39 @@ class FakeRuntime:
 
 
 class BatchDailyV047Tests(unittest.TestCase):
+    def test_status_exposes_profile_pause_and_safety_reason(self):
+        from helper.smart_mix_web import batch_daily_status
+
+        runtime = FakeRuntime()
+        runtime.engines["friend"].store.set("daily_auto_suspension", {"reason": "每日推荐存在阻止项"})
+        runtime.engines["friend"].store.set("daily_plan", {"id": "blocked", "blocked": ["Plex 中没有这个项目"], "items": []})
+        row = batch_daily_status(runtime, FakeRegistry())["items"][1]
+        self.assertFalse(row["auto_enabled"])
+        self.assertEqual("Plex 中没有这个项目", row["blocked"][0])
+        self.assertEqual("每日推荐存在阻止项", row["suspension_reason"])
+
+    def test_enabling_one_profile_requires_safe_preview_and_publish(self):
+        from helper.engine import SafetyError
+        from helper.smart_mix_web import set_profile_daily_schedule
+
+        runtime = FakeRuntime()
+        runtime.engines["friend"].store.set("daily_auto_suspension", {"reason": "每日推荐存在阻止项"})
+        with self.assertRaisesRegex(SafetyError, "手动预览并发布"):
+            set_profile_daily_schedule(runtime, FakeRegistry(), "friend", True)
+        self.assertFalse(runtime.engines["friend"].store.get("daily_settings")["enabled"])
+        result = set_profile_daily_schedule(runtime, FakeRegistry(), "default", True)
+        self.assertTrue(runtime.engines["default"].store.get("daily_settings")["enabled"])
+        self.assertEqual("default", result["items"][0]["profile_id"])
+
+    def test_opted_out_profile_cannot_show_enabled_without_republish(self):
+        from helper.engine import SafetyError
+        from helper.smart_mix_web import set_profile_daily_schedule
+
+        runtime = FakeRuntime()
+        runtime.engines["default"].store.set("daily_auto_opt_out", True)
+        with self.assertRaisesRegex(SafetyError, "手动预览并发布"):
+            set_profile_daily_schedule(runtime, FakeRegistry(), "default", True)
+
     def test_preview_reports_each_profile_without_cross_profile_failure(self):
         from helper.smart_mix_web import batch_preview_daily
 

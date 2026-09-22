@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 import xml.etree.ElementTree as ET
+import uuid
 
 import requests
 
@@ -191,11 +192,14 @@ class PlexRecipientService:
                 row_name = str(row.get("username") or row.get("title") or "").strip().casefold()
                 if (owner_id and row_id == owner_id) or (owner_name and row_name == owner_name):
                     continue
-                profile = next((item for item in profiles
+                matches = [item for item in profiles
                                 if item.get("kind") == kind
                                 and str((item.get("account") or {}).get("id") or "") == row_id
                                 and str((item.get("server") or {}).get("machine") or "")
-                                == str((owner.get("server") or {}).get("machine") or "")), {})
+                                == str((owner.get("server") or {}).get("machine") or "")]
+                profile = next((item for item in matches if item.get("enabled") is not False), None)
+                if profile is None:
+                    profile = matches[0] if matches else {}
                 if not profile:
                     legacy_id = _recipient_profile_id(kind, row.get("id"))
                     profile = next((item for item in profiles if item.get("id") == legacy_id), {})
@@ -279,11 +283,11 @@ class PlexRecipientService:
     def _create(self, owner, kind, source_id, account, token, library_id):
         library = self._validate(owner, token, library_id)
         machine = str((owner.get("server") or {}).get("machine") or "")
-        existing = self.registry.find_identity(kind, account.get("id"), machine, library["id"])
+        existing = self.registry.find_identity(kind, account.get("id"), machine, library["id"], enabled_only=True)
         if existing:
             return self.registry.refresh_access(existing["id"], token, enabled=True)
 
-        sibling = next((row for row in self.registry.list_public()
+        sibling = next((row for row in self.registry.list_public(enabled_only=True)
                         if row.get("kind") == kind
                         and str((row.get("account") or {}).get("id") or "") == str(account.get("id") or "")
                         and str((row.get("server") or {}).get("machine") or "") == machine), None)
@@ -297,7 +301,7 @@ class PlexRecipientService:
         except ValueError:
             current = None
         if current:
-            profile_id = _recipient_profile_id(kind, f"{source_id}-{library['id']}")
+            profile_id = "p-" + uuid.uuid4().hex[:20]
         return self.registry.create(
             name=account.get("username") or ("Plex " + kind),
             kind=kind,

@@ -62,6 +62,7 @@ def _configured_runtime():
     settings.update(plex_url="http://plex:32400", plex_token="secret", section="15")
     scoped.set_many({
         "settings": settings,
+        "daily_settings": {"enabled": True, "hour": 6},
         "managed": {"theme": {"id": "category-1"}},
         "smart_mix_managed": {"weekly": {"id": "smart-1"}},
         "daily_managed": {"id": "daily-1", "scope": "scope:default"},
@@ -94,6 +95,27 @@ def test_legacy_profile_switches_migrate_to_global_enabled_state():
         temp.cleanup()
 
     assert result["daily"] == {"enabled": True, "hour": 8}
+
+
+def test_global_daily_switch_does_not_override_disabled_profile():
+    from helper.automation import PROFILE_STATE_KEY, save_automation_settings
+
+    temp, base, _registry, runtime, scoped, calls = _configured_runtime()
+    now = datetime(2027, 1, 10, 6, tzinfo=BEIJING).timestamp()
+    try:
+        saved = save_automation_settings(base, {
+            "daily": {"enabled": True, "hour": 6},
+            "smart": {"enabled": False, "interval_days": 7, "hour": 3},
+            "library": {"enabled": False, "hour": 0},
+        }, now=now - 60)
+        scoped.set("daily_settings", {"enabled": False, "hour": 6})
+        scoped.set(PROFILE_STATE_KEY, {"revision": saved["revision"], "tasks": {
+            "daily": {"config": saved["daily"], "next_at": now, "slot": now},
+        }})
+        runtime.run_due(now)
+        assert ("default", "daily") not in calls
+    finally:
+        temp.cleanup()
 
 
 def test_old_untouched_disabled_daily_schedule_is_enabled_once():
@@ -201,7 +223,8 @@ def _configure_profile(base, registry, profile_id, *, daily=True):
     scoped = ScopedStore(base, profile_id)
     settings = scoped.get("settings")
     settings.update(plex_url="http://plex:32400", plex_token=f"{profile_id}-token", section="15")
-    values = {"settings": settings, "managed": {"theme": {"id": f"{profile_id}-category"}}}
+    values = {"settings": settings, "managed": {"theme": {"id": f"{profile_id}-category"}},
+              "daily_settings": {"enabled": daily, "hour": 6}}
     if daily:
         values["daily_managed"] = {"id": f"{profile_id}-daily", "scope": f"scope:{profile_id}"}
     scoped.set_many(values)

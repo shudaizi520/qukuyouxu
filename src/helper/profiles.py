@@ -147,6 +147,7 @@ def _library_reset_state(profile, source=None):
     clean = _initial_state(profile)
     if source is not None:
         clean["daily_settings"] = dict(source.get("daily_settings", {}) or clean["daily_settings"])
+        clean["daily_settings"]["enabled"] = False
         clean["base_settings"] = dict(source.get("base_settings", {}) or clean["base_settings"])
         previous = dict(source.get("settings", {}) or {})
         for key in ("interval_minutes", "source_hours", "min_tracks"):
@@ -268,7 +269,8 @@ class ProfileRegistry:
             _text(machine, 160),
             _text(library_id, 40),
         )
-        for profile in self._load()["profiles"].values():
+        profiles = list(self._load()["profiles"].values())
+        for profile in sorted(profiles, key=lambda row: row.get("enabled") is False):
             if enabled_only and profile.get("enabled") is False:
                 continue
             if profile_identity(profile) == expected:
@@ -324,16 +326,18 @@ class ProfileRegistry:
             (private_source.get("server") or {}).get("machine"),
             library["id"],
         )
-        existing = self.find_identity(*identity)
+        existing = self.find_identity(*identity, enabled_only=True)
         if existing:
-            if existing.get("enabled") is False:
-                return self.restore(existing["id"])
             return existing
 
         value = self._load()
+        explicit_profile_id = profile_id is not None
         profile_id = validate_profile_id(profile_id or _library_profile_id(tuple(map(str, identity))))
         if profile_id in value["profiles"]:
-            raise ValueError("Plex 档案标识已经存在")
+            if explicit_profile_id or value["profiles"][profile_id].get("enabled") is not False:
+                raise ValueError("Plex 档案标识已经存在")
+            while profile_id in value["profiles"]:
+                profile_id = validate_profile_id("p-" + uuid.uuid4().hex[:20])
         profile = {
             "id": profile_id,
             "name": source_profile.get("name") or library["name"] or "我的 Plex",

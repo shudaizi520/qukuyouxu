@@ -304,6 +304,11 @@ def attach_routes(app, store, engine, body, ensure_idle):
             managed = store.get('daily_managed')
             if enabled and (not managed or managed.get('scope') != engine.daily_scope()):
                 raise SafetyError('先预览并发布一次每日推荐，再启用每日更新')
+            if enabled and store.get('daily_auto_suspension'):
+                reason = str((store.get('daily_auto_suspension') or {}).get('reason') or '自动更新已暂停')
+                raise SafetyError(reason + '；请先手动预览并发布确认')
+            if enabled and store.get('daily_auto_opt_out'):
+                raise SafetyError('该用户已退出自动更新；请先手动预览并发布确认')
             if enabled and any((s.get('category_id') == 'daily' and s.get('status') in ('prepared', 'uncertain', 'restoring') for s in store.get('snapshots'))):
                 raise SafetyError('有待核对的每日推荐变更，不能开启自动更新')
             cfg = {**DEFAULT_DAILY, **store.get('daily_settings', {})}

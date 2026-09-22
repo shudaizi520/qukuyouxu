@@ -34,7 +34,7 @@ class ProfileIdentityV108Tests(unittest.TestCase):
         from helper.scoped_store import ScopedStore
 
         self.source.set_many({
-            "daily_settings": {**self.source.get("daily_settings"), "size": 50, "hour": 7},
+            "daily_settings": {**self.source.get("daily_settings"), "size": 50, "hour": 7, "enabled": True},
             "catalog": [{"id": "song-1"}],
             "cache": {"qq": {"data": [1]}},
             "feedback": {"tracks": {"song-1": {"value": "avoid"}}, "artists": {}},
@@ -49,6 +49,7 @@ class ProfileIdentityV108Tests(unittest.TestCase):
 
         self.assertEqual(50, target.get("daily_settings")["size"])
         self.assertEqual(7, target.get("daily_settings")["hour"])
+        self.assertFalse(target.get("daily_settings")["enabled"])
         self.assertEqual([], target.get("catalog", []))
         self.assertEqual({}, target.get("cache"))
         self.assertEqual({"tracks": {}, "artists": {}}, target.get("feedback"))

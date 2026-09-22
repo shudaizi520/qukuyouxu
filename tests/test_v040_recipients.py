@@ -77,6 +77,38 @@ class PlexRecipientsV040Tests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
+    def test_adding_removed_recipient_starts_fresh_without_restoring_old_state(self):
+        from helper.plex_recipients import PlexRecipientService
+        from helper.scoped_store import ScopedStore
+
+        old = self.registry.create(
+            name="friend", kind="shared", profile_id="shared-42", token="old-token",
+            account={"id": "42", "username": "friend"},
+            server={"machine": "machine-a", "name": "Main", "url": "https://plex.local:32400"},
+            library={"id": "15", "name": "Music"},
+        )
+        ScopedStore(self.store, old["id"]).set_many({
+            "daily_managed": {"id": "old-playlist"},
+            "daily_settings": {"enabled": True},
+            "behavior_events": [{"track_id": "old-song"}],
+        })
+        self.registry.archive(old["id"])
+        service = PlexRecipientService(self.store, self.registry, session=_Session({}))
+        service._recipient_access = lambda *_: ("new-token", {"id": "42", "username": "friend"})
+        service._validate = lambda *_: {"id": "15", "name": "Music"}
+
+        fresh = service.import_shared_user("default", "42", "15")
+
+        self.assertNotEqual(old["id"], fresh["id"])
+        self.assertTrue(fresh["enabled"])
+        self.assertFalse(self.registry.get(old["id"])["enabled"])
+        self.assertEqual({"id": "old-playlist"}, ScopedStore(self.store, old["id"]).get("daily_managed"))
+        clean = ScopedStore(self.store, fresh["id"])
+        self.assertFalse(clean.get("daily_managed"))
+        self.assertEqual([], clean.get("behavior_events", []))
+        self.assertFalse((clean.get("daily_settings") or {}).get("enabled"))
+        self.assertEqual(fresh["id"], self.registry.find_identity("shared", "42", "machine-a", "15")["id"])
+
     def test_people_list_marks_existing_profiles_and_explains_the_source(self):
         from helper.plex_recipients import PlexRecipientService
 
