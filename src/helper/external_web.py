@@ -30,6 +30,13 @@ def _source_summary(data, last_run=None):
 
 def _public_track(row, catalog=None):
     candidate_ids = list(row.get("candidate_ids") or [])[:3]
+    catalog = catalog or {}
+    matched = catalog.get(str(row.get("plex_track_id") or "")) or {}
+    def rating(track):
+        try:
+            return float(track.get("user_rating") or 0)
+        except (TypeError, ValueError):
+            return 0.0
     public = {
         "source_track_key": row.get("source_track_key"),
         "position": row.get("position"),
@@ -37,6 +44,7 @@ def _public_track(row, catalog=None):
         "artists": list(row.get("artists") or []),
         "album": row.get("album"),
         "duration_ms": row.get("duration_ms"),
+        "plex_duration": matched.get("duration"),
         "version_label": row.get("version_label"),
         "source_url": row.get("source_url"),
         "status": row.get("status"),
@@ -44,13 +52,15 @@ def _public_track(row, catalog=None):
         "candidate_ids": candidate_ids,
         "reason": row.get("reason"),
         "manual": bool(row.get("manual")),
+        "user_rating": rating(matched),
+        "liked": rating(matched) >= 8,
     }
-    catalog = catalog or {}
     public["candidates"] = [
         {
             "id": track_id, "title": catalog[track_id].get("title"),
             "artist": catalog[track_id].get("artist"), "album": catalog[track_id].get("album"),
             "duration": catalog[track_id].get("duration"),
+            "user_rating": rating(catalog[track_id]), "liked": rating(catalog[track_id]) >= 8,
         }
         for track_id in candidate_ids if track_id in catalog
     ]

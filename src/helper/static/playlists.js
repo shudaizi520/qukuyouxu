@@ -90,10 +90,13 @@ function paintLiked(track,liked,rating){
  track.liked=liked;track.user_rating=rating;
  for(const row of tracks){if(String(row.id)===String(track.id)){row.liked=liked;row.user_rating=rating;}}
  refreshLikedRows(track);playlistPlayer.syncLiked(track);librarySearch.updateLiked(track.id,liked,rating);
+ const frame=$('playlistToolFrame');
+ if(frame.contentWindow&&new URL(frame.src,location.href).pathname==='/external')frame.contentWindow.postMessage({type:'pch-player-like-state',trackId:String(track.id),profileId:loadedProfileId,liked,user_rating:rating},location.origin);
 }
 async function setLiked(track,liked){
  const trackId=String(track.id),profileId=loadedProfileId,profileGeneration=profileRequest;
  const trackProfileId=String(track.profile_id||profileId);
+ if(trackProfileId!==profileId)throw Error('账户已切换，请重新选择歌曲');
  let pending=likedRequests.get(trackId);
  if(pending&&pending.profileId===profileId&&pending.profileGeneration===profileGeneration){
   pending.desired=!!liked;paintLiked(track,pending.desired,pending.desired?10:0);return pending.promise;
@@ -142,6 +145,12 @@ function refreshPlayingRows(){
   row.classList.toggle('playing',isPlaying);
   row.querySelector('.playlist-track-number').textContent=isPlaying&&!playlistPlayer.paused()?'❚❚':String(original+1);
  }
+ postPreviewState();
+}
+function postPreviewState(){
+ const frame=$('playlistToolFrame');
+ if(!frame.contentWindow||new URL(frame.src,location.href).pathname!=='/external')return;
+ frame.contentWindow.postMessage({type:'pch-player-preview-state',key:playlistPlayer.previewKey(),playing:$('playlistPlayer').dataset.playing==='true'},location.origin);
 }
 function renderNextTrackBatch(){
  const box=$('playlistTracks'),end=Math.min(filtered.length,renderedTrackCount+TRACK_BATCH_SIZE);
@@ -410,8 +419,12 @@ function mount(){
    const destination=destinations[target.pathname];if(destination)openWorkspacePage(target.pathname+target.search,...destination);
    return;
   }
+  if(event.data?.type==='pch-player-preview-query'){postPreviewState();return;}
   if(event.data?.type!=='pch-player-preview')return;
   const track=event.data.track;if(!track||typeof track.source!=='string'||!track.source.startsWith('/api/external/'))return;
+  if(!loadedProfileId||String(track.profile_id||'')!==loadedProfileId||String(track.profileId||'')!==loadedProfileId)return;
+  const source=new URL(track.source,location.origin);
+  if(source.origin!==location.origin||source.searchParams.get('profile_id')!==loadedProfileId)return;
   playlistPlayer.playPreview(track);
  });
  window.addEventListener('keydown',event=>{if(event.key==='Escape')setSidebarOpen(false);});

@@ -25,6 +25,7 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
  let hasReportedPlay=false;
  let terminalReported=false;
  let lastProgressReport=0;
+ let isScrubbing=false;
 
  function sameContext(candidate){
   return !!candidate&&!!context&&candidate.kind===context.kind&&candidate.key===context.key&&candidate.profileId===context.profileId;
@@ -41,15 +42,18 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
   const position=sourceOffset+boundedSeconds(audio.currentTime);
   return trackDuration?Math.min(position,trackDuration):position;
  }
+ function availableDuration(){
+  return trackDuration||(Number.isFinite(audio.duration)&&audio.duration>0?sourceOffset+audio.duration:0);
+ }
  function updateTimeline(){
-  const position=logicalPosition(),duration=trackDuration||(
-   Number.isFinite(audio.duration)&&audio.duration>0?sourceOffset+audio.duration:0
-  );
+  const position=logicalPosition(),duration=availableDuration();
   byId(document,'playerCurrent').textContent=formatTime(position);
   byId(document,'playerDuration').textContent=formatTime(duration);
   const seek=byId(document,'playerSeek');
-  seek.value=duration?String(Math.round(Math.min(1,position/duration)*1000)):'0';
-  seek.style.setProperty('--playlist-played',String(Number(seek.value)/10)+'%');
+  if(!isScrubbing){
+   seek.value=duration?String(Math.round(Math.min(1,position/duration)*1000)):'0';
+   seek.style.setProperty('--playlist-played',String(Number(seek.value)/10)+'%');
+  }
  }
  function report(event,{keepalive=false}={}){
   const track=queue[queueIndex];
@@ -90,12 +94,13 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
   if(trackId){for(const row of queue){if(String(row?.id||'')===trackId){row.liked=!!track.liked;row.user_rating=track.user_rating;}}}
   const active=queue[queueIndex],liked=!!active?.liked,label=liked?'取消喜欢':'喜欢';
   playerLiked.textContent=liked?'♥':'♡';playerLiked.setAttribute('aria-pressed',String(liked));playerLiked.setAttribute('aria-label',label);playerLiked.title=label;
-  playerLiked.disabled=!active||context?.kind==='preview'||!String(active.id||'').match(/^\d+$/);
+  playerLiked.disabled=!active||!String(active.id||'').match(/^\d+$/);
  }
  function showFeedback(message=''){
   const title=byId(document,'playerTitle').textContent||'这首歌';
   byId(document,'playerFeedbackMessage').textContent=message||'无法播放《'+title+'》，你可以重试或播放下一首。';
   byId(document,'playerFeedback').hidden=false;
+  setPlaying(false);onStateChange();
  }
  function updateArtwork(track){
   artwork.replaceChildren();artwork.classList.toggle('has-image',!!track?.thumb);
@@ -116,7 +121,7 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
    retryCount+=1;recoveryPending=true;
    retryTimer=setTimeout(()=>{
     if(generation!==playbackGeneration)return;
-    recoveryPending=false;replaceSource(true,false);
+    recoveryPending=false;replaceSource(true,false,sourceOffset);
    },260);
    return;
   }
@@ -131,13 +136,13 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
  function retryNow(){
   if(!activeSource)return;
   clearTimeout(retryTimer);recoveryPending=false;retryCount=1;clearFeedback();
-  replaceSource(true,false);
+  replaceSource(true,false,sourceOffset);
  }
- function sourceFor(track){
-  if(context.kind!=='preview'||!track.source){
-   return mediaUrl('audio',track,context);
-  }
-  return track.source;
+ function sourceFor(track,offset=0){
+  const source=context.kind==='preview'&&track.source?track.source:mediaUrl('audio',track,context);
+  if(!offset)return source;
+  const url=new URL(source,document.baseURI);url.searchParams.set('offset',String(offset));
+  return url.pathname+url.search;
  }
  function bindSourceHandlers(generation,source){
   audio.onerror=()=>{if(generation!==playbackGeneration||!sourceMatches(source))return;handleFailure(generation,audio.error,currentSource());};
@@ -146,12 +151,12 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
   audio.onpause=()=>{if(generation!==playbackGeneration||!sourceMatches(source))return;setPlaying(false);if(hasReportedPlay&&!terminalReported)report('pause');onStateChange();};
   audio.onended=()=>{if(generation!==playbackGeneration||!sourceMatches(source))return;if(trackDuration&&logicalPosition()+3<trackDuration){handleFailure(generation,new Error('音频流提前结束'),source);return;}finishCurrent('scrobble');playNext();};
  }
- function replaceSource(autoplay=true,resetRetry=true){
+ function replaceSource(autoplay=true,resetRetry=true,offsetSeconds=0){
   const track=queue[queueIndex];if(!track||!context)return;
   const generation=++playbackGeneration;
   clearTimeout(retryTimer);recoveryPending=false;if(resetRetry)retryCount=0;
   resettingSource=true;audio.pause();audio.removeAttribute('src');audio.load();
-  sourceOffset=0;activeSource=sourceFor(track);bindSourceHandlers(generation,activeSource);
+  sourceOffset=boundedSeconds(offsetSeconds,trackDuration||86400);activeSource=sourceFor(track,sourceOffset);bindSourceHandlers(generation,activeSource);
   audio.src=activeSource;resettingSource=false;updateTimeline();
   if(autoplay)attemptPlay(generation);
  }
@@ -159,12 +164,13 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
   const track=queue[index];if(!track||!context)return;
   if(finishPrevious)finishCurrent('stop');
   queueIndex=index;activeTrackId=String(track.id);trackDuration=boundedSeconds(track.duration);sourceOffset=0;
+  isScrubbing=false;
   hasReportedPlay=false;terminalReported=false;lastProgressReport=0;
   clearFeedback();
   byId(document,'playerTitle').textContent=track.title||'未知歌曲';
   byId(document,'playerArtist').textContent=track.artist||'未知歌手';
   byId(document,'playerQueue').textContent=(index+1)+' / '+queue.length;
-  updateArtwork(track);syncLiked(track);onStateChange();replaceSource(autoplay,true);
+  setPlaying(false);updateArtwork(track);syncLiked(track);onStateChange();replaceSource(autoplay,true);
  }
  function startQueue(items,index,candidate){
   finishCurrent('stop');queue=Array.isArray(items)?items.slice():[];context={...candidate};startQueueTrack(index,true,false);
@@ -179,14 +185,19 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
  }
  function seekTo(seconds){
   const target=boundedSeconds(seconds,trackDuration||86400);
-  if(Number.isFinite(audio.duration)&&audio.duration>0&&sourceOffset===0){
-   audio.currentTime=Math.min(target,audio.duration);updateTimeline();return;
+  const localTarget=target-sourceOffset;
+  if(Number.isFinite(audio.duration)&&audio.duration>0&&localTarget>=0&&localTarget<=audio.duration){
+   for(let index=0;index<(audio.seekable?.length||0);index++){
+    if(localTarget<audio.seekable.start(index)||localTarget>audio.seekable.end(index))continue;
+    try{audio.currentTime=localTarget;updateTimeline();return;}catch(_error){break;}
+   }
   }
+  if(availableDuration()&&activeSource){replaceSource(!audio.paused,true,target);return;}
   showFeedback('当前格式暂不支持拖动。');updateTimeline();
  }
  function playNext(){
   if(queueIndex+1<queue.length)startQueueTrack(queueIndex+1);
-  else{audio.pause();sourceOffset=0;audio.currentTime=0;updateTimeline();}
+  else{audio.pause();sourceOffset=0;audio.currentTime=0;updateTimeline();setPlaying(false);onStateChange();}
  }
  function playPrevious(){
   if(logicalPosition()>5){seekTo(0);return;}
@@ -195,13 +206,14 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
  function stop(){
   finishCurrent('stop');playbackGeneration+=1;clearTimeout(retryTimer);audio.onerror=null;audio.ontimeupdate=null;audio.onplaying=null;audio.onpause=null;audio.onended=null;audio.pause();audio.removeAttribute('src');audio.load();
   queue=[];context=null;queueIndex=-1;activeTrackId='';activeSource='';sourceOffset=0;trackDuration=0;retryCount=0;recoveryPending=false;resettingSource=false;
+  isScrubbing=false;
   hasReportedPlay=false;terminalReported=false;lastProgressReport=0;
   clearFeedback();updateArtwork(null);byId(document,'playerTitle').textContent='未播放';byId(document,'playerArtist').textContent='请选择歌曲';byId(document,'playerQueue').textContent='0 / 0';
   byId(document,'playerCurrent').textContent='0:00';byId(document,'playerDuration').textContent='0:00';byId(document,'playerSeek').value='0';updateTimeline();syncLiked(null);setPlaying(false);onStateChange();
  }
  function playPreview(track){
   if(!track?.source)return;
-  playAt([track],0,{kind:'preview',key:'external',profileId:String(track.profileId||'')});
+  playAt([track],0,{kind:'preview',key:String(track.previewKey||track.source),profileId:String(track.profileId||'')});
  }
  function flush(event='stop',keepalive=false){
   if(event==='stop'||event==='scrobble')return finishCurrent(event,keepalive);
@@ -214,7 +226,8 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
   byId(document,'playerRetry').onclick=retryNow;
   playerLiked.onclick=()=>{const track=queue[queueIndex];if(track&&!playerLiked.disabled)onLikedChange(track,!track.liked);};
   byId(document,'playerErrorNext').onclick=()=>{clearFeedback();playNext();};
-  byId(document,'playerSeek').oninput=()=>{const seek=byId(document,'playerSeek');seek.style.setProperty('--playlist-played',String(Number(seek.value)/10)+'%');if(trackDuration)seekTo(trackDuration*Number(seek.value)/1000);};
+  byId(document,'playerSeek').oninput=()=>{const seek=byId(document,'playerSeek'),duration=availableDuration();isScrubbing=true;seek.style.setProperty('--playlist-played',String(Number(seek.value)/10)+'%');if(duration)byId(document,'playerCurrent').textContent=formatTime(duration*Number(seek.value)/1000);};
+  byId(document,'playerSeek').onchange=()=>{const seek=byId(document,'playerSeek'),duration=availableDuration();isScrubbing=false;if(!trackDuration&&duration)trackDuration=duration;if(duration)seekTo(duration*Number(seek.value)/1000);else updateTimeline();};
   playerVolume.oninput=()=>{audio.volume=Number(playerVolume.value);if(audio.volume>0)lastAudibleVolume=audio.volume;audio.muted=audio.volume===0;syncVolumeState();};
   playerMute.onclick=()=>{if(audio.muted||audio.volume===0){if(audio.volume===0){audio.volume=lastAudibleVolume;playerVolume.value=String(lastAudibleVolume);}audio.muted=false;}else audio.muted=true;syncVolumeState();};
   syncLiked(null);syncVolumeState();
@@ -222,7 +235,7 @@ export function createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange
 
  return {
   mount,startQueue,playAt,playPreview,playNext,playPrevious,stop,flush,syncLiked,
-  paused:()=>audio.paused,trackId:()=>activeTrackId,
+  paused:()=>audio.paused,trackId:()=>activeTrackId,previewKey:()=>context?.kind==='preview'?String(queue[queueIndex]?.previewKey||''):'',
   isContext:sameContext,
   isPlayingTrack:(track,candidate)=>sameContext(candidate)&&String(track?.id)===activeTrackId,
  };

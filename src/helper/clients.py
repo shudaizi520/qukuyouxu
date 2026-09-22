@@ -367,7 +367,7 @@ class PlexClient:
             or (container == 'mp3' and codec in {'', 'mp3'})
             or (container in {'m4a', 'mp4'} and codec in {'', 'aac', 'mp3'})
         )
-        if browser_safe:
+        if browser_safe and offset_seconds == 0:
             headers = {'Range': range_header} if range_header else {}
             url = self.base + part.get('key')
             params = None

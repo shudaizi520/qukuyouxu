@@ -308,6 +308,32 @@ class PlexAudioPartV130Tests(unittest.TestCase):
         self.assertEqual("bytes=0-1023", client.session.calls[-1][2]["headers"]["Range"])
         response.close()
 
+    def test_browser_audio_seek_uses_transcoder_offset_even_for_direct_play_codec(self):
+        from helper.clients import PlexClient
+
+        class Session:
+            def __init__(self):
+                self.calls = []
+
+            def request(self, method, url, **kwargs):
+                self.calls.append((method, url, kwargs))
+                return FakeAudioResponse(status=200, headers={"Content-Type": "audio/mpeg"})
+
+        client = object.__new__(PlexClient)
+        client.base = "http://plex"
+        client.session = Session()
+        client._xml = lambda _path: ET.fromstring(
+            '<MediaContainer><Track ratingKey="10"><Media container="flac" audioCodec="flac">'
+            '<Part key="/library/parts/1/file.flac" container="flac" accessible="1" exists="1" />'
+            '</Media></Track></MediaContainer>'
+        )
+        response = client.open_browser_audio("10", offset_seconds=75.5)
+        method, url, kwargs = client.session.calls[-1]
+        self.assertEqual("GET", method)
+        self.assertEqual("http://plex/music/:/transcode/universal/start.mp3", url)
+        self.assertEqual("75.5", kwargs["params"]["offset"])
+        response.close()
+
     def test_page_uses_one_shared_audio_player_without_timeline_calls(self):
         root = Path(__file__).resolve().parents[1] / "src/helper/static"
         page = (root / "external.html").read_text(encoding="utf-8")

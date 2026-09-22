@@ -11,6 +11,16 @@ let pollTimer=null;
 let previewButton=null;
 let previewProgress=null;
 let previewKey='';
+const previewLikes=new Map();
+function previewKeyFor(track,candidate=''){return String(track.source_track_key||'')+'\0'+String(candidate||'');}
+function previewRating(track,id){return previewLikes.get(String(id))||{liked:!!track.liked,user_rating:Number(track.user_rating||0)};}
+function applyPreviewLikeState(id,liked,rating){
+ previewLikes.set(String(id),{liked:!!liked,user_rating:Number(rating||0)});
+ for(const row of current?.tracks||[]){
+  if(String(row.plex_track_id||'')===String(id)){row.liked=!!liked;row.user_rating=Number(rating||0);}
+  for(const candidate of row.candidates||[])if(String(candidate.id)===String(id)){candidate.liked=!!liked;candidate.user_rating=Number(rating||0);}
+ }
+}
 
 function notify(message,error=false){
  if(window.PCHUI){PCHUI.notify(message,{error});return;}
@@ -62,6 +72,7 @@ async function openSource(sourceId,updateUrl=true){
   page=lastPage;
   current=await json('/api/external/sources/'+encodeURIComponent(sourceId)+'?status='+encodeURIComponent(activeStatus)+'&page='+page+'&limit='+PAGE_SIZE);
  }
+ for(const [id,state] of previewLikes)applyPreviewLikeState(id,state.liked,state.user_rating);
  if(updateUrl){const url=new URL(location.href);url.searchParams.set('source',sourceId);url.searchParams.set('tab',activeStatus);history.replaceState(null,'',url);}
  renderSourceList();renderDetail();
 }
@@ -121,6 +132,7 @@ function renderTracks(){
  const start=current.total?(current.page-1)*current.limit+1:0,end=Math.min(current.total,current.page*current.limit);
  $('trackRange').textContent=current.total?start+'–'+end+' / '+current.total:'0 首';
  $('previousTracks').disabled=current.page<=1;$('nextTracks').disabled=end>=current.total;
+ if(window.parent!==window)window.parent.postMessage({type:'pch-player-preview-query'},location.origin);
 }
 function reviewChoice(value){return value==='__missing__'?{status:'missing'}:{status:'matched',plex_track_id:value};}
 function reviewCandidates(track){return (track.candidates||[]).length?track.candidates:(track.candidate_ids||[]).map(id=>({id,title:'Plex 曲目 '+id,artist:''}));}
@@ -143,26 +155,37 @@ function renderReviewActions(actions,track,check){
  }
  const missing=document.createElement('option');missing.value='__missing__';missing.textContent='标记为缺失';select.append(missing);
  const preview=auditionButton(track,()=>select.value,'试听');preview.querySelector('button').disabled=true;
- select.onchange=()=>{const ready=!!select.value;preview.querySelector('button').disabled=!ready||select.value==='__missing__';if(ready)check.checked=true;updateReviewSelection();};
+ select.onchange=()=>{const ready=!!select.value;const button=preview.querySelector('button');button.disabled=!ready||select.value==='__missing__';button.dataset.previewKey=previewKeyFor(track,select.value);if(ready)check.checked=true;updateReviewSelection();};
  actions.append(select,preview);
 }
 function auditionButton(track,candidate='',label='试听'){
  const control=document.createElement('span');control.className='external-preview-control';
  const button=document.createElement('button');button.type='button';button.className='secondary external-preview-button';button.textContent=label;
+ button.dataset.previewKey=previewKeyFor(track,typeof candidate==='string'?candidate:'');
  const progress=document.createElement('span');progress.className='external-preview-progress';progress.textContent='0:00';
  button.onclick=()=>playTrack(track,typeof candidate==='function'?candidate():candidate,button,progress);control.append(button,progress);return control;
 }
-function stopAudition(){
- const player=$('auditionPlayer');player.pause();player.removeAttribute('src');player.load();if(previewButton)previewButton.textContent='试听';if(previewProgress){previewProgress.textContent='0:00';previewProgress.classList.remove('is-error');}previewButton=null;previewProgress=null;previewKey='';
+function markAuditionButton(key,playing){
+ document.querySelectorAll('.external-preview-button').forEach(button=>{
+  const active=!!playing&&button.dataset.previewKey===key;
+  button.classList.toggle('external-preview-active',active);
+  button.title=active?'正在试听':'';
+ });
 }
-function showPreviewError(){if(previewButton)previewButton.textContent='重试';if(previewProgress){previewProgress.textContent='无法播放';previewProgress.classList.add('is-error');}}
+function stopAudition(){
+ const player=$('auditionPlayer');player.pause();player.removeAttribute('src');player.load();markAuditionButton('',false);if(previewProgress){previewProgress.textContent='0:00';previewProgress.classList.remove('is-error');}previewButton=null;previewProgress=null;previewKey='';
+}
+function showPreviewError(){markAuditionButton('',false);if(previewProgress){previewProgress.textContent='无法播放';previewProgress.classList.add('is-error');}}
 function playTrack(track,candidate='',button,progress){
-  const key=String(track.source_track_key||'')+'\0'+String(candidate||''),player=$('auditionPlayer');
+  const key=previewKeyFor(track,candidate),player=$('auditionPlayer');
+  const chosen=(track.candidates||[]).find(row=>String(row.id)===String(candidate));
+  const plexId=String(candidate||track.plex_track_id||'');
+  button.dataset.previewKey=key;
   const params=new URLSearchParams();const profile=PCHAuth.profile();if(profile)params.set('profile_id',profile);if(candidate)params.set('candidate',String(candidate));
  const source='/api/external/sources/'+encodeURIComponent(current.id)+'/tracks/'+encodeURIComponent(track.source_track_key)+'/audio?'+params.toString();
  if(window.parent!==window){
-  window.parent.postMessage({type:'pch-player-preview',track:{id:key,title:track.title||'未知歌曲',artist:(track.artists||[]).join(' / ')||'未知歌手',source,profileId:profile}},location.origin);
-  button.textContent='底部播放';progress.textContent='';return;
+  window.parent.postMessage({type:'pch-player-preview',track:{id:plexId,previewKey:key,title:track.title||'未知歌曲',artist:(track.artists||[]).join(' / ')||'未知歌手',duration:Number(chosen?.duration||track.plex_duration||0),...previewRating(chosen||track,plexId),source,profileId:profile,profile_id:profile}},location.origin);
+  progress.textContent='';return;
  }
  if(previewKey===key&&player.src){if(player.paused)player.play().catch(showPreviewError);else player.pause();return;}
  stopAudition();previewButton=button;previewProgress=progress;previewKey=key;player.src=source;
@@ -256,8 +279,13 @@ $('downloadCsv').onclick=event=>{event.preventDefault();closeDownloadMenu();acti
 function closeDownloadMenu(){$('downloadMenu').open=false;}
 document.addEventListener('pointerdown',event=>{const menu=$('downloadMenu');if(menu.open&&!menu.contains(event.target))closeDownloadMenu();});
 document.addEventListener('keydown',event=>{if(event.key==='Escape')closeDownloadMenu();});
-const player=$('auditionPlayer');player.addEventListener('playing',()=>{const button=previewButton;if(button)button.textContent='暂停';if(previewProgress)previewProgress.classList.remove('is-error');});player.addEventListener('pause',()=>{if(previewButton&&previewKey)previewButton.textContent='继续';});player.addEventListener('timeupdate',()=>{if(previewProgress)previewProgress.textContent=audioTime(player.currentTime)+(Number.isFinite(player.duration)?' / '+audioTime(player.duration):'');});player.addEventListener('ended',()=>{if(previewButton)previewButton.textContent='重播';if(previewProgress&&Number.isFinite(player.duration))previewProgress.textContent=audioTime(player.duration)+' / '+audioTime(player.duration);});player.addEventListener('error',showPreviewError);
-window.addEventListener('pch-profile-change',()=>action(async()=>{current=null;page=1;await loadSources();}));
+const player=$('auditionPlayer');player.addEventListener('playing',()=>{markAuditionButton(previewKey,true);if(previewProgress)previewProgress.classList.remove('is-error');});player.addEventListener('pause',()=>markAuditionButton('',false));player.addEventListener('timeupdate',()=>{if(previewProgress)previewProgress.textContent=audioTime(player.currentTime)+(Number.isFinite(player.duration)?' / '+audioTime(player.duration):'');});player.addEventListener('ended',()=>{markAuditionButton('',false);if(previewProgress&&Number.isFinite(player.duration))previewProgress.textContent=audioTime(player.duration)+' / '+audioTime(player.duration);});player.addEventListener('error',showPreviewError);
+window.addEventListener('message',event=>{
+ if(window.parent===window||event.source!==window.parent||event.origin!==location.origin)return;
+ if(event.data?.type==='pch-player-like-state'&&String(event.data.profileId||'')===String(PCHAuth.profile()||''))applyPreviewLikeState(event.data.trackId,event.data.liked,event.data.user_rating);
+ if(event.data?.type==='pch-player-preview-state')markAuditionButton(String(event.data.key||''),!!event.data.playing);
+});
+window.addEventListener('pch-profile-change',()=>action(async()=>{previewLikes.clear();current=null;page=1;await loadSources();}));
 async function boot(){
  const requested=new URLSearchParams(location.search).get('tab');if(['matched','review','missing'].includes(requested))activeStatus=requested;
  await loadSources();

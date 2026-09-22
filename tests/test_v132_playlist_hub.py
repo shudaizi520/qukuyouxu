@@ -937,15 +937,16 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn("trackDuration", timeline)
         self.assertIn("playerDuration", timeline)
 
-    def test_local_media_uses_catalog_routes_and_unknown_streams_do_not_seek_by_offset(self):
+    def test_local_media_uses_catalog_routes_and_known_media_duration_streams_seek_by_offset(self):
         player = (STATIC / "playlist-player.js").read_text(encoding="utf-8")
         script = (STATIC / "playlists.js").read_text(encoding="utf-8")
         seek = player.split("function seekTo(seconds)", 1)[1].split(
             "function playNext", 1
         )[0]
         self.assertIn("Number.isFinite(audio.duration)", seek)
-        self.assertNotIn("replaceSource(target,true", seek)
-        self.assertNotIn("offsetSeconds", player)
+        self.assertIn("if(availableDuration()&&activeSource)", seek)
+        self.assertIn("replaceSource(!audio.paused,true,target)", seek)
+        self.assertIn("offsetSeconds", player)
         media = script.split("function mediaUrl", 1)[1].split(
             "function playlistContext", 1
         )[0]
@@ -1016,8 +1017,8 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn("playlistToolFrame", script)
         self.assertIn("event.origin!==location.origin", script)
         self.assertIn("playPreview", player)
-        self.assertIn("context.kind!=='preview'||!track.source", player)
-        self.assertIn("return track.source", player)
+        self.assertIn("context.kind==='preview'&&track.source?track.source", player)
+        self.assertIn("previewKey", player)
         audio_route = external_web.split(
             '@app.get("/api/external/sources/{source_id}/tracks/{track_key}/audio")', 1
         )[1]
@@ -1083,7 +1084,8 @@ class ExternalPlaylistPreviewUiTests(unittest.TestCase):
         self.assertIn("external-preview-button", script)
         self.assertIn("external-preview-progress", script)
         self.assertIn("player.addEventListener('timeupdate'", script)
-        self.assertIn("button.textContent='暂停'", script)
+        self.assertNotIn("button.textContent='暂停'", script)
+        self.assertIn("external-preview-active", script)
         self.assertIn("if(current)stopAudition()", script)
 
     def test_external_page_uses_clear_primary_sections_without_instruction_blocks(self):

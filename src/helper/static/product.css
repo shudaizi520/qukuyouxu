@@ -809,3 +809,8 @@ body[data-view=settings] #managedUserList .profile-actions{width:auto;max-width:
 @media(max-width:560px){body[data-view=settings] .settings-shell,.pch-embedded body[data-view=settings] .settings-shell{padding:16px 14px 36px}}
 @media(max-width:720px){body[data-view=playlists] .playlist-search-result .playlist-search-actions{grid-column:2;display:flex}body[data-view=playlists] .playlist-search-result .playlist-search-actions button{display:inline-grid}body[data-view=playlists] .playlist-search-result .playlist-search-title-line .playlist-heart{display:grid}}
 .pch-embedded body[data-view=settings] #profileSwitcher{display:none}
+.external-preview-button.external-preview-active::after{content:"🔊";display:inline-block;margin-left:4px;font-size:12px;line-height:1;vertical-align:middle}
+body[data-view=playlists] #workspace{grid-template-rows:64px minmax(0,1fr) 80px}
+body[data-view=playlists] .playlist-player{height:80px;grid-template-rows:18px minmax(0,1fr)}
+.playlist-progress-rail input[type=range]{height:18px}
+@media(max-width:700px){body[data-view=playlists] #workspace{grid-template-rows:56px minmax(0,1fr) 112px}body[data-view=playlists] .playlist-player{height:112px}}
