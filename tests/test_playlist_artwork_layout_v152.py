@@ -10,12 +10,14 @@ class _Landmarks(HTMLParser):
     def __init__(self):
         super().__init__()
         self.ids = set()
+        self.attributes = {}
         self.scripts = set()
 
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
         if attrs.get("id"):
             self.ids.add(attrs["id"])
+            self.attributes[attrs["id"]] = attrs
         if tag == "script" and attrs.get("src"):
             self.scripts.add(attrs["src"].split("?", 1)[0])
 
@@ -25,6 +27,7 @@ def test_playlist_header_has_cover_landmark_and_artwork_module():
     page.feed((STATIC / "playlists.html").read_text(encoding="utf-8"))
     script = (STATIC / "playlists.js").read_text(encoding="utf-8")
     assert "playlistHeroArtwork" in page.ids
+    assert page.attributes["playlistHeroArtwork"].get("data-variant") == "hero"
     assert "./playlist-artwork.js" in script
 
 

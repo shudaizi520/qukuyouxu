@@ -862,3 +862,141 @@ body[data-view=settings] #managedUserList .profile-actions{grid-column:1/-1;widt
 .playlist-cover-hero{width:62px;height:62px;border-radius:11px}
 .playlist-cover-hero.is-placeholder{font-size:25px}
 @media(max-width:700px){.playlist-cover-hero{width:48px;height:48px}.playlist-hero-intro{gap:10px}}
+
+/* Appearance palettes: backgrounds and color only. */
+html{
+ --theme-canvas:#f5f8f7;--theme-surface:#ffffff;--theme-soft:#edf7f5;
+ --theme-text:#17323a;--theme-muted:#607879;--theme-line:#d7e5e2;
+ --theme-accent:#0b827d;--theme-accent-strong:#076e69;--theme-on-accent:#ffffff;
+ --theme-danger:#9a4e3d;--theme-danger-soft:#fff0ec;
+}
+html[data-appearance=warm]{
+ --theme-canvas:#f5f1e9;--theme-surface:#fffdf8;--theme-soft:#eee8dc;
+ --theme-text:#28343a;--theme-muted:#56636b;--theme-line:#d8d1c5;
+ --theme-accent:#8d5b3b;--theme-accent-strong:#77492d;--theme-on-accent:#ffffff;
+ --theme-danger:#93483f;--theme-danger-soft:#faebe5;
+ --ink:var(--theme-text);--muted:var(--theme-muted);--brand:var(--theme-accent);--line:var(--theme-line);
+ color-scheme:light;
+}
+html[data-appearance=night]{
+ --theme-canvas:#111b24;--theme-surface:#192631;--theme-soft:#223340;
+ --theme-text:#eef4f5;--theme-muted:#b7c9ce;--theme-line:#334651;
+ --theme-accent:#72c9c4;--theme-accent-strong:#8adbd4;--theme-on-accent:#09272a;
+ --theme-danger:#f3a999;--theme-danger-soft:#3c2930;
+ --ink:var(--theme-text);--muted:var(--theme-muted);--brand:var(--theme-accent);--line:var(--theme-line);
+ color-scheme:dark;
+}
+.appearance-picker{position:relative;flex:none;display:flex;align-items:center;z-index:35}
+.appearance-trigger{width:38px;height:38px;min-width:38px;min-height:38px;display:grid;place-items:center;padding:0;border:1px solid var(--theme-line);border-radius:10px;background:var(--theme-surface);color:var(--theme-muted);cursor:pointer}
+.appearance-trigger:hover,.appearance-trigger[aria-expanded=true]{background:var(--theme-soft);color:var(--theme-accent)}
+.appearance-trigger:focus-visible,.appearance-option:focus-visible{outline:3px solid var(--theme-accent);outline-offset:2px}
+.appearance-trigger svg{display:block;width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linejoin:round;stroke-linecap:round}
+.appearance-menu{position:absolute;right:0;top:calc(100% + 9px);display:grid;gap:3px;width:190px;padding:7px;border:1px solid var(--theme-line);border-radius:12px;background:var(--theme-surface);box-shadow:0 12px 36px rgba(7,22,28,.18)}
+.appearance-menu[hidden]{display:none}
+.appearance-option{width:100%;min-height:40px;display:flex;align-items:center;gap:10px;padding:6px 9px;border:0;border-radius:8px;background:transparent;color:var(--theme-text);text-align:left;cursor:pointer}
+.appearance-option:hover,.appearance-option.selected{background:var(--theme-soft)}
+.appearance-option.selected{color:var(--theme-accent)}
+.appearance-option.selected:after{content:'✓';margin-left:auto}
+.appearance-swatch{width:20px;height:20px;flex:none;border:1px solid var(--theme-line);border-radius:6px}
+.appearance-swatch-light{background:linear-gradient(135deg,#ffffff 50%,#dcefeb 50%)}
+.appearance-swatch-warm{background:linear-gradient(135deg,#fffdf8 50%,#c9ae8d 50%)}
+.appearance-swatch-night{background:linear-gradient(135deg,#192631 50%,#72c9c4 50%)}
+@media(max-width:700px){.appearance-trigger{width:34px;height:34px;min-width:34px;min-height:34px}.appearance-menu{right:0}}
+
+html[data-appearance=warm] body,
+html[data-appearance=night] body{background:var(--theme-canvas);color:var(--theme-text)}
+html[data-appearance=warm] :is(.topbar,.card,.panel,.auth-card,.stat,.health-card,.settings-nav,.external-source-item,.mix-card,.pch-dialog,.playlist-search-dialog),
+html[data-appearance=night] :is(.topbar,.card,.panel,.auth-card,.stat,.health-card,.settings-nav,.external-source-item,.mix-card,.pch-dialog,.playlist-search-dialog){background:var(--theme-surface);color:var(--theme-text);border-color:var(--theme-line)}
+html[data-appearance=warm] :is(.secondary,.danger,.button,.field input,.field select,textarea),
+html[data-appearance=night] :is(.secondary,.danger,.button,.field input,.field select,textarea){background:var(--theme-surface);color:var(--theme-text);border-color:var(--theme-line)}
+html[data-appearance=warm] :is(.primary,.brand-mark,.step-number),
+html[data-appearance=night] :is(.primary,.brand-mark,.step-number){background:var(--theme-accent);border-color:var(--theme-accent);color:var(--theme-on-accent)}
+html[data-appearance=warm] .primary:hover,
+html[data-appearance=night] .primary:hover{background:var(--theme-accent-strong);border-color:var(--theme-accent-strong);color:var(--theme-on-accent)}
+html[data-appearance=warm] :is(a,.link,.eyebrow),
+html[data-appearance=night] :is(a,.link,.eyebrow){color:var(--theme-accent)}
+html[data-appearance=warm] :is(.muted,small,.hero p,.song-meta,.section-note,.field small,.settings-library-name,.settings-mobile-label),
+html[data-appearance=night] :is(.muted,small,.hero p,.song-meta,.section-note,.field small,.settings-library-name,.settings-mobile-label){color:var(--theme-muted)}
+html[data-appearance=warm] :is(input:not([type=checkbox]):not([type=radio]),select,textarea),
+html[data-appearance=night] :is(input:not([type=checkbox]):not([type=radio]),select,textarea){background:var(--theme-surface);color:var(--theme-text);border-color:var(--theme-line)}
+html[data-appearance=warm] :is(input,select,textarea)::placeholder,
+html[data-appearance=night] :is(input,select,textarea)::placeholder{color:var(--theme-muted);opacity:1}
+html[data-appearance=warm] :is(input[type=checkbox],input[type=range]),
+html[data-appearance=night] :is(input[type=checkbox],input[type=range]){accent-color:var(--theme-accent)}
+html[data-appearance=warm] :is(.status-pill,.bucket,.stat,.metrics>div,.mini-stats>div,.warning-block,.webhook-setup,.qq-auth-panel,.external-trust-note,.pch-toast),
+html[data-appearance=night] :is(.status-pill,.bucket,.stat,.metrics>div,.mini-stats>div,.warning-block,.webhook-setup,.qq-auth-panel,.external-trust-note,.pch-toast){background:var(--theme-soft);color:var(--theme-text);border-color:var(--theme-line)}
+html[data-appearance=warm] :is(.status-table th,.status-table td,.review-table th,.review-table td,.song,.event-row,.settings-user-row,.settings-user-header),
+html[data-appearance=night] :is(.status-table th,.status-table td,.review-table th,.review-table td,.song,.event-row,.settings-user-row,.settings-user-header){border-color:var(--theme-line);color:var(--theme-text)}
+html[data-appearance=warm] :is(.review-table th,.settings-user-header),
+html[data-appearance=night] :is(.review-table th,.settings-user-header){background:var(--theme-soft);color:var(--theme-muted)}
+html[data-appearance=warm] :is(.notice,.auth-message,.pch-toast),
+html[data-appearance=night] :is(.notice,.auth-message,.pch-toast){background:var(--theme-soft);color:var(--theme-text);border-color:var(--theme-line)}
+html[data-appearance=warm] :is(.notice.error,.auth-message.error,.pch-toast.is-error),
+html[data-appearance=night] :is(.notice.error,.auth-message.error,.pch-toast.is-error){background:var(--theme-danger-soft);color:var(--theme-danger)}
+html[data-appearance=warm] :is(.danger,.playlist-track-remove),
+html[data-appearance=night] :is(.danger,.playlist-track-remove){color:var(--theme-danger)}
+html[data-appearance=warm] :is(button,a,input,select,textarea):focus-visible,
+html[data-appearance=night] :is(button,a,input,select,textarea):focus-visible{outline:3px solid var(--theme-accent);outline-offset:2px}
+
+html[data-appearance=warm] body[data-view=playlists],
+html[data-appearance=night] body[data-view=playlists]{
+ --playlist-canvas:var(--theme-canvas);--playlist-surface:var(--theme-surface);
+ --playlist-surface-soft:var(--theme-soft);--playlist-line:var(--theme-line);
+ --playlist-text:var(--theme-text);--playlist-muted:var(--theme-muted);
+ --playlist-accent:var(--theme-accent);--playlist-accent-strong:var(--theme-accent-strong);
+ --playlist-danger:var(--theme-danger);--playlist-danger-soft:var(--theme-danger-soft);
+ --playlist-wallpaper:linear-gradient(145deg,color-mix(in srgb,var(--theme-accent) 5%,transparent),transparent);
+}
+html[data-appearance=warm] body[data-view=playlists] :is(.playlist-hub,.playlist-sidebar,.playlist-main,.playlist-section-view,.playlist-track-scroll,.playlist-search-results,.playlist-sticky-head,.playlist-player,.playlist-search-dialog),
+html[data-appearance=night] body[data-view=playlists] :is(.playlist-hub,.playlist-sidebar,.playlist-main,.playlist-section-view,.playlist-track-scroll,.playlist-search-results,.playlist-sticky-head,.playlist-player,.playlist-search-dialog){color:var(--playlist-text);border-color:var(--playlist-line)}
+html[data-appearance=warm] body[data-view=playlists] .playlist-global-search input,
+html[data-appearance=night] body[data-view=playlists] .playlist-global-search input{background:transparent;border:0;color:var(--playlist-text)}
+html[data-appearance=warm] body[data-view=playlists] .playlist-track,
+html[data-appearance=night] body[data-view=playlists] .playlist-track{color:var(--playlist-text);border-color:var(--playlist-line)}
+html[data-appearance=night] body[data-view=playlists] .playlist-player{box-shadow:0 -4px 18px rgba(0,0,0,.22)}
+html[data-appearance=night] body[data-view=playlists] :is(.playlist-player-toggle,.playlist-actions .primary){color:var(--theme-on-accent)}
+
+html[data-appearance=warm] :is(.auth-shell,.auth-boot),
+html[data-appearance=night] :is(.auth-shell,.auth-boot){background:var(--theme-canvas);color:var(--theme-text)}
+html[data-appearance=warm] :is(.auth-form input,.auth-form button,.pch-dialog-actions button),
+html[data-appearance=night] :is(.auth-form input,.auth-form button,.pch-dialog-actions button){border-color:var(--theme-line)}
+html[data-appearance=night] :is(.auth-form button.primary,.pch-dialog-actions button:last-child){background:var(--theme-accent);color:var(--theme-on-accent)}
+html[data-appearance=night] :is(.pch-dialog,.playlist-search-dialog)::backdrop{background:rgba(0,0,0,.55)}
+html[data-appearance=warm] .brand,
+html[data-appearance=night] .brand{color:var(--theme-text)}
+html[data-appearance=warm] :is(.settings-section,.settings-dialog,.custom-mix,.page-disclosure,.song-menu-items,.external-more),
+html[data-appearance=night] :is(.settings-section,.settings-dialog,.custom-mix,.page-disclosure,.song-menu-items,.external-more){background:var(--theme-surface);color:var(--theme-text);border-color:var(--theme-line)}
+html[data-appearance=warm] :is(.settings-section-title,.settings-row,.settings-user-row,.automation-row,.connection-summary,.settings-dialog-head,.settings-dialog-footer,.settings-expander-body,.detail-row,.page-disclosure-body,.daily-playlist-head,.mix-drawer,.mix-preview-item,.external-track-row,.external-track-column-head),
+html[data-appearance=night] :is(.settings-section-title,.settings-row,.settings-user-row,.automation-row,.connection-summary,.settings-dialog-head,.settings-dialog-footer,.settings-expander-body,.detail-row,.page-disclosure-body,.daily-playlist-head,.mix-drawer,.mix-preview-item,.external-track-row,.external-track-column-head){border-color:var(--theme-line)}
+html[data-appearance=warm] :is(.connection-summary,.profile-webhook-tools,.account-library-row,.connection-tools-inline,.mix-drawer,.external-track-column-head),
+html[data-appearance=night] :is(.connection-summary,.profile-webhook-tools,.account-library-row,.connection-tools-inline,.mix-drawer,.external-track-column-head){background:var(--theme-soft);color:var(--theme-text)}
+html[data-appearance=warm] :is(.settings-nav-item,.settings-static-value,.profile-learning-toggle,.settings-expander>summary>span:last-child,.automation-controls>span,.connection-summary>span,.dialog-independent>summary,.settings-status-line,.page-disclosure>summary,.detail-row>strong,.overview-schedule strong,.daily-diagnostics>strong,.mix-preview-item strong,.external-import-summary strong,.daily-context-preview li,.external-track-identity strong),
+html[data-appearance=night] :is(.settings-nav-item,.settings-static-value,.profile-learning-toggle,.settings-expander>summary>span:last-child,.automation-controls>span,.connection-summary>span,.dialog-independent>summary,.settings-status-line,.page-disclosure>summary,.detail-row>strong,.overview-schedule strong,.daily-diagnostics>strong,.mix-preview-item strong,.external-import-summary strong,.daily-context-preview li,.external-track-identity strong){color:var(--theme-text)}
+html[data-appearance=warm] :is(.settings-person span:not(.settings-avatar),.settings-row small,.dialog-empty,.overview-schedule>span,.page-disclosure>summary span,.detail-row>span,.status-meta span,.daily-diagnostics>span,.daily-exclusions,.mix-identity p,.mix-options label,.mix-track-artist,.mix-preview-summary,.mix-more,.contextual-settings-grid label,.external-file-name,.external-state,.external-count-tab,.external-track-number,.external-track-artist,.external-track-album,.external-track-duration,.external-track-identity span),
+html[data-appearance=night] :is(.settings-person span:not(.settings-avatar),.settings-row small,.dialog-empty,.overview-schedule>span,.page-disclosure>summary span,.detail-row>span,.status-meta span,.daily-diagnostics>span,.daily-exclusions,.mix-identity p,.mix-options label,.mix-track-artist,.mix-preview-summary,.mix-more,.contextual-settings-grid label,.external-file-name,.external-state,.external-count-tab,.external-track-number,.external-track-artist,.external-track-album,.external-track-duration,.external-track-identity span){color:var(--theme-muted)}
+html[data-appearance=warm] :is(.settings-nav-item.active,.settings-nav-item:hover,.connection-state,.profile-webhook-tools .settings-section-title>span,.daily-exclusions>summary,.daily-context-preview summary,.external-count-tab.active,.external-file-action,.external-text-action,.external-track-actions button,.external-more>div>button),
+html[data-appearance=night] :is(.settings-nav-item.active,.settings-nav-item:hover,.connection-state,.profile-webhook-tools .settings-section-title>span,.daily-exclusions>summary,.daily-context-preview summary,.external-count-tab.active,.external-file-action,.external-text-action,.external-track-actions button,.external-more>div>button){color:var(--theme-accent)}
+html[data-appearance=warm] :is(.settings-nav-item.active,.settings-nav-item:hover,.settings-avatar,.mix-icon,.mix-state,.status-chip,.webhook-guide li span),
+html[data-appearance=night] :is(.settings-nav-item.active,.settings-nav-item:hover,.settings-avatar,.mix-icon,.mix-state,.status-chip,.webhook-guide li span){background:var(--theme-soft)}
+html[data-appearance=warm] :is(.webhook-setup-action,.webhook-setup-action code,.webhook-guide li,.song-menu>summary,.song-menu-items button,.mix-refresh,.external-track-actions .external-candidate-select),
+html[data-appearance=night] :is(.webhook-setup-action,.webhook-setup-action code,.webhook-guide li,.song-menu>summary,.song-menu-items button,.mix-refresh,.external-track-actions .external-candidate-select){background:var(--theme-surface);color:var(--theme-text);border-color:var(--theme-line)}
+html[data-appearance=warm] body[data-view=external] :is(.external-url-field input,.external-command-bar input:not([type=checkbox]),.external-command-bar select),
+html[data-appearance=night] body[data-view=external] :is(.external-url-field input,.external-command-bar input:not([type=checkbox]),.external-command-bar select){background:transparent;color:var(--theme-text);border-color:var(--theme-line)}
+html[data-appearance=warm] body[data-view=external] :is(.external-track-actions button,.external-track-row .song-actions button,.external-track-row .song-actions a),
+html[data-appearance=night] body[data-view=external] :is(.external-track-actions button,.external-track-row .song-actions button,.external-track-row .song-actions a){color:var(--theme-accent)}
+html[data-appearance=warm] :is(.pch-dialog button,.settings-dialog button,.song-menu-items button):hover,
+html[data-appearance=night] :is(.pch-dialog button,.settings-dialog button,.song-menu-items button):hover{background:var(--theme-soft)}
+html[data-appearance=warm],html[data-appearance=night]{background:var(--theme-canvas);color:var(--theme-text)}
+html[data-appearance=warm] :is(.topbar nav a,.topbar nav button,.topbar .logout,.brand small),
+html[data-appearance=night] :is(.topbar nav a,.topbar nav button,.topbar .logout,.brand small){color:var(--theme-muted)}
+html[data-appearance=warm] :is(.topbar nav a:hover,.topbar nav a.active,.topbar nav button:hover,.topbar .logout:hover),
+html[data-appearance=night] :is(.topbar nav a:hover,.topbar nav a.active,.topbar nav button:hover,.topbar .logout:hover){background:var(--theme-soft);color:var(--theme-accent)}
+html[data-appearance=warm] :is(.external-source-panel,.flow-strip,.daily-meta,.repair-card,.warning,.independence-note,.overlap-list),
+html[data-appearance=night] :is(.external-source-panel,.flow-strip,.daily-meta,.repair-card,.warning,.independence-note,.overlap-list){background:var(--theme-surface);color:var(--theme-text);border-color:var(--theme-line)}
+html[data-appearance=warm] :is(.pch-dialog-body,.reasons,.summary-line,.empty,.footer,.song-index,.health-card small,.daily-meta-label,.library-metrics span,.external-import-hint),
+html[data-appearance=night] :is(.pch-dialog-body,.reasons,.summary-line,.empty,.footer,.song-index,.health-card small,.daily-meta-label,.library-metrics span,.external-import-hint){color:var(--theme-muted)}
+html[data-appearance=warm] :is(th,.external-track-column-head),
+html[data-appearance=night] :is(th,.external-track-column-head){background:var(--theme-soft);color:var(--theme-muted);border-color:var(--theme-line)}
+html[data-appearance=warm] a.primary.link,
+html[data-appearance=night] a.primary.link{background:var(--theme-accent);color:var(--theme-on-accent);border-color:var(--theme-accent)}
+html[data-appearance=night] :is(.toggle,.switch-row>input[type=checkbox]):checked:before{background:var(--theme-on-accent)}

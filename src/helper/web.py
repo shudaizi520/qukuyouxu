@@ -325,7 +325,7 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
         if name not in (
             'home.js', 'home.css', 'theme_home.js', 'product.css', 'daily.js',
             'refined.js', 'status.js', 'settings.js', 'contextual-settings.js', 'auth.js', 'mixes.js',
-            'external.js', 'playlists.js', 'playlist-workspace.js',
+            'appearance.js', 'external.js', 'playlists.js', 'playlist-artwork.js', 'playlist-workspace.js',
             'playlist-search.js', 'playlist-player.js', 'playlist-sections.js',
         ):
             return Response(status_code=404)
