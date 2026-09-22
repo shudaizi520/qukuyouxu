@@ -92,7 +92,7 @@ async function runSettingsTests(source) {
   });
 
   await check('a completed removal updates the open page without reload', async () => {
-    const first = source.indexOf('let profileStatusTimer=null;');
+    const first = source.indexOf('let profileStatusTimer=null');
     const last = source.indexOf('function render(s,saved)', first);
     assert(first >= 0 && last > first, 'Removal status polling is missing');
     const scheduled = [];
@@ -115,7 +115,7 @@ async function runSettingsTests(source) {
       'Removal completion did not refresh the page');
   });
   await check('completed new-user generation clears its warning without reload', async () => {
-    const first = source.indexOf('let profileStatusTimer=null;');
+    const first = source.indexOf('let profileStatusTimer=null');
     const last = source.indexOf('function render(s,saved)', first);
     const scheduled = [];
     const rendered = [];
@@ -141,6 +141,28 @@ async function runSettingsTests(source) {
     await scheduled.shift()();
     assert(rendered.length >= 2 && refreshed > before,
       'Completed generation did not refresh the page');
+  });
+  await check('durable generation warnings do not poll every three seconds', async () => {
+    const first = source.indexOf('let profileStatusTimer=null');
+    const last = source.indexOf('function render(s,saved)', first);
+    const delayFor = status => {
+      const delays = [];
+      const auth = { profile: () => 'default', setProfile() {} };
+      const view = new Function('document', 'PCHAuth', 'responseJson', 'refresh',
+        'setTimeout', 'clearTimeout', 'renderManagedUsers',
+        'let plexProfiles=[];let activeProfile="default";'
+        + source.slice(first, last)
+        + ';return {renderProfiles};')(
+          document, auth, responseJson, refresh,
+          (_callback, delay) => { delays.push(delay); return delays.length; }, () => {}, () => {});
+      view.renderProfiles({ active_profile_id: 'default', items: [
+        { id: 'new-profile', enabled: true, preparation: { status } },
+      ] });
+      return delays[0];
+    };
+    assert(delayFor('running') <= 5000, 'Active generation is not checked promptly');
+    assert(delayFor('needs_attention') >= 15000, 'Needs-attention state polls too often');
+    assert(delayFor('waiting_for_data') >= 60000, 'Long wait polls too often');
   });
   return checks;
 }

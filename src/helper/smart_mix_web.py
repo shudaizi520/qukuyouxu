@@ -454,7 +454,7 @@ def _restore_removed_smart_mix(engine, snapshot):
     if plex.identity()["machine"] != snapshot.get("machine"):
         raise SafetyError("Plex 服务器已经变化，不能恢复")
     before = snapshot.get("before") or {}
-    if any(row.get("title") == before.get("title") for row in plex.playlists()):
+    if _unsafe_same_title(engine, plex, kind, before.get("title"), snapshot["machine"]):
         raise SafetyError("Plex 中已经存在同名歌单，不能重复恢复")
     ids = state_ids(before)
     available = {str(row.get("id")) for row in plex.tracks(cfg["section"]) if row.get("available", True)}

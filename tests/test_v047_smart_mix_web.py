@@ -246,6 +246,69 @@ class SmartMixCrossLibraryTests(unittest.TestCase):
             publish_smart_mix(self.second, second["id"], now=NOW + 3)
         self.assertEqual(1, self.plex.created)
 
+    def test_removed_mix_can_be_restored_while_other_library_keeps_its_mix(self):
+        from helper.smart_mix_web import (
+            preview_smart_mix, publish_smart_mix, remove_smart_mix,
+            restore_removed_smart_mix,
+        )
+
+        for engine, at in ((self.first, NOW), (self.second, NOW + 2)):
+            plan = preview_smart_mix(engine, "weekly", {"size": 10}, now=at)
+            publish_smart_mix(engine, plan["id"], now=at + 1)
+        second_id = self.second.store.get("smart_mix_managed")["weekly"]["id"]
+        second_state = self.plex.playlist_state(second_id)
+        removed = remove_smart_mix(self.first, "weekly", "每周常听", now=NOW + 4)
+
+        restored = restore_removed_smart_mix(self.first, removed["snapshot_id"])
+
+        self.assertNotEqual(second_id, restored["playlist_id"])
+        self.assertEqual(second_state, self.plex.playlist_state(second_id))
+
+    def test_changed_sibling_mix_is_not_treated_as_verified_ownership(self):
+        from helper.smart_mix_web import preview_smart_mix, publish_smart_mix
+
+        first = preview_smart_mix(self.first, "weekly", {"size": 10}, now=NOW)
+        publish_smart_mix(self.first, first["id"], now=NOW + 1)
+        first_id = self.first.store.get("smart_mix_managed")["weekly"]["id"]
+        self.plex.states[first_id]["items"].append({"id": "20", "item_id": "999"})
+
+        second = preview_smart_mix(self.second, "weekly", {"size": 10}, now=NOW + 2)
+
+        self.assertTrue(any("同名" in reason for reason in second["blocked"]))
+        self.assertEqual(1, self.plex.created)
+
+    def test_sibling_modified_after_preview_blocks_publication(self):
+        from helper.engine import SafetyError
+        from helper.smart_mix_web import preview_smart_mix, publish_smart_mix
+
+        first = preview_smart_mix(self.first, "weekly", {"size": 10}, now=NOW)
+        publish_smart_mix(self.first, first["id"], now=NOW + 1)
+        second = preview_smart_mix(self.second, "weekly", {"size": 10}, now=NOW + 2)
+        self.assertEqual([], second["blocked"])
+        first_id = self.first.store.get("smart_mix_managed")["weekly"]["id"]
+        self.plex.states[first_id]["items"].append({"id": "20", "item_id": "999"})
+
+        with self.assertRaisesRegex(SafetyError, "同名"):
+            publish_smart_mix(self.second, second["id"], now=NOW + 3)
+        self.assertEqual(1, self.plex.created)
+
+    def test_manual_same_title_still_blocks_cross_library_restore(self):
+        from helper.engine import SafetyError
+        from helper.smart_mix_web import (
+            preview_smart_mix, publish_smart_mix, remove_smart_mix,
+            restore_removed_smart_mix,
+        )
+
+        for engine, at in ((self.first, NOW), (self.second, NOW + 2)):
+            plan = preview_smart_mix(engine, "weekly", {"size": 10}, now=at)
+            publish_smart_mix(engine, plan["id"], now=at + 1)
+        removed = remove_smart_mix(self.first, "weekly", "每周常听", now=NOW + 4)
+        self.plex.foreign_title = "每周常听"
+
+        with self.assertRaisesRegex(SafetyError, "同名"):
+            restore_removed_smart_mix(self.first, removed["snapshot_id"])
+        self.assertEqual(2, self.plex.created)
+
 
 if __name__ == "__main__":
     unittest.main()

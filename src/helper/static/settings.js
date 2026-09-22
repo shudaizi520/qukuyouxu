@@ -56,14 +56,18 @@ async function copyWebhookAddress(){
 }
 async function refreshWebhookStatus(){const status=await responseJson('/api/status');renderWebhook(status.webhook);}
 function startWebhookPolling(){if(webhookTimer)return;webhookTimer=setInterval(()=>{if(document.visibilityState==='visible'&&!$('settings-accounts').hidden)refreshWebhookStatus().catch(()=>{});},5000);}
-let profileStatusTimer=null;
-function stopProfileStatusPolling(){if(profileStatusTimer!==null)clearTimeout(profileStatusTimer);profileStatusTimer=null;}
+let profileStatusTimer=null,profileStatusDelay=0;
+function stopProfileStatusPolling(){if(profileStatusTimer!==null)clearTimeout(profileStatusTimer);profileStatusTimer=null;profileStatusDelay=0;}
 function scheduleProfileStatusPoll(){
  if(document.hidden||!plexProfiles.some(row=>row.preparation||(row.removal&&row.removal.status!=='legacy_cleanup_required'))){stopProfileStatusPolling();return;}
- if(profileStatusTimer===null)profileStatusTimer=setTimeout(pollProfileStatus,3000);
+ const active=plexProfiles.some(row=>['pending','running','paused'].includes(row.preparation?.status)||(row.removal&&!['needs_attention','legacy_cleanup_required'].includes(row.removal.status)));
+ const attention=plexProfiles.some(row=>row.preparation?.status==='needs_attention'||row.removal?.status==='needs_attention');
+ const delay=active?3000:attention?30000:300000;
+ if(profileStatusTimer!==null&&profileStatusDelay<=delay)return;
+ stopProfileStatusPolling();profileStatusDelay=delay;profileStatusTimer=setTimeout(pollProfileStatus,delay);
 }
 async function pollProfileStatus(){
- profileStatusTimer=null;if(document.hidden)return;
+ profileStatusTimer=null;profileStatusDelay=0;if(document.hidden)return;
  const pendingRemovals=plexProfiles.filter(row=>row.removal&&row.removal.status!=='legacy_cleanup_required').map(row=>row.id);
  const pendingPreparation=plexProfiles.filter(row=>row.preparation).map(row=>row.id);
  if(!pendingRemovals.length&&!pendingPreparation.length)return;
