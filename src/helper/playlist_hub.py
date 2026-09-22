@@ -693,6 +693,19 @@ def playlist_detail(engine, kind, key, hidden_playlist_ids=()):
     }
 
 
+def playlist_cover_candidates(engine, kind, key, hidden_playlist_ids=()):
+    """Return a small, profile-scoped set of tracks with Plex artwork."""
+    detail = playlist_detail(engine, kind, key, hidden_playlist_ids)
+    track_ids = []
+    for row in detail.get("tracks") or []:
+        track_id = str(row.get("id") or "")
+        if track_id.isdigit() and row.get("thumb") and track_id not in track_ids:
+            track_ids.append(track_id)
+            if len(track_ids) == 4:
+                break
+    return {"track_ids": track_ids}
+
+
 def stream_playlist_audio(engine, kind, key, track_id, range_header, session_key, offset_seconds=0, hidden_playlist_ids=()):
     detail = playlist_detail(engine, kind, key, hidden_playlist_ids)
     track_id = str(track_id or "")
@@ -931,6 +944,13 @@ def attach_playlist_hub_routes(app, store, runtime, profiles, body, ensure_idle)
         hidden_ids = sibling_owned_playlist_ids(profiles, runtime, str(store.profile_id)) if kind == "plex" else ()
         with target.exclusive():
             return playlist_detail(target, kind, key, hidden_ids)
+
+    @app.get("/api/playlists/{kind}/{key}/cover")
+    def playlist_cover(kind: str, key: str):
+        target = fixed_engine()
+        hidden_ids = sibling_owned_playlist_ids(profiles, runtime, str(store.profile_id)) if kind == "plex" else ()
+        with target.exclusive():
+            return playlist_cover_candidates(target, kind, key, hidden_ids)
 
     @app.get("/api/playlists/{kind}/{key}/tracks/{track_id}/audio")
     def playlist_audio(
