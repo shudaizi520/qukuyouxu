@@ -124,7 +124,9 @@ class ProfileRequestScopeV108Tests(unittest.TestCase):
         )
 
         self.assertEqual(200, status)
-        self.assertEqual(["default"], [row["id"] for row in response["items"]])
+        self.assertEqual("default", response["active_profile_id"])
+        self.assertEqual(["default", "friend-a"], [row["id"] for row in response["items"]])
+        self.assertFalse(response["items"][1]["enabled"])
 
     def test_auth_asset_exports_per_tab_profile_contract(self):
         script = (Path(__file__).parents[1] / "src/helper/static/auth.js").read_text()

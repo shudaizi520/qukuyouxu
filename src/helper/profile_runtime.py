@@ -102,15 +102,32 @@ class ProfileRuntime:
         now = time.time() if now is None else float(now)
         if self.job_gate.locked():
             return []
+        from .profile_cleanup import STATE_KEY as REMOVAL_KEY, resume_profile_removal
+        for profile in self.registry.list_public():
+            scoped = ScopedStore(self.base_store, profile["id"], registry=self.registry)
+            removal = scoped.get(REMOVAL_KEY)
+            if not isinstance(removal, dict) or float(removal.get("next_retry_at") or 0) > now:
+                continue
+            if not self.operation_gate.acquire(blocking=False):
+                break
+            try:
+                resume_profile_removal(self, profile["id"])
+            finally:
+                self.operation_gate.release()
         from .profile_onboarding import prepare_new_profile, STATE_KEY as PREPARE_KEY
         for profile in self.registry.list_public(enabled_only=True):
-            state = ScopedStore(self.base_store, profile["id"], registry=self.registry).get(PREPARE_KEY)
+            scoped = ScopedStore(self.base_store, profile["id"], registry=self.registry)
+            if scoped.get(REMOVAL_KEY):
+                continue
+            state = scoped.get(PREPARE_KEY)
             if (isinstance(state, dict) and state.get("status") != "done"
                     and float(state.get("next_retry_at") or 0) <= now):
                 prepare_new_profile(self, profile["id"])
         settings = automation_settings(self.base_store, self.registry, self, now=now)
         results = []
-        profiles = [row for row in self.registry.list_public() if row.get("enabled") is not False]
+        profiles = [row for row in self.registry.list_public()
+                    if row.get("enabled") is not False
+                    and not ScopedStore(self.base_store, row["id"]).get(REMOVAL_KEY)]
         scheduled_profiles = []
         for profile in profiles:
             engine = self.engine(profile["id"])
@@ -175,6 +192,8 @@ class ProfileRuntime:
             return
         pairs = []
         for profile in self.registry.list_public(enabled_only=True):
+            if ScopedStore(self.base_store, profile["id"]).get("profile_removal_v1"):
+                continue
             owner_id = owner_for_recipient(self, profile["id"])
             if not owner_id:
                 continue

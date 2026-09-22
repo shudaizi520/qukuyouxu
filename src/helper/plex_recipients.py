@@ -283,8 +283,10 @@ class PlexRecipientService:
     def _create(self, owner, kind, source_id, account, token, library_id):
         library = self._validate(owner, token, library_id)
         machine = str((owner.get("server") or {}).get("machine") or "")
-        existing = self.registry.find_identity(kind, account.get("id"), machine, library["id"], enabled_only=True)
+        existing = self.registry.find_identity(kind, account.get("id"), machine, library["id"])
         if existing:
+            if not existing["enabled"]:
+                raise ValueError("该用户和曲库的旧档案尚未清理完成")
             return self.registry.refresh_access(existing["id"], token, enabled=True)
 
         sibling = next((row for row in self.registry.list_public(enabled_only=True)
@@ -327,6 +329,8 @@ class PlexRecipientService:
         from .scoped_store import ScopedStore
 
         profile = self.registry.get(profile_id)
+        if profile.get("enabled") is False:
+            raise ValueError("该用户已停用或正在移除")
         library_id = str(library_id or "").strip()
         library = next((row for row in self._libraries(profile, profile.get("token"))
                         if row["id"] == library_id), None)
@@ -344,6 +348,8 @@ class PlexRecipientService:
         )
         existing = self.registry.find_identity(*identity)
         if existing:
+            if not existing["enabled"]:
+                raise ValueError("该用户和曲库的旧档案尚未清理完成")
             refreshed = self.registry.refresh_access(
                 existing["id"], profile.get("token"), enabled=True
             )

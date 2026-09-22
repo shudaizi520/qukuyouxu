@@ -284,6 +284,8 @@ class ProfileRegistry:
         value = self._load()
         if profile_id not in value["profiles"]:
             raise ValueError("Plex 档案不存在")
+        if value["profiles"][profile_id].get("enabled") is False or ScopedStore(self.store, profile_id).get("profile_removal_v1"):
+            raise ValueError("该用户已停用，不能切换")
         value["active_profile_id"] = profile_id
         self._save(value)
         return {**_public(value["profiles"][profile_id]), "active": True}
@@ -299,6 +301,12 @@ class ProfileRegistry:
         if token and (len(token) < 8 or not token.isascii()):
             raise ValueError("Plex Token 格式不正确")
         value = self._load()
+        if (all(((account or {}).get("id"), (server or {}).get("machine"),
+                 (library or {}).get("id")))
+                and self.find_identity(kind, (account or {}).get("id"),
+                                       (server or {}).get("machine"),
+                                       (library or {}).get("id"))):
+            raise ValueError("该用户和曲库已有档案，请先完成原档案的移除")
         if profile_id in value["profiles"]:
             raise ValueError("Plex 档案标识已经存在")
         profile = {
@@ -328,8 +336,10 @@ class ProfileRegistry:
             (private_source.get("server") or {}).get("machine"),
             library["id"],
         )
-        existing = self.find_identity(*identity, enabled_only=True)
+        existing = self.find_identity(*identity)
         if existing:
+            if not existing["enabled"]:
+                raise ValueError("该用户和曲库正在移除或需要清理旧档案")
             return existing
 
         value = self._load()
@@ -447,6 +457,8 @@ class ProfileRegistry:
         profile = value["profiles"].get(profile_id)
         if not profile:
             raise ValueError("Plex 档案不存在")
+        if ScopedStore(self.store, profile_id).get("profile_removal_v1"):
+            raise ValueError("该用户正在移除，不能恢复")
         profile["enabled"] = True
         self._save(value)
         return _public(profile)
@@ -468,6 +480,8 @@ class ProfileRegistry:
             raise ValueError("Plex 档案不存在")
         scoped = ScopedStore(self.store, profile_id)
         if (scoped.get("managed", {}) or scoped.get("daily_managed")
+                or scoped.get("smart_mix_managed", {})
+                or (scoped.get("favorite_smart_v2") or {}).get("playlist_id")
                 or ExternalRepository(self.store).has_managed(profile_id)):
             raise ValueError("该档案仍有托管歌单，不能删除")
         prefix = f"profile:{profile_id}:"

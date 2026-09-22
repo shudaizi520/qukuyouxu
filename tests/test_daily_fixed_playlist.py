@@ -259,7 +259,7 @@ class DailyFixedPlaylistTests(unittest.TestCase):
             engine.publish_daily(plan["id"], now=1_800_000_010)
         self.assertEqual(0, plex.create_calls)
 
-    def test_readded_user_does_not_create_second_playlist_beside_archived_one(self):
+    def test_archived_user_must_be_cleaned_before_readding_same_identity(self):
         from helper.profiles import ProfileRegistry
         from helper.scoped_store import ScopedStore
 
@@ -274,20 +274,9 @@ class DailyFixedPlaylistTests(unittest.TestCase):
         old = ScopedStore(base, "old-friend", registry=registry)
         old.set("daily_managed", {"id": "900", "machine": "machine-a"})
         registry.archive("old-friend")
-        registry.create(name="friend", kind="shared", profile_id="new-friend", token="new-token", **identity)
-        fresh = ScopedStore(base, "new-friend", registry=registry)
-        settings = fresh.get("settings")
-        settings.update(plex_url="http://plex:32400", plex_token="new-token", section="11")
-        fresh.set("settings", settings)
-        plex = _DailyPlex(existing=True)
-        engine = LibraryEngine(fresh, plex_factory=lambda _settings: plex)
-
-        with patch("helper.daily.recommend_rotating", side_effect=_recommendation):
-            plan = engine.preview_daily(now=1_800_000_000)
-
-        self.assertTrue(any("旧用户" in reason for reason in plan["blocked"]))
-        self.assertIsNone(fresh.get("daily_playlist_target"))
-        self.assertEqual(0, plex.create_calls)
+        with self.assertRaisesRegex(ValueError, "已有档案"):
+            registry.create(name="friend", kind="shared", profile_id="new-friend", token="new-token", **identity)
+        self.assertEqual("900", old.get("daily_managed")["id"])
 
     def test_publish_replaces_existing_same_name_playlist_in_place(self):
         plex = _DailyPlex(existing=True)

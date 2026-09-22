@@ -214,10 +214,17 @@ def attach_profile_routes(app, base_store, registry: ProfileRegistry, body, ensu
 
     def public_profiles():
         ensure_controls_migrated()
-        rows = registry.list_public(enabled_only=True)
+        rows = registry.list_public()
         for row in rows:
-            row["controls"] = read_controls(ScopedStore(base_store, row["id"]))
+            scoped = ScopedStore(base_store, row["id"])
+            row["controls"] = read_controls(scoped)
             row["behavior_enabled"] = row["controls"]["learning"]
+            removal = scoped.get("profile_removal_v1") or {}
+            if removal:
+                row["removal"] = {"status": removal.get("status"),
+                                  "error": removal.get("error", "")}
+            elif not row["enabled"] and connection_is_protected(scoped):
+                row["removal"] = {"status": "legacy_cleanup_required", "error": ""}
         return rows
 
     def enabled_store(profile_id):
@@ -295,10 +302,15 @@ def attach_profile_routes(app, base_store, registry: ProfileRegistry, body, ensu
         data = await body(request)
         ensure_idle()
         if data.get("confirm") is not True:
-            raise ValueError("请确认删除 Plex 档案；不会删除 Plex 歌单")
+            raise ValueError("请确认移除该用户及曲库；程序创建的 Plex 歌单也会删除")
+        from .profile_cleanup import begin_profile_removal
+        runtime = getattr(app.state, "profile_runtime", None)
+        if runtime is None:
+            raise ValueError("用户清理服务暂不可用")
         with operation():
-            profile = registry.archive(data.get("profile_id"))
-        return {"profile": profile, "message": "已停止为这位用户生成推荐；Plex 歌单保留。"}
+            removal = begin_profile_removal(runtime, data.get("profile_id"))
+        return {"profile_id": data.get("profile_id"), "removal": removal,
+                "message": "已停止更新，正在核实并清理该用户下由程序创建的 Plex 歌单。"}
 
     @app.post("/api/plex/profiles/restore")
     async def restore_profile(request: Request):
