@@ -56,26 +56,28 @@ async function copyWebhookAddress(){
 }
 async function refreshWebhookStatus(){const status=await responseJson('/api/status');renderWebhook(status.webhook);}
 function startWebhookPolling(){if(webhookTimer)return;webhookTimer=setInterval(()=>{if(document.visibilityState==='visible'&&!$('settings-accounts').hidden)refreshWebhookStatus().catch(()=>{});},5000);}
-let removalTimer=null;
-function stopRemovalPolling(){if(removalTimer!==null)clearTimeout(removalTimer);removalTimer=null;}
-function scheduleRemovalPoll(){
- if(document.hidden||!plexProfiles.some(row=>row.removal&&row.removal.status!=='legacy_cleanup_required')){stopRemovalPolling();return;}
- if(removalTimer===null)removalTimer=setTimeout(pollRemovalStatus,3000);
+let profileStatusTimer=null;
+function stopProfileStatusPolling(){if(profileStatusTimer!==null)clearTimeout(profileStatusTimer);profileStatusTimer=null;}
+function scheduleProfileStatusPoll(){
+ if(document.hidden||!plexProfiles.some(row=>row.preparation||(row.removal&&row.removal.status!=='legacy_cleanup_required'))){stopProfileStatusPolling();return;}
+ if(profileStatusTimer===null)profileStatusTimer=setTimeout(pollProfileStatus,3000);
 }
-async function pollRemovalStatus(){
- removalTimer=null;if(document.hidden)return;
- const pending=plexProfiles.filter(row=>row.removal&&row.removal.status!=='legacy_cleanup_required').map(row=>row.id);
- if(!pending.length)return;
+async function pollProfileStatus(){
+ profileStatusTimer=null;if(document.hidden)return;
+ const pendingRemovals=plexProfiles.filter(row=>row.removal&&row.removal.status!=='legacy_cleanup_required').map(row=>row.id);
+ const pendingPreparation=plexProfiles.filter(row=>row.preparation).map(row=>row.id);
+ if(!pendingRemovals.length&&!pendingPreparation.length)return;
  try{
   const data=await responseJson('/api/plex/profiles');
-  const removed=pending.some(id=>!(data.items||[]).some(row=>row.id===id));
+  const removed=pendingRemovals.some(id=>!(data.items||[]).some(row=>row.id===id));
+  const prepared=pendingPreparation.some(id=>(data.items||[]).some(row=>row.id===id&&!row.preparation));
   renderProfiles(data);
-  if(removed)await refresh();
- }catch(_error){scheduleRemovalPoll();}
+  if(removed||prepared)await refresh();
+ }catch(_error){scheduleProfileStatusPoll();}
 }
 function renderProfiles(data){
  plexProfiles=Array.isArray(data?.items)?data.items:[];const requested=PCHAuth.profile();const enabled=plexProfiles.filter(row=>row.enabled);const fallback=String(data?.active_profile_id||enabled[0]?.id||'default');activeProfile=enabled.some(row=>row.id===requested)?requested:fallback;if(activeProfile!==requested)PCHAuth.setProfile(activeProfile);
- renderManagedUsers();scheduleRemovalPoll();
+ renderManagedUsers();scheduleProfileStatusPoll();
 }
 function render(s,saved){
  current=s;const c=s.settings||{},d=s.daily_policy||{};
@@ -264,5 +266,5 @@ $('copyWebhook').onclick=()=>action(async()=>{await copyWebhookAddress();note('�
 $('passwordForm').onsubmit=e=>{e.preventDefault();action(async()=>{const a=$('newPassword').value,b=$('confirmPassword').value;if(a!==b)throw Error('两次输入的新密码不一致');const r=await post('/api/auth/password',{current_password:$('currentPassword').value,new_password:a,confirm_password:b});$('currentPassword').value='';$('newPassword').value='';$('confirmPassword').value='';note(r.message+'，其它旧登录会话已退出。');});};
 async function boot(){const panel=location.hash.slice(1);try{await refresh();await resumePlexLogin();}catch(e){note(e.message,true);}if(settingsAnchors[panel])showSettingsPanel(panel,false);startWebhookPolling();}
 window.addEventListener('pch-auth-ready',boot);window.addEventListener('pch-auth-login',boot);window.addEventListener('pch-auth-logout',()=>{plexPin='';stopPlexPolling();});
-window.addEventListener('pagehide',()=>{stopPlexPolling();stopRemovalPolling();clearInterval(webhookTimer);webhookTimer=null;});
-window.addEventListener('visibilitychange',()=>{if(document.hidden){stopPlexPolling();stopRemovalPolling();}else{if(plexPin)schedulePlexPolling(0);scheduleRemovalPoll();}});
+window.addEventListener('pagehide',()=>{stopPlexPolling();stopProfileStatusPolling();clearInterval(webhookTimer);webhookTimer=null;});
+window.addEventListener('visibilitychange',()=>{if(document.hidden){stopPlexPolling();stopProfileStatusPolling();}else{if(plexPin)schedulePlexPolling(0);scheduleProfileStatusPoll();}});

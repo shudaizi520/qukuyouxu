@@ -92,7 +92,7 @@ async function runSettingsTests(source) {
   });
 
   await check('a completed removal updates the open page without reload', async () => {
-    const first = source.indexOf('let removalTimer=null;');
+    const first = source.indexOf('let profileStatusTimer=null;');
     const last = source.indexOf('function render(s,saved)', first);
     assert(first >= 0 && last > first, 'Removal status polling is missing');
     const scheduled = [];
@@ -113,6 +113,34 @@ async function runSettingsTests(source) {
     await scheduled.shift()();
     assert(rendered.length >= 2 && refreshed > 0,
       'Removal completion did not refresh the page');
+  });
+  await check('completed new-user generation clears its warning without reload', async () => {
+    const first = source.indexOf('let profileStatusTimer=null;');
+    const last = source.indexOf('function render(s,saved)', first);
+    const scheduled = [];
+    const rendered = [];
+    const before = refreshed;
+    const auth = { profile: () => 'default', setProfile() {} };
+    const finishedStatus = path => path === '/api/plex/profiles'
+      ? Promise.resolve({ active_profile_id: 'default', items: [
+        { id: 'new-profile', enabled: true },
+      ] }) : responseJson(path);
+    const view = new Function('document', 'PCHAuth', 'responseJson', 'refresh',
+      'setTimeout', 'clearTimeout', 'renderManagedUsers',
+      'let plexProfiles=[];let activeProfile="default";'
+      + source.slice(first, last)
+      + ';return {renderProfiles};')(
+        document, auth, finishedStatus, refresh,
+        callback => { scheduled.push(callback); return scheduled.length; }, () => {},
+        () => rendered.push(true));
+    view.renderProfiles({ active_profile_id: 'default', items: [
+      { id: 'new-profile', enabled: true,
+        preparation: { status: 'needs_attention', errors: { weekly: 'needs_attention' } } },
+    ] });
+    assert(scheduled.length > 0, 'No generation status refresh was scheduled');
+    await scheduled.shift()();
+    assert(rendered.length >= 2 && refreshed > before,
+      'Completed generation did not refresh the page');
   });
   return checks;
 }

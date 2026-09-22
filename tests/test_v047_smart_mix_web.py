@@ -145,5 +145,107 @@ class SmartMixLifecycleV047Tests(unittest.TestCase):
         self.assertEqual([], _history_events(self.engine))
 
 
+class SmartMixCrossLibraryTests(unittest.TestCase):
+    def setUp(self):
+        from helper.engine import Engine
+        from helper.profiles import ProfileRegistry
+        from helper.scoped_store import ScopedStore
+        from helper.store import Store
+
+        self.temp = tempfile.TemporaryDirectory()
+        self.base = Store(Path(self.temp.name))
+        self.registry = ProfileRegistry(self.base)
+        self.registry.update(
+            "default", name="owner", kind="owner",
+            account={"id": "10", "username": "owner"},
+            server={"machine": "machine-a", "url": "http://plex:32400"},
+            library={"id": "11", "name": "音乐"}, token="owner-secret",
+        )
+        second = self.registry.create_for_library(
+            "default", {"id": "15", "name": "经典音乐"}
+        )
+        self.plex = FakePlex()
+        for row in self.plex.rows:
+            row["last_viewed_at"] = NOW - 220 * 86400
+        self.first = Engine(
+            ScopedStore(self.base, "default", registry=self.registry),
+            plex_factory=lambda _cfg: self.plex,
+        )
+        self.second = Engine(
+            ScopedStore(self.base, second["id"], registry=self.registry),
+            plex_factory=lambda _cfg: self.plex,
+        )
+        for engine, section in ((self.first, "11"), (self.second, "15")):
+            settings = engine.store.get("settings", {}) or {}
+            settings.update(
+                plex_url="http://plex:32400", plex_token="owner-secret",
+                section=section, account_label="owner",
+            )
+            engine.store.set("settings", settings)
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def test_same_account_other_library_can_publish_its_own_weekly_playlist(self):
+        from helper.smart_mix_web import preview_smart_mix, publish_smart_mix
+
+        first_plan = preview_smart_mix(self.first, "weekly", {"size": 10}, now=NOW)
+        self.assertTrue(first_plan["items"])
+        publish_smart_mix(self.first, first_plan["id"], now=NOW + 1)
+        first_id = self.first.store.get("smart_mix_managed")["weekly"]["id"]
+        first_state = self.plex.playlist_state(first_id)
+
+        second_plan = preview_smart_mix(self.second, "weekly", {"size": 10}, now=NOW + 2)
+        self.assertTrue(second_plan["items"])
+        self.assertEqual([], second_plan["blocked"])
+        publish_smart_mix(self.second, second_plan["id"], now=NOW + 3)
+
+        second_id = self.second.store.get("smart_mix_managed")["weekly"]["id"]
+        self.assertNotEqual(first_id, second_id)
+        self.assertEqual(first_state, self.plex.playlist_state(first_id))
+        self.assertEqual("每周常听", self.plex.playlist_state(second_id)["title"])
+
+    def test_other_library_owned_time_capsule_does_not_block_new_profile(self):
+        from helper.smart_mix_web import preview_smart_mix, publish_smart_mix
+
+        first = preview_smart_mix(self.first, "time_capsule", {"size": 10}, now=NOW)
+        self.assertTrue(first["items"])
+        publish_smart_mix(self.first, first["id"], now=NOW + 1)
+
+        second = preview_smart_mix(self.second, "time_capsule", {"size": 10}, now=NOW + 2)
+        self.assertEqual([], second["blocked"])
+        publish_smart_mix(self.second, second["id"], now=NOW + 3)
+        ids = [
+            engine.store.get("smart_mix_managed")["time_capsule"]["id"]
+            for engine in (self.first, self.second)
+        ]
+        self.assertNotEqual(ids[0], ids[1])
+
+    def test_manual_same_title_still_blocks_when_other_library_has_owned_mix(self):
+        from helper.smart_mix_web import preview_smart_mix, publish_smart_mix
+
+        first = preview_smart_mix(self.first, "weekly", {"size": 10}, now=NOW)
+        publish_smart_mix(self.first, first["id"], now=NOW + 1)
+        self.plex.foreign_title = "每周常听"
+
+        second = preview_smart_mix(self.second, "weekly", {"size": 10}, now=NOW + 2)
+        self.assertTrue(any("同名" in reason for reason in second["blocked"]))
+        self.assertEqual(1, self.plex.created)
+
+    def test_manual_same_title_appearing_after_preview_still_blocks_publish(self):
+        from helper.engine import SafetyError
+        from helper.smart_mix_web import preview_smart_mix, publish_smart_mix
+
+        first = preview_smart_mix(self.first, "weekly", {"size": 10}, now=NOW)
+        publish_smart_mix(self.first, first["id"], now=NOW + 1)
+        second = preview_smart_mix(self.second, "weekly", {"size": 10}, now=NOW + 2)
+        self.assertEqual([], second["blocked"])
+        self.plex.foreign_title = "每周常听"
+
+        with self.assertRaisesRegex(SafetyError, "同名"):
+            publish_smart_mix(self.second, second["id"], now=NOW + 3)
+        self.assertEqual(1, self.plex.created)
+
+
 if __name__ == "__main__":
     unittest.main()

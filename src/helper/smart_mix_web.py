@@ -69,6 +69,52 @@ def _history_events(engine):
     return []
 
 
+def _unsafe_same_title(engine, plex, kind, title, machine):
+    """Keep manual playlists protected, but permit verified sibling-library mixes."""
+    matches = [row for row in plex.playlists() if row.get("title") == title]
+    if not matches:
+        return False
+    store = engine.store
+    registry = getattr(store, "registry", None)
+    profile_id = getattr(store, "profile_id", None)
+    if registry is None or not profile_id:
+        return True
+
+    from .connection_scope import stable_library_scope
+    from .scoped_store import ScopedStore
+
+    current = registry.get(profile_id)
+    account_id = str((current.get("account") or {}).get("id") or "")
+    library_id = str((current.get("library") or {}).get("id") or "")
+    if not account_id or not library_id:
+        return True
+    verified = set()
+    for sibling in registry.list_public(enabled_only=True):
+        if (sibling["id"] == profile_id or sibling.get("kind") != current.get("kind")
+                or str((sibling.get("account") or {}).get("id") or "") != account_id
+                or str((sibling.get("server") or {}).get("machine") or "") != machine
+                or str((sibling.get("library") or {}).get("id") or "") in ("", library_id)):
+            continue
+        sibling_store = ScopedStore(store.base, sibling["id"], registry=registry)
+        record = (sibling_store.get(MANAGED_KEY, {}) or {}).get(kind) or {}
+        playlist_id = str(record.get("id") or "")
+        if (not playlist_id or record.get("title") != title
+                or record.get("machine") != machine
+                or record.get("scope") != stable_library_scope(sibling_store)):
+            continue
+        try:
+            state = plex.playlist_state(playlist_id)
+        except Exception:
+            continue
+        if (str(state.get("id") or "") == playlist_id
+                and state.get("title") == title
+                and engine.marker("smart:" + kind) in state.get("summary", "")
+                and fingerprint(state) == record.get("fingerprint")):
+            verified.add(playlist_id)
+    return any(str(row.get("ratingKey") or row.get("id") or "") not in verified
+               for row in matches)
+
+
 def _plan_map(store):
     value = store.get(PLANS_KEY, {}) or {}
     return value if isinstance(value, dict) else {}
@@ -208,7 +254,7 @@ def preview_smart_mix(engine, kind, options=None, now=None):
                     raise SafetyError("歌单被手动修改或管理标记变化，不会覆盖")
             except Exception as exc:
                 blocked.append(safe_error(exc))
-        elif any(row.get("title") == selected["title"] for row in plex.playlists()):
+        elif _unsafe_same_title(engine, plex, kind, selected["title"], identity["machine"]):
             blocked.append("存在同名非本助手托管的歌单，不会接管或覆盖")
         if not selected["items"]:
             blocked.append("没有符合条件的曲目，保留现有歌单")
@@ -279,7 +325,7 @@ def publish_smart_mix(engine, plan_id, now=None):
                 or marker not in current.get("summary", "")
             ):
                 raise SafetyError("歌单在预览后被手动修改，不会覆盖")
-        elif managed or any(row.get("title") == plan["title"] for row in plex.playlists()):
+        elif managed or _unsafe_same_title(engine, plex, kind, plan["title"], plan["machine"]):
             raise SafetyError("预览后出现同名歌单或托管状态变化，请重新生成")
 
         snapshot = {
