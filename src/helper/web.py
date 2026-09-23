@@ -96,6 +96,11 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
 
     @asynccontextmanager
     async def lifespan(app):
+        # Starlette runs sync handlers in AnyIO's worker pool. Its default of
+        # 40 threads creates one glibc arena per busy worker; those arenas keep
+        # large temporary Plex/XML/image allocations resident after requests.
+        import anyio.to_thread
+        anyio.to_thread.current_default_thread_limiter().total_tokens = 8
         lockfile = None
         if start_scheduler:
             import fcntl
