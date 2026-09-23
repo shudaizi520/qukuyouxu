@@ -79,13 +79,57 @@ def _review(plan, sources, managed=None):
     }
 
 
+def _workflow_review(theme_plan, base_plan, sources, managed=None):
+    """Present theme and QQ-field categories as one confirmation step."""
+    theme = _review(theme_plan, sources, managed)
+    base = None
+    if base_plan and not base_plan.get("applied") and not base_plan.get("invalidated_reason"):
+        groups = []
+        for item in eligible_discovery_groups(base_plan, managed):
+            blocked = [str(value) for value in (item.get("blocked") or [])]
+            before = item.get("before") or {}
+            groups.append({
+                "id": str(item.get("id") or ""), "title": str(item.get("title") or ""),
+                "kind": "base", "dimension": str(item.get("dimension") or ""),
+                "count": len(item.get("desired") or []), "existing_count": len(before.get("items") or []),
+                "add_count": len(item.get("add") or []), "action": str(item.get("action") or "unchanged"),
+                "blocked": blocked, "default_selected": not blocked,
+                "reference_count": 0, "verified_mid_count": len(item.get("desired") or []),
+                "theme_stats": {},
+            })
+        created_at = float(base_plan.get("created_at") or 0)
+        base = {
+            "id": str(base_plan.get("id") or ""), "created_at": created_at, "groups": groups,
+            "expired": time.time() - created_at > 1800,
+            "problem": "基础分类预览超过30分钟，请重新整理预览。" if time.time() - created_at > 1800 else "",
+            "cache_only": False,
+        }
+    if not theme and not base:
+        return None
+    theme_groups = list((theme or {}).get("groups") or [])
+    base_groups = list((base or {}).get("groups") or [])
+    created = [float(row.get("created_at") or 0) for row in (theme, base) if row]
+    theme_id = str((theme_plan or {}).get("id") or "")
+    base_id = str((base_plan or {}).get("id") or "")
+    expired = bool((theme or {}).get("expired") or (base or {}).get("expired"))
+    problems = [str(row.get("problem") or "") for row in (theme, base) if row and row.get("problem")]
+    return {
+        "id": theme_id + "|" + base_id, "theme_plan_id": theme_id, "base_plan_id": base_id,
+        "created_at": min(created) if created else 0, "groups": theme_groups + base_groups,
+        "expired": expired, "problem": "；".join(problems),
+        "cache_only": bool((theme or {}).get("cache_only")),
+    }
+
+
 def build_workflow_status(store, engine, qq_status):
     settings = store.get("settings", {}) or {}
     sources = list(store.get("sources", []) or [])
     saved_plan = store.get("plan") or None
+    saved_base_plan = store.get("base_plan") or None
     job = dict(getattr(engine, "job", {}) or {})
     incremental = dict(store.get("incremental_status", {}) or {})
     plan = current_review_plan(saved_plan, incremental)
+    base_plan = current_review_plan(saved_base_plan, incremental)
     incremental_current = incremental_is_current(saved_plan, incremental)
     running = bool(job.get("running"))
     error = str(job.get("error") or "")
@@ -104,7 +148,7 @@ def build_workflow_status(store, engine, qq_status):
         status = str(incremental.get("status") or "completed")
         phase = "paused" if status in {"paused", "blocked"} else "attention" if status in {"attention", "error"} else "ready"
         message = str(incremental.get("message") or "新增歌曲检查完成。")
-    elif plan and not plan.get("applied"):
+    elif (plan and not plan.get("applied")) or (base_plan and not base_plan.get("applied") and not base_plan.get("invalidated_reason")):
         phase, message = "review", "分类预览已准备好，请确认要同步的歌单。"
     elif plan and plan.get("applied"):
         phase, message = "ready", "最近一次同步已经完成。"
@@ -116,16 +160,19 @@ def build_workflow_status(store, engine, qq_status):
     library_count = len(catalog) or int((saved_plan or {}).get("library_count") or 0)
     threshold = discovery_min_tracks(library_count)
     visible_groups = eligible_discovery_groups(plan, managed)
+    if base_plan and not base_plan.get("invalidated_reason"):
+        visible_groups += eligible_discovery_groups(base_plan, managed)
     if running:
         discovery_phase = "analyzing"
-    elif plan and not plan.get("applied"):
+    elif ((plan and not plan.get("applied"))
+          or (base_plan and not base_plan.get("applied") and not base_plan.get("invalidated_reason"))):
         discovery_phase = "choose" if visible_groups else "empty"
     elif managed:
         discovery_phase = "managed"
     else:
         discovery_phase = "before_analysis"
-    matched = int((saved_plan or {}).get("covered") or 0)
-    review_count = int((saved_plan or {}).get("metadata_review_count") or 0)
+    matched = int((base_plan or {}).get("union_covered") or (plan or {}).get("covered") or 0)
+    review_count = int((base_plan or {}).get("metadata_review_count") or (plan or {}).get("metadata_review_count") or 0)
     topics = _topic_sources(store)
     if hasattr(engine, "theme_status"):
         theme_status = dict(engine.theme_status() or {})
@@ -156,7 +203,7 @@ def build_workflow_status(store, engine, qq_status):
             "summary": {"library_count": library_count, "matched": matched, "review_count": review_count, "managed": len(managed)},
             "discovery": {"phase": discovery_phase, "threshold": threshold, "candidate_count": len(visible_groups)},
             "settings": {"initialized": bool(store.get("managed", {}) or (saved_plan and saved_plan.get("applied"))), "enabled": bool(settings.get("auto_enabled")), "schedule": "daily_midnight_beijing", "next_run": store.get("library_auto_next_at")},
-            "review": _review(plan, sources, managed), "qq_auth": dict(qq_status or {}),
+            "review": _workflow_review(plan, base_plan, sources, managed), "qq_auth": dict(qq_status or {}),
             "theme": theme_status,
             "single": engine.single_status() if hasattr(engine, "single_status") else {"state": {}},
             "incremental": {key: incremental.get(key) for key in ("status", "message", "new_count", "processed", "updated_at")},
@@ -313,17 +360,18 @@ def attach_routes(app, store, engine, body, ensure_idle):
             raise ValueError("请确认同步歌单")
         ensure_idle()
         plan = copy.deepcopy(store.get("plan") or {})
-        if not plan or str(plan.get("id")) != str(data.get("review_id") or "") or plan.get("applied"):
+        base_plan = copy.deepcopy(store.get("base_plan") or {})
+        review = _workflow_review(plan, base_plan, store.get("sources", []) or [], store.get("managed", {}) or {})
+        if not review or str(review.get("id")) != str(data.get("review_id") or ""):
             raise ValueError("预览已经变化，请重新整理")
         selected = {str(value) for value in (data.get("selected_ids") or [])}
-        allowed = {str(row.get("id")) for row in plan.get("groups", []) or []}
+        allowed = {str(row.get("id")) for row in review.get("groups", []) or []}
         if not selected or not selected.issubset(allowed):
             raise ValueError("请选择当前预览中的歌单")
-        for group in plan.get("groups", []) or []:
-            if str(group.get("id")) not in selected:
-                group["blocked"] = list(group.get("blocked") or []) + ["本次未选择"]
-        store.set("plan", plan)
-        return engine.start_job("apply", plan_id=plan["id"])
+        return engine.start_job(
+            "workflow_apply", theme_plan_id=review["theme_plan_id"],
+            base_plan_id=review["base_plan_id"], selected_ids=sorted(selected),
+        )
 
     @app.post("/api/workflow/schedule")
     async def workflow_schedule(req: Request):

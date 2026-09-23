@@ -16,11 +16,16 @@ def test_analysis_runs_resumable_enrichment_before_category_preview():
         engine = LibraryEngine(Store(Path(root)))
         order = []
         with patch.object(engine, "_enrich_singles", side_effect=lambda **kwargs: order.append(("scan", kwargs)) or {"status": "completed"}), \
-                patch.object(engine, "_preview", side_effect=lambda force: order.append(("preview", force)) or {"id": "p"}):
+                patch.object(engine, "_preview", side_effect=lambda force: order.append(("preview", force)) or {"id": "p"}), \
+                patch.object(engine, "_preview_base", side_effect=lambda: order.append(("base", None)) or {"id": "b"}):
             result = engine.analyze_library(force_sources=True)
 
-    assert result == {"id": "p"}
-    assert order == [("scan", {"new_only": False, "auto_connect": True}), ("preview", True)]
+    assert result == {"theme": {"id": "p"}, "base": {"id": "b"}}
+    assert order == [
+        ("scan", {"new_only": False, "auto_connect": True}),
+        ("preview", True),
+        ("base", None),
+    ]
 
 
 def test_legacy_sparse_preview_is_rejected_at_write_boundary():

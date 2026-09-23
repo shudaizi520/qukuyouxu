@@ -42,7 +42,10 @@ def inspect_track(track):
         filename_flags=version(suggestion['title'])
         plex_flags=version(track.get('title')) | (version(track.get('album')) & {'live','instrumental','remix','acoustic'})
         if filename_flags-plex_flags:issues.append('文件名包含Plex未标明的版本信息')
-    status='incomplete' if incomplete else 'conflict' if issues else 'ok'
+    # A well-formed Plex identity remains usable even when an untrusted filename
+    # spells the recording differently.  Keep the discrepancy visible as an
+    # advisory, but do not prevent strict QQ title/artist/duration verification.
+    status='incomplete' if incomplete else 'filename_difference' if issues else 'ok'
     return {'id':str(track['id']),'status':status,'issues':issues,'original':{k:track.get(k) for k in _FIELDS},
             'suggestion':suggestion,'fingerprint':identity_fingerprint(track)}
 

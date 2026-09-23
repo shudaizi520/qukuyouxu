@@ -346,6 +346,8 @@ class Engine(RenamingMixin, DailyMixin):
                     if hasattr(self,'analyze_library'):self.analyze_library(kwargs.get('force_sources',False))
                     else:self.preview(kwargs.get('force_sources',False))
                 elif kind=='apply':self.apply(kwargs['plan_id'])
+                elif kind=='workflow_apply':self.apply_workflow(
+                    kwargs['theme_plan_id'],kwargs['base_plan_id'],kwargs.get('selected_ids') or [])
                 elif kind=='restore':self.restore(kwargs['snapshot_id'])
                 elif kind=='auto':self.auto()
                 elif kind=='name_preview':self.preview_names()

@@ -1,6 +1,7 @@
 """Lazy incremental maintenance built from the proven resumable scanner."""
 from __future__ import annotations
 
+import copy
 import time
 
 from .base_mixin import BaseMixin
@@ -33,7 +34,43 @@ class LibraryEngine(SingleMixin, BaseMixin, Engine):
                 message = "整理已暂停，已完成的资料已保存"
                 self._record_workflow_pause("preview", message)
                 raise WorkflowPaused(message)
-            return self._preview(bool(force_sources))
+            theme = self._preview(bool(force_sources))
+            base = self._preview_base()
+            return {'theme': theme, 'base': base}
+
+    def apply_workflow(self, theme_plan_id, base_plan_id, selected_ids):
+        """Apply one user confirmation across theme and QQ-field categories."""
+        with self.exclusive():
+            selected = {str(value) for value in (selected_ids or set())}
+            theme_plan = copy.deepcopy(self.store.get('plan') or {})
+            base_plan = self.store.get('base_plan') or {}
+            if not theme_plan_id and not base_plan_id:
+                raise ValueError('分类预览已经变化，请重新整理')
+            if theme_plan_id and str(theme_plan.get('id') or '') != str(theme_plan_id):
+                raise ValueError('主题分类预览已经变化，请重新整理')
+            if base_plan_id and str(base_plan.get('id') or '') != str(base_plan_id):
+                raise ValueError('基础分类预览已经变化，请重新整理')
+            if theme_plan_id:
+                for group in theme_plan.get('groups') or []:
+                    if str(group.get('id') or '') not in selected:
+                        group['blocked'] = list(group.get('blocked') or []) + ['本次未选择']
+                self.store.set('plan', theme_plan)
+            base_ids = {
+                str(group.get('id') or '') for group in base_plan.get('groups') or []
+                if str(group.get('id') or '') in selected
+            }
+            empty = {'written': 0, 'unchanged': 0, 'skipped': 0, 'errors': []}
+            base_result = self._apply_base(base_plan_id, False, allowed_ids=base_ids) if base_plan_id else dict(empty)
+            theme_result = Engine._apply(self, theme_plan_id, False) if theme_plan_id else dict(empty)
+            result = {
+                'written': int(base_result.get('written') or 0) + int(theme_result.get('written') or 0),
+                'unchanged': int(base_result.get('unchanged') or 0) + int(theme_result.get('unchanged') or 0),
+                'skipped': int(base_result.get('skipped') or 0) + int(theme_result.get('skipped') or 0),
+                'errors': list(base_result.get('errors') or []) + list(theme_result.get('errors') or []),
+                'base': base_result, 'theme': theme_result,
+            }
+            self.store.set('workflow_apply_result', result)
+            return result
 
     def refresh_new_tracks(self):
         """Find only missing/changed tracks, then append to already-approved playlists."""

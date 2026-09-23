@@ -50,6 +50,86 @@ class IncrementalLibraryV0416Tests(unittest.TestCase):
             preview_base.assert_not_called()
             preview_theme.assert_not_called()
 
+    def test_full_analysis_builds_theme_and_qq_field_category_previews(self):
+        from helper.library_engine import LibraryEngine
+        from helper.store import Store
+
+        with tempfile.TemporaryDirectory() as root:
+            store = Store(Path(root))
+            engine = LibraryEngine(store)
+            theme = {"id": "theme-plan", "groups": []}
+            base = {"id": "base-plan", "groups": []}
+            with patch.object(engine, "_enrich_singles", return_value={"status": "completed"}), \
+                    patch.object(engine, "_preview", return_value=theme) as preview_theme, \
+                    patch.object(engine, "_preview_base", return_value=base) as preview_base:
+                result = engine.analyze_library()
+
+            self.assertEqual({"theme": theme, "base": base}, result)
+            preview_theme.assert_called_once_with(True)
+            preview_base.assert_called_once_with()
+
+    def test_confirmed_workflow_applies_selected_base_and_theme_groups_together(self):
+        from helper.engine import Engine
+        from helper.library_engine import LibraryEngine
+        from helper.store import Store
+
+        with tempfile.TemporaryDirectory() as root:
+            store = Store(Path(root))
+            store.set("plan", {
+                "id": "theme-plan", "groups": [
+                    {"id": "theme:keep", "blocked": []},
+                    {"id": "theme:skip", "blocked": []},
+                ],
+            })
+            store.set("base_plan", {
+                "id": "base-plan", "groups": [{"id": "base:pop", "blocked": []}],
+            })
+            engine = LibraryEngine(store)
+            with patch.object(engine, "_apply_base", return_value={"written": 1, "errors": []}) as apply_base, \
+                    patch.object(Engine, "_apply", return_value={"written": 1, "errors": []}) as apply_theme:
+                result = engine.apply_workflow(
+                    "theme-plan", "base-plan", {"theme:keep", "base:pop"}
+                )
+
+            apply_base.assert_called_once_with("base-plan", False, allowed_ids={"base:pop"})
+            apply_theme.assert_called_once_with(engine, "theme-plan", False)
+            self.assertIn("本次未选择", store.get("plan")["groups"][1]["blocked"])
+            self.assertEqual(2, result["written"])
+
+    def test_confirmed_workflow_can_apply_theme_without_a_base_preview(self):
+        from helper.engine import Engine
+        from helper.library_engine import LibraryEngine
+        from helper.store import Store
+
+        with tempfile.TemporaryDirectory() as root:
+            store = Store(Path(root))
+            store.set("plan", {"id": "theme-plan", "groups": [{"id": "theme:keep", "blocked": []}]})
+            engine = LibraryEngine(store)
+            with patch.object(engine, "_apply_base") as apply_base, \
+                    patch.object(Engine, "_apply", return_value={"written": 1, "errors": []}) as apply_theme:
+                result = engine.apply_workflow("theme-plan", "", {"theme:keep"})
+
+            apply_base.assert_not_called()
+            apply_theme.assert_called_once_with(engine, "theme-plan", False)
+            self.assertEqual(1, result["written"])
+
+    def test_confirmed_workflow_can_apply_base_without_a_theme_preview(self):
+        from helper.engine import Engine
+        from helper.library_engine import LibraryEngine
+        from helper.store import Store
+
+        with tempfile.TemporaryDirectory() as root:
+            store = Store(Path(root))
+            store.set("base_plan", {"id": "base-plan", "groups": [{"id": "base:pop", "blocked": []}]})
+            engine = LibraryEngine(store)
+            with patch.object(engine, "_apply_base", return_value={"written": 1, "errors": []}) as apply_base, \
+                    patch.object(Engine, "_apply") as apply_theme:
+                result = engine.apply_workflow("", "base-plan", {"base:pop"})
+
+            apply_base.assert_called_once_with("base-plan", False, allowed_ids={"base:pop"})
+            apply_theme.assert_not_called()
+            self.assertEqual(1, result["written"])
+
     def test_new_only_reuses_expired_record_when_track_identity_is_unchanged(self):
         from helper.library_engine import LibraryEngine
         from helper.single import SINGLE_POLICY, match_fingerprint

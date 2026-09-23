@@ -76,3 +76,17 @@ def test_interrupted_artwork_loads_are_invalidated_before_node_reuse():
     assert "task.image.remove()" in reset
     assert "delete node.dataset.coverIds" in reset
     assert "node.children[index]?.getAttribute('src')===artworkUrl(id,profile)" in artwork
+
+
+def test_library_playlist_rows_have_balanced_horizontal_insets():
+    rules = css_rules("body[data-view=library] .managed-playlist-row")
+
+    assert rules["padding"] == "14px 20px"
+    assert css_rules("body[data-view=library] .managed-playlist-more .managed-playlist-actions")["right"] == "20px"
+
+
+def test_truenas_install_uses_mutable_latest_tag_for_one_click_updates():
+    guide = (STATIC.parents[2] / "docs/install/truenas.md").read_text()
+
+    assert "ghcr.io/shudaizi520/qukuyouxu:latest" in guide
+    assert "右侧" in guide and "更新" in guide

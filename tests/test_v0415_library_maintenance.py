@@ -65,7 +65,7 @@ class LibraryMaintenanceV0415Tests(unittest.TestCase):
         self.assertNotIn("render_versioned_html((STATIC / 'index.html')", web)
         self.assertNotIn("'advanced.js'", web)
 
-    def test_review_only_metadata_excludes_confirmed_rows(self):
+    def test_review_only_metadata_excludes_confirmed_and_advisory_rows(self):
         from helper.metadata import metadata_audit_rows
 
         tracks = [
@@ -102,8 +102,42 @@ class LibraryMaintenanceV0415Tests(unittest.TestCase):
 
         rows = metadata_audit_rows(tracks, corrections, review_only=True)
 
-        self.assertEqual(["1"], [row["id"] for row in rows])
-        self.assertEqual("conflict", rows[0]["status"])
+        self.assertEqual([], rows)
+
+    def test_complete_plex_identity_is_not_blocked_only_because_filename_spelling_differs(self):
+        from helper.metadata import metadata_audit_rows, prepare_catalog
+
+        track = {
+            "id": "1",
+            "title": "溯 (Reverse)",
+            "artist": "CORSAK胡梦周/马吟吟",
+            "album": "",
+            "duration": 240,
+            "available": True,
+            "guid": "local://1",
+            "paths": ["/music/CORSAK胡梦周 _ 马吟吟 - 溯 (Reverse)feat_ 马吟吟.flac"],
+        }
+
+        prepared, audit = prepare_catalog([track], {})
+
+        self.assertFalse(prepared[0]["_metadata_blocked"])
+        self.assertEqual("filename_difference", prepared[0]["_metadata_status"])
+        self.assertEqual("filename_difference", audit[0]["status"])
+        self.assertEqual([], metadata_audit_rows([track], {}, review_only=True))
+
+    def test_missing_plex_identity_remains_blocked_even_with_a_filename_hint(self):
+        from helper.metadata import prepare_catalog
+
+        track = {
+            "id": "1", "title": "妈妈的话", "artist": "/", "album": "",
+            "duration": 220, "available": True, "guid": "local://1",
+            "paths": ["/music/弹棉花的小花 - 妈妈的话.flac"],
+        }
+
+        prepared, audit = prepare_catalog([track], {})
+
+        self.assertTrue(prepared[0]["_metadata_blocked"])
+        self.assertEqual("incomplete", audit[0]["status"])
 
     def test_next_library_run_is_beijing_midnight(self):
         from helper.profile_runtime import next_beijing_midnight

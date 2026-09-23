@@ -11,14 +11,14 @@ class ReleaseVersionTests(unittest.TestCase):
     def test_application_and_static_pages_use_release_2_0_5(self):
         from helper import __version__
 
-        self.assertEqual("2.0.5", __version__)
+        self.assertEqual("2.0.6", __version__)
         pages = []
         for name in ("playlists.html", "daily.html", "home.html", "mixes.html", "external.html", "settings.html", "status.html"):
             with self.subTest(name=name):
                 html = (ROOT / "src/helper/static" / name).read_text(encoding="utf-8")
                 pages.append(html)
-                self.assertIn("?v=2.0.5", html)
-                self.assertIn(">v2.0.5<", html)
+                self.assertIn("?v=2.0.6", html)
+                self.assertIn(">v2.0.6<", html)
         self.assertNotIn("1.4.5", "".join(pages))
 
     def test_release_notes_describe_external_playlist_workflow_and_limits(self):
@@ -41,7 +41,7 @@ class ReleaseVersionTests(unittest.TestCase):
         self.assertIn("## 1.4.22 - 2026-09-22", changelog)
         self.assertIn("## 2.0.3 - 2026-09-22", changelog)
         self.assertIn("## 2.0.4 - 2026-09-23", changelog)
-        self.assertIn("## 2.0.5 - 2026-09-23", changelog)
+        self.assertIn("## 2.0.6 - 2026-09-23", changelog)
         self.assertIn("## 1.4.9 - 2026-09-21", changelog)
         for phrase in ("Plex / Plexamp", "智能歌单", "曲库整理", "我的最爱", "爱心"):
             self.assertIn(phrase, changelog)
