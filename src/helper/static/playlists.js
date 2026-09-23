@@ -59,13 +59,17 @@ async function navigate(fn){
  catch(error){notify(error.message||'操作失败',true);}
 }
 async function json(path,method='GET',body){return (await PCHAuth.request(path,method,body)).json();}
+function profileArtworkScope(id){
+ const p=profiles.find(row=>String(row.id)===String(id));
+ return p?.account?.id&&p?.server?.machine&&p?.library?.id?[id,p.account.id,p.server.machine,p.library.id,p.created_at].join(':'):'';
+}
 const playlistArtwork=createPlaylistArtwork({
  document,request:json,profileId:()=>loadedProfileId,cacheUser:()=>PCHAuth.status()?.username||'',
- cacheScope:id=>{const p=profiles.find(row=>String(row.id)===String(id));return p?.account?.id&&p?.server?.machine&&p?.library?.id?[p.account.id,p.server.machine,p.library.id,p.created_at].join(':'):'';},
+ cacheScope:profileArtworkScope,
 });
 const playlistSections=createPlaylistSections({
  document,
- createArtwork:(item,variant)=>playlistArtwork.create(item,variant),
+ createArtwork:(item,variant,node)=>playlistArtwork.create(item,variant,node),
  onOpenPlaylist:item=>{setSidebarOpen(false);return navigate(()=>openPlaylist(item));},
  onOpenTool:(url,title,navigation)=>openWorkspacePage(url,title,'tool',navigation),
 });
@@ -193,7 +197,7 @@ function renderTracks(){
 const playlistPlayer=createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange:refreshPlayingRows,reportPlayback:reportWebPlayback,onLikedChange:updateLiked});
 function playingFrom(item){return playlistPlayer.isContext(playlistContext(item));}
 function renderPlaylistList(){
- playlistSections.setItems(playlists);
+ playlistSections.setItems(playlists,profileArtworkScope(loadedProfileId));
  try{playlistSections.setFavoriteUnseen(localStorage.getItem(unseenFavoriteKey())==='1');}catch(_error){}
  const view=workspace.current();if(view.type==='section')playlistSections.renderSection(view.section);
  workspace.renderNavigation();
@@ -312,6 +316,8 @@ function restorePlaylistView(){
 async function returnFromWorkspace(){
  const view=workspace.current();
  const preferred=view.type==='playlist'&&view.kind?{kind:view.kind,key:view.key}:view.type==='section'?{section:view.section}:current?{kind:current.kind,key:current.key}:null;
+ const selected=await loadProfiles();
+ if(selected&&selected!==loadedProfileId){await switchProfile(selected,false);return;}
  const requestId=profileRequest;
  librarySearch.reset();setSidebarOpen(false);++playlistRequest;setPlaylistLoading(false);
  await loadPlaylists(preferred,requestId);

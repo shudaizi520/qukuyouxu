@@ -21,9 +21,10 @@ def css_rules(selector):
 
 def test_sidebar_playlists_place_artwork_beside_titles_without_extra_music_icons():
     sections = (STATIC / "playlist-sections.js").read_text()
-    render_custom = sections.split("function renderCustom(){", 1)[1].split("function renderSection", 1)[0]
+    render_custom = sections.split("function renderCustom(", 1)[1].split("function renderSection", 1)[0]
     assert "playlist-side-icon" not in render_custom
-    assert "button.append(createArtwork(item,'sidebar'),text)" in render_custom
+    assert "cover:createArtwork(item,'sidebar')" in render_custom
+    assert "button.replaceChildren(view.cover,text)" in render_custom
     css = (STATIC / "product.css").read_text()
     assert "#customPlaylistList button{grid-template-columns:40px minmax(0,1fr)}" in css
     assert "@media(max-width:700px){#customPlaylistList button{grid-template-columns:30px minmax(0,1fr)}" in css

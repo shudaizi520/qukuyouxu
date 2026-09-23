@@ -685,16 +685,16 @@ body[data-view=library] .managed-playlist-more .managed-playlist-actions button{
 
 /* One heart language for player, playlists, and full-library search. */
 body[data-view=playlists]{--playlist-heart:#d84d5b}
-.playlist-heart{width:34px;height:34px;border-radius:50%;background:transparent;color:var(--playlist-text);font-size:26px;line-height:1;transition:color .15s ease}
+.playlist-heart{width:34px;height:34px;border-radius:0;background:transparent;box-shadow:none;filter:none;color:var(--playlist-text);font-size:26px;line-height:1;transition:color .15s ease}
 .playlist-track-identity .playlist-heart,.playlist-search-title-line .playlist-heart{flex:none;width:34px;height:34px;font-size:26px}
 .playlist-now-info{grid-template-columns:minmax(0,1fr) 36px}
 .playlist-now-info #playerLiked{width:36px;height:36px;font-size:26px;color:var(--playlist-text)}
-.playlist-heart:not([aria-pressed=true]):hover{color:var(--playlist-heart);background:transparent}
+.playlist-heart:not([aria-pressed=true]):hover{color:var(--playlist-heart);background:transparent;box-shadow:none}
 .playlist-now-info #playerLiked:not([aria-pressed=true]):hover{color:var(--playlist-heart)}
-.playlist-heart[aria-pressed=true]{color:var(--playlist-heart);background:transparent}
-.playlist-heart[aria-pressed=true]:hover{color:var(--playlist-heart);background:transparent}
+.playlist-heart[aria-pressed=true]{color:var(--playlist-heart);background:transparent;box-shadow:none}
+.playlist-heart[aria-pressed=true]:hover{color:var(--playlist-heart);background:transparent;box-shadow:none}
 .playlist-now-info #playerLiked[aria-pressed=true],.playlist-now-info #playerLiked[aria-pressed=true]:hover{color:var(--playlist-heart);background:transparent}
-.playlist-heart:focus-visible{outline:2px solid var(--playlist-heart);outline-offset:2px}
+.playlist-heart:focus-visible{outline:2px solid var(--playlist-heart);outline-offset:2px;background:transparent;box-shadow:none}
 @media(max-width:700px){.playlist-now-info #playerLiked{width:36px;height:36px}}
 @media(max-width:720px){body[data-view=external] .external-import-form{grid-template-columns:1fr auto}body[data-view=external] .external-url-field{grid-column:1/-1;grid-template-columns:1fr;gap:3px}body[data-view=external] .external-command-bar{flex-wrap:wrap;gap:6px 12px}body[data-view=external] .external-command-bar>label:first-child,body[data-view=external] #replenishmentCard strong{flex:0 0 100%}body[data-view=external] #sourceSelector,body[data-view=external] #plexPlaylistTitle{flex:1 1 100%;max-width:none}body[data-view=external] .external-state{flex-basis:100%}body[data-view=external] .external-file-name{padding-left:0}body[data-view=external] .external-track-row{grid-template-columns:minmax(0,1fr) auto}body[data-view=external] .external-track-row .bucket{display:none}}
 
@@ -867,6 +867,7 @@ body[data-view=settings] #managedUserList .profile-actions{grid-column:1/-1;widt
 
 /* Appearance palettes: backgrounds and color only. */
 html{
+ scrollbar-gutter:stable;
  --theme-canvas:#f5f8f7;--theme-surface:#ffffff;--theme-soft:#edf7f5;
  --theme-text:#17323a;--theme-muted:#607879;--theme-line:#d7e5e2;
  --theme-accent:#0b827d;--theme-accent-strong:#076e69;--theme-on-accent:#ffffff;

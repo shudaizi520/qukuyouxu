@@ -75,7 +75,8 @@ export function createPlaylistArtwork({document,request,profileId,cacheUser=()=>
   }
   if(!valid.length){placeholder(node);return;}
   const signature=valid.join(',');
-  if(node.dataset.coverIds===signature&&node.dataset.coverProfile===profile&&node.children.length===valid.length)return;
+  const loaded=valid.every((id,index)=>node.children[index]?.getAttribute('src')===artworkUrl(id,profile));
+  if(node.dataset.coverIds===signature&&node.dataset.coverProfile===profile&&node.children.length===valid.length&&loaded)return;
   cancelNodeImages(node);node.replaceChildren();style(node,valid.length);
   node.dataset.coverIds=signature;node.dataset.coverProfile=profile;
   for(const id of valid){
@@ -131,9 +132,10 @@ export function createPlaylistArtwork({document,request,profileId,cacheUser=()=>
   if(ids)paintIds(node,ids,profile);
   queue.push({node,item,profile,generation});pump();
  }
- function create(item,variant='card'){
-  const node=document.createElement('span');node.dataset.variant=variant;
-  node.setAttribute('aria-hidden','true');placeholder(node);
+ function create(item,variant='card',existingNode=null){
+  const node=existingNode||document.createElement('span');node.dataset.variant=variant;
+  node.setAttribute('aria-hidden','true');
+  if(!existingNode)placeholder(node);
   if(observer){items.set(node,item);observer.observe(node);}
   else{
    const createdGeneration=generation;
@@ -149,7 +151,12 @@ export function createPlaylistArtwork({document,request,profileId,cacheUser=()=>
  }
  function reset(nextProfile){
   generation++;selectedProfile=String(nextProfile||'');queue=[];imageQueue=[];cache.clear();items=new WeakMap();
-  for(const task of [...loadingImages]){task.finish();task.image.removeAttribute('src');}
+  const interrupted=new Set();
+  for(const task of [...loadingImages]){
+   const node=task.image.parentNode;task.finish();task.image.removeAttribute('src');task.image.remove();
+   if(node)interrupted.add(node);
+  }
+  for(const node of interrupted){delete node.dataset.coverIds;delete node.dataset.coverProfile;if(!node.children.length)placeholder(node);else style(node,node.children.length);}
   if(observer)observer.disconnect();
  }
  return {create,paintTracks,reset,placeholder};
