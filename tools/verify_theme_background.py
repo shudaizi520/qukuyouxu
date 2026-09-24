@@ -89,6 +89,24 @@ def main() -> None:
         assert page.evaluate(
             "matchMedia('(prefers-reduced-motion: reduce)').matches"
         )
+        motion_styles = page.locator(".app-theme-background").evaluate(
+            """element => {
+              element.style.animation = 'background-contract-probe 1s infinite';
+              element.style.transition = 'opacity 1s';
+              return ['', '::before', '::after'].map(pseudo => {
+                const style = getComputedStyle(element, pseudo || null);
+                return {
+                  animationName: style.animationName,
+                  transitionDuration: style.transitionDuration
+                };
+              });
+            }"""
+        )
+        assert all(style["animationName"] == "none" for style in motion_styles)
+        assert all(
+            set(style["transitionDuration"].split(", ")) <= {"0s"}
+            for style in motion_styles
+        )
 
         page.goto(BASE_URL + "/", wait_until="domcontentloaded")
         page.locator('body[data-auth-state="ready"]').wait_for(timeout=30_000)

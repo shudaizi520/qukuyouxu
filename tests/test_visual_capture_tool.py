@@ -2,6 +2,7 @@ from pathlib import Path
 
 from tools.capture_theme_matrix import (
     MASK_SELECTORS,
+    _embedded_mask_locators,
     _prepare_screenshot,
     compare_images,
     matrix_cases,
@@ -55,3 +56,19 @@ def test_screenshot_preparation_waits_for_async_page_data():
 
 def test_visual_masks_cover_credential_bearing_fields():
     assert "#webhookUrl" in MASK_SELECTORS
+
+
+def test_embedded_capture_masks_credential_fields_in_parent_and_iframe():
+    class LocatorRootStub:
+        def __init__(self, name):
+            self.name = name
+
+        def locator(self, selector):
+            return (self.name, selector)
+
+    masks = _embedded_mask_locators(
+        LocatorRootStub("page"), LocatorRootStub("frame")
+    )
+
+    assert ("page", "#webhookUrl") in masks
+    assert ("frame", "#webhookUrl") in masks

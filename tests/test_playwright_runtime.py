@@ -19,6 +19,7 @@ def test_prepares_bundled_linux_runtime_without_losing_existing_paths(
     monkeypatch.setenv("LD_LIBRARY_PATH", "/existing/runtime")
 
     prepare_playwright_environment(tmp_path)
+    prepare_playwright_environment(tmp_path)
 
     assert __import__("os").environ["LD_LIBRARY_PATH"] == (
         f"{library_root}:/existing/runtime"

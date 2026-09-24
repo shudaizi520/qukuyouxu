@@ -17,7 +17,11 @@ def prepare_playwright_environment(repo_root: Path | None = None) -> None:
     existing = os.environ.get("LD_LIBRARY_PATH")
     entries = [str(library_root)]
     if existing:
-        entries.append(existing)
+        entries.extend(
+            entry
+            for entry in existing.split(os.pathsep)
+            if entry and entry != str(library_root)
+        )
     os.environ["LD_LIBRARY_PATH"] = os.pathsep.join(entries)
     os.environ["FONTCONFIG_SYSROOT"] = str(sysroot)
     os.environ["FONTCONFIG_PATH"] = str(sysroot / "etc" / "fonts")

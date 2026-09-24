@@ -126,6 +126,10 @@ def _mask_locators(page: Page):
     return [page.locator(selector) for selector in MASK_SELECTORS]
 
 
+def _embedded_mask_locators(page, frame):
+    return [*_mask_locators(page), *_mask_locators(frame)]
+
+
 def _capture_case(
     page: Page,
     base_url: str,
@@ -178,7 +182,7 @@ def _capture_embedded_settings(
         path=str(target),
         animations="disabled",
         style=SCREENSHOT_STYLE,
-        mask=_mask_locators(page),
+        mask=_embedded_mask_locators(page, frame),
         mask_color="#808080",
     )
     return target
