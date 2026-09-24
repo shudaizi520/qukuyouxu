@@ -26,17 +26,14 @@ h1{font-weight:600}h2,h3,h4{font-weight:600}
 .brand{color:var(--app-text)}
 .brand small,.muted,small{color:var(--app-muted)}
 .brand-mark,.primary,.step-number{background:var(--app-accent);border-color:var(--app-accent);color:var(--app-on-accent)}
-.primary:hover:not(:disabled){background:var(--app-accent-strong);border-color:var(--app-accent-strong);color:var(--app-on-accent)}
 .card,.panel,.auth-card,.settings-section,.settings-dialog,.pch-dialog,.playlist-search-dialog,.page-disclosure,.custom-mix{
  background:var(--app-main);color:var(--app-text);border-color:transparent;box-shadow:none;
 }
 :is(.secondary,.danger,.button){background:transparent;border-color:var(--app-line);color:var(--app-text);box-shadow:none}
-:is(.secondary,.danger,.button):hover:not(:disabled){background:var(--app-hover);box-shadow:none}
 .danger{color:var(--app-danger)}
 :is(input:not([type=checkbox]):not([type=radio]):not([type=range]),select,textarea){background:var(--app-control);color:var(--app-text);border-color:transparent;box-shadow:none}
 :is(input,select,textarea)::placeholder{color:var(--app-muted);opacity:1}
 :is(input[type=checkbox],input[type=radio],input[type=range]){accent-color:var(--app-accent)}
-:is(button,a,input,select,textarea):focus-visible{outline:2px solid color-mix(in srgb,var(--app-accent) 60%,transparent);outline-offset:2px}
 .notice,.auth-message,.pch-toast,.status-pill,.bucket,.stat,.metrics>div,.mini-stats>div,.warning-block,.qq-auth-panel,.external-trust-note{background:var(--app-control);color:var(--app-text);border-color:transparent}
 .notice.error,.auth-message.error,.pch-toast.is-error{background:var(--app-danger-soft);color:var(--app-danger)}
 .topbar nav :is(a,button),.topbar .logout{color:var(--app-muted)}

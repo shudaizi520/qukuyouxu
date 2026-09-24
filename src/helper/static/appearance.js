@@ -97,7 +97,7 @@
    trigger.className=(trigger.className?trigger.className+' ':'')+'appearance-trigger topbar-settings-trigger';
    trigger.setAttribute('aria-label','打开全部设置');
    trigger.setAttribute('title','菜单');
-   trigger.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 6h16M4 12h16M4 18h16"/></svg><span>菜单</span>';
+   trigger.innerHTML='<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 6h16M4 12h16M4 18h16"/></svg><span>菜单</span>';
    header.append(trigger);
    updateMenu();
    return;
@@ -106,7 +106,7 @@
   trigger=document.createElement('button');trigger.type='button';trigger.className='appearance-trigger';
   trigger.setAttribute('aria-label',unified?'打开菜单':'切换主题');trigger.setAttribute('title',unified?'菜单':'切换主题');
   trigger.setAttribute('aria-haspopup','menu');trigger.setAttribute('aria-expanded','false');
-  trigger.innerHTML=unified?'<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 6h16M4 12h16M4 18h16"/></svg><span>菜单</span>':'<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m8 3 4 2 4-2 5 4-2.5 4-1.5-.7V21H7V10.3l-1.5.7L3 7l5-4Z"/><path d="M9.5 4.2c.4 1.4 1.2 2.1 2.5 2.1s2.1-.7 2.5-2.1"/></svg>';
+  trigger.innerHTML=unified?'<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 6h16M4 12h16M4 18h16"/></svg><span>菜单</span>':'<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m8 3 4 2 4-2 5 4-2.5 4-1.5-.7V21H7V10.3l-1.5.7L3 7l5-4Z"/><path d="M9.5 4.2c.4 1.4 1.2 2.1 2.5 2.1s2.1-.7 2.5-2.1"/></svg>';
   menu=document.createElement('div');menu.className='appearance-menu';menu.hidden=true;
   menu.setAttribute('role','menu');menu.setAttribute('aria-label',unified?'应用菜单':'选择界面主题');
   options=THEMES.map(theme=>{

@@ -1,0 +1,28 @@
+/* Shared interaction states. Page styles own geometry; this file owns behavior. */
+.ui-icon{
+ width:1em;
+ height:1em;
+ flex:none;
+ fill:none;
+ stroke:currentColor;
+ stroke-width:1.8;
+ stroke-linecap:round;
+ stroke-linejoin:round;
+ color:inherit;
+}
+.ui-icon--fill{fill:currentColor;stroke:none}
+
+:is(button,a){--control-icon-color:var(--icon-default);color:var(--app-text)}
+:is(button,a) .ui-icon{color:var(--control-icon-color)}
+:is(button,a):hover:not(:disabled){--control-icon-color:var(--icon-hover)}
+:is(button,a)[aria-current=page],:is(button,a).active{--control-icon-color:var(--icon-active)}
+:is(button,a).danger{--control-icon-color:var(--icon-danger)}
+
+.primary:hover:not(:disabled){background:var(--app-accent-strong);border-color:var(--app-accent-strong);color:var(--app-on-accent)}
+.secondary:hover:not(:disabled),.button.secondary:hover:not(:disabled){background:var(--app-hover);border-color:var(--app-line);box-shadow:none}
+.danger:hover:not(:disabled){background:var(--app-danger-soft);border-color:var(--app-danger);color:var(--app-danger);box-shadow:none}
+:is(button,input,select,textarea):disabled{opacity:.42;cursor:not-allowed}
+:is(button,a,input,select,textarea,summary):focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
+
+/* Text-symbol controls share the same color state as SVG controls. */
+:is(.mix-icon,.health-icon,.playlist-section-art){color:var(--icon-active)}
