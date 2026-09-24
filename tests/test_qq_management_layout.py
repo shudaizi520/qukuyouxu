@@ -65,9 +65,6 @@ def test_system_settings_use_a_capped_aligned_user_table():
     html = _text("settings.html")
     css = _text("management-shell.css")
     people = html.split('<section id="people"', 1)[1].split("</section>", 1)[0]
-    heading = people.split('<div class="settings-section-title"', 1)[1].split(
-        "</div>", 1
-    )[0]
     user_section = _rule(
         css, "body[data-management-page=settings] .settings-user-section"
     )
@@ -84,10 +81,11 @@ def test_system_settings_use_a_capped_aligned_user_table():
     )
 
     assert "settings-user-section" in people.split(">", 1)[0]
-    assert 'id="openAddUser"' in heading
-    assert user_section["max-width"] == "700px"
-    assert header["grid-template-columns"] == "minmax(220px,1fr) repeat(3,82px) 64px"
-    assert row["grid-template-columns"] == "minmax(220px,1fr) repeat(3,82px) 64px"
+    assert 'class="settings-layout-label"><h3>用户管理</h3>' in people
+    assert people.index('id="openAddUser"') < people.index('class="settings-user-header"')
+    assert user_section["max-width"] == "820px"
+    assert header["grid-template-columns"] == "minmax(190px,1fr) repeat(3,76px) 58px"
+    assert row["grid-template-columns"] == "minmax(190px,1fr) repeat(3,76px) 58px"
     assert row["background"] == "transparent"
     assert hover["background"] == "var(--management-hover)"
 
@@ -97,7 +95,7 @@ def test_system_settings_automation_uses_fixed_compact_columns():
     row = _rule(css, "body[data-management-page=settings] .automation-row")
     controls = _rule(css, "body[data-management-page=settings] .automation-controls")
 
-    assert row["grid-template-columns"] == "144px minmax(0,1fr)"
+    assert row["grid-template-columns"] == "160px minmax(0,1fr)"
     assert row["background"] == "transparent"
     assert controls["grid-template-columns"] == "76px 88px 20px"
     assert controls["justify-content"] == "start"
@@ -208,7 +206,7 @@ def test_embedded_settings_and_empty_library_keep_the_same_readable_width():
         ".pch-embedded body[data-management-page=settings] .settings-workspace",
     )
     setup = _rule(css, "body[data-management-page=library] .setup-card")
-    assert embedded["max-width"] == "700px"
+    assert embedded["max-width"] == "820px"
     assert embedded["margin"] == "0"
     assert setup["max-width"] == "760px"
     assert setup["border"] == "0"
@@ -246,11 +244,111 @@ def test_status_values_stay_near_their_labels_and_chips_have_no_fill():
     status_meta = _rule(css, "body[data-management-page=status] .status-meta")
     chip = _rule(css, "body[data-management-page=status] .status-chip")
     connection = _rule(css, "body[data-management-page=settings] .connection-state")
+    online = _rule(
+        css,
+        "body[data-management-page=settings] #plexState[data-state=online]",
+    )
 
     assert status_row["grid-template-columns"] == "140px minmax(0,1fr)"
     assert status_meta["grid-template-columns"] == "140px minmax(0,1fr)"
     assert chip["background"] == "transparent"
     assert connection["background"] == "transparent"
+    assert connection["background-image"] == "none"
+    assert connection["box-shadow"] == "none"
+    assert connection["border-radius"] == "0"
+    assert online["background"] == "transparent"
+    assert online["background-color"] == "transparent"
+
+
+def test_settings_use_real_left_label_and_right_content_rows():
+    html = _text("settings.html")
+    css = _text("management-shell.css")
+    layout = _rule(css, "body[data-management-page=settings] .settings-layout-row")
+    divider = _rule(
+        css,
+        "body[data-management-page=settings] .settings-layout-row+.settings-layout-row",
+    )
+    label = _rule(css, "body[data-management-page=settings] .settings-layout-label h3")
+
+    assert html.count('class="settings-layout-row') >= 7
+    assert html.count('class="settings-layout-label"') >= 7
+    assert html.count('class="settings-layout-content') >= 7
+    assert 'class="settings-layout-label"><h3>Plex 连接</h3>' in html
+    assert 'class="settings-layout-label"><h3>Plex 播放事件</h3>' in html
+    assert 'class="settings-layout-label"><h3>登录密码</h3>' in html
+    assert layout["grid-template-columns"] == "120px minmax(0,1fr)"
+    assert layout["gap"] == "24px"
+    assert divider["border-top"] == "1px solid var(--management-line)"
+    assert label["font-weight"] == "400"
+
+
+def test_settings_sections_keep_an_indented_faint_separator():
+    css = _text("management-shell.css")
+    divider = _rule(
+        css,
+        "body[data-management-page=settings] .settings-section+.settings-section::before",
+    )
+
+    assert divider["content"] == '""'
+    assert divider["display"] == "block"
+    assert divider["background"] == "var(--management-line)"
+    assert "width:calc(100% - 144px);" in css
+    assert "margin-left:144px;" in css
+
+
+def test_settings_user_table_reflows_without_mobile_overflow():
+    css = _text("management-shell.css")
+    header = _rule(
+        css,
+        "body[data-management-page=settings] .management-stage .settings-user-header",
+    )
+    row = _rule(
+        css,
+        "body[data-management-page=settings] .management-stage #managedUserList .settings-user-row",
+    )
+    person = _rule(
+        css,
+        "body[data-management-page=settings] .management-stage #managedUserList .settings-person",
+    )
+    actions = _rule(
+        css,
+        "body[data-management-page=settings] .management-stage #managedUserList .profile-actions",
+    )
+
+    assert header["display"] == "none"
+    assert row["grid-template-columns"] == "repeat(3,minmax(0,1fr))"
+    assert person["grid-column"] == "1/-1"
+    assert actions["grid-column"] == "1/-1"
+    assert actions["justify-content"] == "flex-start"
+
+
+def test_management_and_playlist_typography_avoid_heavy_list_weights():
+    management = _text("management-shell.css")
+    design = _text("design-system.css")
+    active_nav = _rule(management, ".management-nav a[aria-current=page]")
+    playlist = _rule(
+        design,
+        "body[data-view=playlists] .playlist-track-title",
+    )
+    sidebar = _rule(
+        design,
+        "body[data-view=playlists] .playlist-fixed-nav button",
+    )
+    management_policy = _rule(
+        management,
+        "body[data-management-page] strong",
+    )
+    dialog_label = _rule(management, "body[data-management-page] label")
+    dialog_button = _rule(management, "body[data-management-page] button")
+    dialog_summary = _rule(management, "body[data-management-page] summary")
+
+    assert active_nav["font-weight"] == "500"
+    assert playlist["font-weight"] == "400"
+    assert sidebar["font-weight"] == "400"
+    assert management_policy["font-weight"] == "400!important"
+    assert dialog_label["font-weight"] == "400!important"
+    assert dialog_button["font-weight"] == "400!important"
+    assert dialog_summary["font-weight"] == "400!important"
 
 
 def test_management_actions_do_not_mix_red_green_or_add_underlines():

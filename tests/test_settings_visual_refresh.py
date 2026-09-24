@@ -55,12 +55,14 @@ def test_settings_has_four_clear_modules_and_only_faint_group_separators():
     separator = _rule(css, "body[data-management-page=settings] .settings-section+.settings-section::before")
     panel_separator = _rule(css, "body[data-management-page=settings] .settings-panel+.settings-panel::before")
 
-    assert workspace["max-width"] == "700px"
+    assert workspace["max-width"] == "820px"
     assert workspace["margin"] == "0"
     assert card["background"] == "transparent"
     assert card["border"] == "0"
     assert card["border-radius"] == "0"
-    assert separator["content"] == "none"
+    assert separator["content"] == '""'
+    assert separator["height"] == "1px"
+    assert separator["background"] == "var(--management-line)"
     assert panel_separator["content"] == '""'
     assert panel_separator["height"] == "1px"
     assert panel_separator["background"] == "var(--management-line)"
@@ -74,13 +76,13 @@ def test_automation_is_a_compact_aligned_list_and_logout_finishes_on_the_left():
     logout = _rule(css, "body[data-management-page=settings] .settings-account-actions")
 
     assert grid["grid-template-columns"] == "1fr"
-    assert grid["max-width"] == "520px"
+    assert grid["max-width"] == "100%"
     assert row["display"] == "grid"
-    assert row["grid-template-columns"] == "144px minmax(0,1fr)"
+    assert row["grid-template-columns"] == "160px minmax(0,1fr)"
     assert row["border"] == "0"
     assert row["border-radius"] == "0"
     assert logout["justify-content"] == "flex-start"
-    assert logout["margin-top"] == "18px"
+    assert logout["margin-top"] == "14px"
     assert html.rindex("settings-account-actions") > html.index('id="settings-system"')
 
 
@@ -113,4 +115,4 @@ def test_settings_typography_uses_windows_chinese_ui_fonts_and_consistent_weight
     assert '"Segoe UI Variable Text"' in body["font-family"]
     assert '"Microsoft YaHei UI"' in body["font-family"]
     assert body["font-synthesis"] == "none"
-    assert title["font-weight"] == "600"
+    assert title["font-weight"] == "400"

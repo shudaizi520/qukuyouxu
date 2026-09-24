@@ -18,8 +18,9 @@ html,body{font-family:var(--app-font);font-synthesis:none;text-rendering:optimiz
 body{margin:0;background:var(--app-main);color:var(--app-text);font-size:14px;font-weight:400;line-height:1.55}
 button,input,select,textarea{font:inherit;color:inherit}
 :is(h1,h2,h3,h4,strong,b){font-family:inherit;font-synthesis:none}
-h1{font-weight:600}h2,h3,h4{font-weight:600}
-.brand{font-weight:600}.eyebrow{font-weight:600}.song-title{font-weight:500}
+h1{font-weight:600}h2,h3,h4{font-weight:500}
+:is(strong,b,button,.button,label){font-weight:400}
+.brand{font-weight:500}.eyebrow{font-weight:500}.song-title{font-weight:400}
 
 /* Shared surfaces: a page has one canvas; controls may use one derived fill. */
 .topbar{background:var(--app-main);color:var(--app-text);border-bottom:0;box-shadow:none}
@@ -120,13 +121,16 @@ body[data-view=playlists] .playlist-tool-dock{background:var(--app-rail);border:
 body[data-view=playlists] .playlist-profile-block{padding:0 4px}
 body[data-view=playlists] .playlist-profile{height:40px;padding-inline:10px;border:0;border-radius:8px;background:color-mix(in srgb,var(--app-main) 62%,var(--app-rail));color:var(--app-text)}
 body[data-view=playlists] .playlist-fixed-nav{border:0}
-body[data-view=playlists] :is(.playlist-fixed-nav button,.playlist-side-list button){font-weight:500}
+body[data-view=playlists] .playlist-fixed-nav button,
+body[data-view=playlists] .playlist-side-list button{font-weight:400}
 body[data-view=playlists] :is(.playlist-fixed-nav button,.playlist-side-list button):hover{background:var(--app-hover)}
 body[data-view=playlists] :is(.playlist-fixed-nav button,.playlist-side-list button).active{background:var(--app-selected);color:var(--app-accent-strong)}
 body[data-view=playlists] .playlist-side-heading-actions button{border:0;border-radius:0;background:transparent;box-shadow:none}
 body[data-view=playlists] .playlist-side-heading-actions button:hover:not(:disabled){background:transparent;color:var(--app-accent);box-shadow:none}
 body[data-view=playlists] :is(.playlist-track,.playlist-search-result){font-weight:400}
-body[data-view=playlists] :is(.playlist-track-title,.playlist-now strong,.playlist-side-list strong){font-weight:500}
+body[data-view=playlists] .playlist-track-title,
+body[data-view=playlists] .playlist-now strong,
+body[data-view=playlists] .playlist-side-list strong{font-weight:400}
 body[data-view=playlists] .playlist-track{position:relative;isolation:isolate;background:transparent}
 body[data-view=playlists] .playlist-track::before{content:"";position:absolute;z-index:0;top:4px;bottom:4px;left:28px;right:8px;border-radius:8px;background:transparent;pointer-events:none}
 body[data-view=playlists] .playlist-track>*{position:relative;z-index:1}

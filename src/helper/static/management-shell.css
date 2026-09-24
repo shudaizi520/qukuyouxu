@@ -16,6 +16,12 @@ body[data-management-page]{
  background:var(--management-canvas);
  color:var(--management-text);
 }
+body[data-management-page] button,
+body[data-management-page] .button,
+body[data-management-page] label,
+body[data-management-page] strong,
+body[data-management-page] b,
+body[data-management-page] summary{font-weight:400!important}
 body[data-management-page] [data-management-shell]{
  width:100%;
  max-width:none;
@@ -62,7 +68,7 @@ body[data-management-page] [data-management-shell]{
  white-space:nowrap;
 }
 .management-nav a:hover{color:var(--management-text)}
-.management-nav a[aria-current=page]{color:var(--management-text);font-weight:600}
+.management-nav a[aria-current=page]{color:var(--management-text);font-weight:500}
 .management-nav a[aria-current=page]::after{
  content:none;
 }
@@ -394,88 +400,104 @@ body[data-management-page=status] .page-disclosure{
  background:transparent;
 }
 
-/* Settings groups use QQ-style spacing with only faint structural separators. */
-body[data-management-page=settings] .settings-workspace{
- width:100%;
- max-width:700px;
- margin:0;
-}
-.pch-embedded body[data-management-page=settings] .settings-workspace{width:100%;max-width:700px;margin:0}
-body[data-management-page=settings] .settings-panel{width:100%;max-width:none;margin:0 0 18px;padding:0}
+/* Settings use QQ-style left labels, right content and faint row separators. */
+body[data-management-page=settings] .settings-workspace{width:100%;max-width:820px;margin:0}
+.pch-embedded body[data-management-page=settings] .settings-workspace{width:100%;max-width:820px;margin:0}
+body[data-management-page=settings] .settings-panel{width:100%;max-width:none;margin:0;padding:0}
 body[data-management-page=settings] .settings-panel+.settings-panel{margin-top:0;padding-top:0}
 body[data-management-page=settings] .settings-panel+.settings-panel::before{
  content:"";
  position:static;
  display:block;
- width:100%;
+ width:calc(100% - 144px);
  height:1px;
- margin:0 0 30px;
+ margin:10px 0 18px 144px;
  background:var(--management-line);
- opacity:.62;
+ opacity:.58;
 }
-body[data-management-page=settings] .settings-card{
- margin:0 0 30px;
- padding:0;
- border:0;
- border-radius:0;
- background:transparent;
- box-shadow:none;
- overflow:visible;
-}
+body[data-management-page=settings] .settings-card{margin:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;overflow:visible}
 body[data-management-page=settings] .settings-section+.settings-section{margin-top:0;padding-top:0}
-body[data-management-page=settings] .settings-section+.settings-section::before{content:none}
-body[data-management-page=settings] .settings-section-title{margin:0 0 16px;padding:0;border:0}
-body[data-management-page=settings] .settings-card-heading>div{display:grid;gap:4px}
-body[data-management-page=settings] .settings-user-section{width:100%;max-width:700px}
+body[data-management-page=settings] .settings-section+.settings-section::before{
+ content:"";
+ display:block;
+ width:calc(100% - 144px);
+ height:1px;
+ margin:10px 0 18px;
+ margin-left:144px;
+ background:var(--management-line);
+ opacity:.58;
+}
+body[data-management-page=settings] .settings-section-title{margin:0;padding:0;border:0}
+body[data-management-page=settings] .settings-group-heading{margin:0;padding:12px 0 8px}
+body[data-management-page=settings] .settings-group-heading h3{margin:0;font-size:16px;font-weight:400}
+body[data-management-page=settings] .settings-layout-row{
+ display:grid;
+ grid-template-columns:120px minmax(0,1fr);
+ align-items:start;
+ gap:24px;
+ min-height:64px;
+ padding:18px 0;
+ border:0;
+ background:transparent;
+}
+body[data-management-page=settings] .settings-layout-row+.settings-layout-row{border-top:1px solid var(--management-line)}
+body[data-management-page=settings] .settings-layout-label{min-width:0;padding-top:6px;color:var(--management-muted)}
+body[data-management-page=settings] .settings-layout-label h3{margin:0;font-size:14px;font-weight:400;line-height:1.45}
+body[data-management-page=settings] .settings-layout-content{min-width:0}
+body[data-management-page=settings] .settings-content-head{min-height:30px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+body[data-management-page=settings] .settings-user-section{width:100%;max-width:820px}
+body[data-management-page=settings] .settings-user-actions{margin-bottom:5px}
 body[data-management-page=settings] .settings-user-header,
 body[data-management-page=settings] #managedUserList .settings-user-row{
  display:grid;
- grid-template-columns:minmax(220px,1fr) repeat(3,82px) 64px;
+ grid-template-columns:minmax(190px,1fr) repeat(3,76px) 58px;
  align-items:center;
  gap:10px;
  border:0;
  background:transparent;
 }
-body[data-management-page=settings] .settings-user-header{min-height:32px;padding:0 8px;color:var(--management-muted);font-size:12px;font-weight:500}
+body[data-management-page=settings] .settings-user-header{min-height:32px;padding:0 8px;color:var(--management-muted);font-size:12px;font-weight:400}
 body[data-management-page=settings] .settings-user-header span:not(:first-child){text-align:center}
 body[data-management-page=settings] #managedUserList .settings-user-row{min-height:46px;padding:7px 8px;border-radius:0}
 body[data-management-page=settings] #managedUserList .settings-user-row+.settings-user-row{border-top:1px solid var(--management-line)}
 body[data-management-page=settings] #managedUserList .settings-user-row:hover{background:var(--management-hover)}
 body[data-management-page=settings] #managedUserList .profile-actions{width:auto;max-width:none;justify-content:flex-end}
-body[data-management-page=settings] .connection-summary{border:0;border-radius:10px;background:var(--management-canvas);padding:12px 14px}
-body[data-management-page=settings] .profile-webhook-tools{margin-top:18px;padding:16px;border:0;border-radius:11px;background:var(--management-canvas)}
+body[data-management-page=settings] .connection-summary{margin:6px 0 0;padding:10px 0;border:0;border-radius:0;background:transparent}
+body[data-management-page=settings] .profile-webhook-tools{margin:0;padding:18px 0;border:0;border-radius:0;background:transparent}
 body[data-management-page=settings] .profile-webhook-tools::before{content:none}
-body[data-management-page=settings] .profile-webhook-tools .webhook-setup-action{padding:0}
-body[data-management-page=settings] .profile-webhook-tools .webhook-setup-action code{padding:9px 11px;border:0;border-radius:8px;background:var(--management-control)}
-body[data-management-page=settings] .settings-automation-section{width:100%;max-width:520px}
+body[data-management-page=settings] .profile-webhook-tools .webhook-setup-action{margin:4px 0 0;padding:0}
+body[data-management-page=settings] .profile-webhook-tools .webhook-setup-action code{padding:8px 0;border:0;border-bottom:1px solid var(--management-line);border-radius:0;background:transparent}
+body[data-management-page=settings] .settings-automation-section{width:100%;max-width:820px}
 body[data-management-page=settings] .automation-list{padding:0}
-body[data-management-page=settings] .automation-grid{display:grid;grid-template-columns:1fr;max-width:520px;gap:4px}
+body[data-management-page=settings] .automation-grid{display:grid;grid-template-columns:1fr;max-width:100%;gap:0}
 body[data-management-page=settings] .automation-row{
  min-width:0;
  min-height:44px;
  display:grid;
- grid-template-columns:144px minmax(0,1fr);
+ grid-template-columns:160px minmax(0,1fr);
  align-items:center;
- gap:14px;
- padding:7px 0;
+ gap:24px;
+ padding:14px 0;
  border:0;
  border-radius:0;
  background:transparent;
 }
 body[data-management-page=settings] .automation-row+.automation-row{border-top:1px solid var(--management-line)}
 body[data-management-page=settings] .automation-row+.automation-row::before{content:none}
-body[data-management-page=settings] .automation-row>strong{font-size:14px}
 body[data-management-page=settings] .automation-controls{width:auto;display:grid;grid-template-columns:76px 88px 20px;align-items:center;justify-content:start;gap:8px}
 body[data-management-page=settings] .automation-controls>span{min-width:0;text-align:left}
 body[data-management-page=settings] .automation-controls select{width:88px;min-width:0;flex:none}
 body[data-management-page=settings] .automation-controls select:first-child:not(.automation-hour){width:76px}
-body[data-management-page=settings] .connection-state{padding:0;border:0;background:transparent}
-body[data-management-page=settings] .settings-security-card{padding-bottom:14px}
-body[data-management-page=settings] .settings-security-card{max-width:520px}
-body[data-management-page=settings] .settings-password{max-width:520px;border:0;border-radius:0;background:transparent}
-body[data-management-page=settings] .settings-password>summary{display:grid;grid-template-columns:140px minmax(0,1fr);justify-content:start;padding:0}
-body[data-management-page=settings] .settings-password .settings-expander-body{padding:16px 14px;border:0}
-body[data-management-page=settings] .settings-about{display:grid;grid-template-columns:140px minmax(0,1fr);align-items:center;justify-content:start;padding:14px 0;color:var(--management-muted);font-size:13px}
+body[data-management-page=settings] .connection-state{padding:0;border:0;border-radius:0;background:transparent;background-image:none;box-shadow:none}
+body[data-management-page=settings] #plexState[data-state=online],
+body[data-management-page=settings] #plexState[data-state=unreachable],
+body[data-management-page=settings] #plexState[data-state=auth_invalid]{background:transparent;background-color:transparent;background-image:none;box-shadow:none}
+body[data-management-page=settings] .settings-security-card{max-width:820px;padding-bottom:14px}
+body[data-management-page=settings] .settings-password{width:100%;max-width:none;border:0;border-radius:0;background:transparent}
+body[data-management-page=settings] .settings-password>summary{min-height:32px;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;justify-content:start;padding:0;font-weight:400}
+body[data-management-page=settings] .settings-password .settings-expander-body{padding:16px 0 0;border:0}
+body[data-management-page=settings] .settings-about{min-height:32px;display:flex;align-items:center;justify-content:space-between;padding:0;color:var(--management-muted);font-size:13px}
+body[data-management-page=settings] .settings-account-actions{display:flex;justify-content:flex-start;margin-top:14px;padding:0}
 body[data-management-page=appearance] .appearance-theme-section{padding:0 0 30px}
 body[data-management-page=appearance] .appearance-theme-grid{display:grid;grid-template-columns:repeat(3,190px);justify-content:start;gap:14px}
 body[data-management-page=appearance] .appearance-theme-card{
@@ -502,7 +524,7 @@ body[data-management-page=external] :is(.external-file-action,.external-text-act
 body[data-management-page=external] .external-count-tab,
 body[data-management-page=external] .external-count-tab.active{border-bottom:0;color:var(--management-text)}
 body[data-management-page=appearance] .appearance-theme-copy{display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:0 3px}
-body[data-management-page=appearance] .appearance-theme-copy strong{font-size:14px;font-weight:650}
+body[data-management-page=appearance] .appearance-theme-copy strong{font-size:14px;font-weight:400}
 body[data-management-page=appearance] .appearance-theme-preview{position:relative;display:block;width:100%;height:92px;overflow:hidden;border:1px solid var(--app-line);border-radius:8px;background:var(--preview-main)}
 body[data-management-page=appearance] .appearance-theme-preview i{position:absolute;display:block;border-radius:3px;background:var(--preview-control)}
 body[data-management-page=appearance] .appearance-theme-preview .preview-sidebar{inset:0 auto 0 0;width:26%;border-radius:0;background:var(--preview-side)}
@@ -512,8 +534,6 @@ body[data-management-page=appearance] .appearance-theme-preview .preview-player{
 body[data-management-page=appearance] .preview-light{--preview-main:var(--preview-light-main);--preview-side:var(--preview-light-side);--preview-control:var(--preview-light-control);--preview-line:var(--preview-light-line);--preview-accent:var(--preview-light-accent)}
 body[data-management-page=appearance] .preview-warm{--preview-main:var(--preview-warm-main);--preview-side:var(--preview-warm-side);--preview-control:var(--preview-warm-control);--preview-line:var(--preview-warm-line);--preview-accent:var(--preview-warm-accent)}
 body[data-management-page=appearance] .preview-night{--preview-main:var(--preview-night-main);--preview-side:var(--preview-night-side);--preview-control:var(--preview-night-control);--preview-line:var(--preview-night-line);--preview-accent:var(--preview-night-accent)}
-body[data-management-page=settings] .settings-account-actions{display:flex;justify-content:flex-start;margin-top:18px;padding:0 0 18px}
-
 @media(max-width:700px){
  body[data-management-page] .management-stage{padding:0 16px 36px}
  body[data-management-page] .management-nav{gap:22px;min-height:56px}
@@ -527,6 +547,16 @@ body[data-management-page=settings] .settings-account-actions{display:flex;justi
  body[data-management-page=status] .health-card:last-child{border-bottom:0}
  body[data-management-page=status] .status-primary>.card:first-child{border-right:0}
  body[data-management-page=settings] .automation-grid.automation-grid{grid-template-columns:1fr}
+ body[data-management-page=settings] .settings-panel+.settings-panel::before{width:100%;margin-left:0}
+ body[data-management-page=settings] .settings-section+.settings-section::before{width:100%;margin-left:0}
+ body[data-management-page=settings] .management-stage .settings-layout-row,body[data-management-page=settings] .management-stage .automation-row{grid-template-columns:1fr;gap:8px}
+ body[data-management-page=settings] .settings-layout-label{padding-top:0}
+ body[data-management-page=settings] .management-stage .settings-user-header{display:none}
+ body[data-management-page=settings] .management-stage #managedUserList .settings-user-row{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 8px;padding:14px 8px}
+ body[data-management-page=settings] .management-stage #managedUserList .settings-person{grid-column:1/-1}
+ body[data-management-page=settings] .management-stage .settings-control-cell{min-width:0;align-items:flex-start;justify-content:flex-start}
+ body[data-management-page=settings] .management-stage .settings-mobile-label{display:block}
+ body[data-management-page=settings] .management-stage #managedUserList .profile-actions{grid-column:1/-1;width:auto;justify-content:flex-start}
  body[data-management-page=appearance] .appearance-theme-grid.appearance-theme-grid{grid-template-columns:repeat(2,190px)}
 }
 

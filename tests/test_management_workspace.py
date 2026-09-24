@@ -354,4 +354,4 @@ def test_page_specific_layouts_use_continuous_rows_instead_of_scattered_cards():
     assert library.get("border") == "0"
     assert status.get("gap") == "18px"
     assert status.get("border") == "0"
-    assert settings.get("max-width") == "700px"
+    assert settings.get("max-width") == "820px"
