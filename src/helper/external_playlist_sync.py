@@ -66,6 +66,13 @@ def _validate_source(source):
     return source_id, title
 
 
+def _validate_title(title):
+    title = str(title or "").strip()
+    if not title or len(title) > 80 or any(ord(char) < 32 for char in title):
+        raise ValueError("Plex 歌单名称无效")
+    return title
+
+
 def _observe(plex, playlist_id, predicate, attempts=4):
     if hasattr(plex, "read_playlist_until"):
         return plex.read_playlist_until(playlist_id, predicate, attempts=attempts, delay=0.25)
@@ -217,6 +224,56 @@ def create_or_reconcile_external_playlist(plex, installation_id, source, managed
     if _ids(current) != desired:
         order_attention = True
     return current, _managed_record(current, source, marker, order_attention=order_attention)
+
+
+def rename_owned_external_playlist(plex, installation_id, source_id, managed, title):
+    """Rename only a still-unchanged playlist owned by this installation."""
+    marker = external_marker(installation_id, source_id)
+    title = _validate_title(title)
+    if not isinstance(managed, dict):
+        raise _safety("外部歌单托管记录无效")
+    playlist_id = str(managed.get("id") or "")
+    previous_title = str(managed.get("title") or "")
+    if not playlist_id or not previous_title or not managed.get("fingerprint"):
+        raise _safety("外部歌单托管记录不完整")
+    current = plex.playlist_state(playlist_id)
+    if not _owned_state(current, playlist_id, previous_title, marker):
+        raise _safety("Plex 歌单名称、标识或管理标记已被修改，停止重命名")
+    if playlist_fingerprint(current) != managed.get("fingerprint"):
+        raise _safety("Plex 歌单内容已被手工修改，停止重命名")
+    if title == previous_title:
+        return current, {**managed, "count": len(current.get("items") or [])}
+    if any(
+        str(row.get("title") or "") == title
+        and str(row.get("ratingKey") or row.get("id") or "") != playlist_id
+        for row in plex.playlists()
+    ):
+        raise _safety("Plex 中已经存在同名歌单，请换一个名称")
+    previous_ids, previous_summary = _ids(current), str(current.get("summary") or "")
+    plex.rename(playlist_id, title)
+    after = _observe(
+        plex, playlist_id,
+        lambda row: (
+            str(row.get("id") or "") == playlist_id
+            and str(row.get("title") or "") == title
+            and str(row.get("summary") or "") == previous_summary
+            and _ids(row) == previous_ids
+        ),
+    )
+    if not after or not (
+        str(after.get("id") or "") == playlist_id
+        and str(after.get("title") or "") == title
+        and str(after.get("summary") or "") == previous_summary
+        and _ids(after) == previous_ids
+    ):
+        raise _safety("Plex 没有确认安全重命名，请刷新后核对")
+    return after, {
+        **managed,
+        "title": title,
+        "fingerprint": playlist_fingerprint(after),
+        "marker": marker,
+        "count": len(after.get("items") or []),
+    }
 
 
 def delete_owned_external_playlist(plex, installation_id, source_id, managed, confirm_title):

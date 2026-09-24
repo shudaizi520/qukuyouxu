@@ -16,9 +16,10 @@ from .auth import COOKIE_NAME
 from .clients import PlexError
 from .engine import SafetyError, fingerprint
 from .external_audio import stream_track_audio
-from .external_playlist_sync import external_marker
+from .external_playlist_sync import external_marker, rename_owned_external_playlist
 from .external_store import ExternalRepository
 from .favorite_smart import ensure_profile_favorites
+from .lyrics import read_track_lyrics
 from .playlist_inventory import assistant_playlist_row, merge_playlist_rows
 from .playlist_ownership import legacy_external_marker, legacy_pch_marker, replace_marker
 from .profiles import profile_identity
@@ -256,11 +257,23 @@ def _edit_native_playlist_track(plex, key, track_id, operation, section="", hidd
 
 def rename_playlist(engine, kind, key, title, hidden_playlist_ids=()):
     kind, key, title = str(kind or ""), _safe_key(key), str(title or "").strip()
-    if kind != "plex":
-        raise ValueError("这个歌单请在对应管理页调整名称")
     if not title or len(title) > 80 or any(ord(char) < 32 for char in title):
         raise ValueError("歌单标题无效")
     plex = engine.plex_factory(engine.store.get("settings"))
+    if kind == "external":
+        store = engine.store
+        profile_id = str(getattr(store, "profile_id", "default") or "default")
+        repository = ExternalRepository(store)
+        managed = repository.get_managed(profile_id, key)
+        if not managed:
+            raise ValueError("当前用户没有这个导入歌单")
+        _after, revised = rename_owned_external_playlist(
+            plex, store.get("installation_id"), key, managed, title,
+        )
+        repository.save_managed(profile_id, key, revised)
+        return {"message": "歌单已重命名", "title": title}
+    if kind != "plex":
+        raise ValueError("这个歌单请在对应管理页调整名称")
     section = str((engine.store.get("settings") or {}).get("section") or "")
     _listed, before = _native_playlist(plex, key, section, hidden_playlist_ids)
     if str(before.get("title") or "") != title:
@@ -937,6 +950,13 @@ def attach_playlist_hub_routes(app, store, runtime, profiles, body, ensure_idle)
                 str(request.cookies.get(COOKIE_NAME) or ""),
                 offset,
             )
+
+    @app.get("/api/playlists/library/tracks/{track_id}/lyrics")
+    def library_lyrics(track_id: str, profile_id: str = ""):
+        selected_profile = str(profile_id or store.profile_id)
+        with profiles.fixed_active(selected_profile, enabled_only=True):
+            target = runtime.engine(selected_profile)
+            return read_track_lyrics(target, track_id)
 
     @app.get("/api/playlists/library/tracks/{track_id}/artwork")
     def library_artwork(track_id: str, request: Request, profile_id: str = ""):

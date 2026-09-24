@@ -123,6 +123,7 @@ class SettingsRedesignV0423Tests(unittest.TestCase):
         script = (ROOT / "src/helper/static/settings.js").read_text(encoding="utf-8")
 
         self.assertIn("const settingsAnchors={accounts:'currentUser',learning:'people',system:'settings-system'}", script)
+        self.assertNotIn("settings-appearance", script)
         self.assertIn("scrollIntoView({block:'start'})", script)
         self.assertNotIn("panel.hidden=panel.id!==\'settings-\'+name", script)
         boot = script.split("async function boot(){", 1)[1].split("window.addEventListener('pch-auth-ready'", 1)[0]

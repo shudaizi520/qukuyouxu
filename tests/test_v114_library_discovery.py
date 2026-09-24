@@ -128,10 +128,36 @@ def test_workflow_review_combines_theme_and_qq_field_categories():
         workflow = build_workflow_status(store, _Engine(), {"logged_in": True})["workflow"]
 
         assert workflow["summary"]["matched"] == 42
+        assert workflow["summary"]["unclassified"] == 58
         assert workflow["summary"]["review_count"] == 7
         assert [row["id"] for row in workflow["review"]["groups"]] == ["theme:work", "base:pop"]
+        assert [row["dimension"] for row in workflow["review"]["groups"]] == ["场景", "genre"]
         assert workflow["review"]["theme_plan_id"] == "theme-preview"
         assert workflow["review"]["base_plan_id"] == "base-preview"
+
+
+def test_library_workflow_keeps_coverage_after_completed_plans_are_cleared():
+    from helper.engine import fingerprint
+    from helper.store import Store
+    from helper.workflow_v0317 import build_workflow_status
+
+    with tempfile.TemporaryDirectory() as root:
+        store = Store(Path(root))
+        state = {
+            "id": "playlist-1", "title": "国语", "summary": "[owned]",
+            "items": [{"id": "1"}, {"id": "2"}],
+        }
+        store.set("catalog", [{"id": str(value)} for value in range(1, 5)])
+        store.set("snapshots", [{"id": "snap-1", "category_id": "base:国语", "after": state}])
+        store.set("managed", {"base:国语": {
+            "id": state["id"], "title": state["title"],
+            "snapshot_id": "snap-1", "fingerprint": fingerprint(state),
+        }})
+
+        workflow = build_workflow_status(store, _Engine(), {})["workflow"]
+
+        assert workflow["summary"]["matched"] == 2
+        assert workflow["summary"]["unclassified"] == 2
 
 
 def test_base_only_preview_is_still_presented_for_confirmation():

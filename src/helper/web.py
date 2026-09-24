@@ -180,7 +180,7 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
             r.headers[name] = value
         r.headers['X-Content-Type-Options'] = 'nosniff'
         embedded = req.query_params.get('embedded') == '1' and path in (
-            '/daily', '/mixes', '/external', '/library', '/status', '/settings',
+            '/daily', '/mixes', '/external', '/library', '/status', '/settings', '/appearance',
         )
         r.headers['X-Frame-Options'] = 'SAMEORIGIN' if embedded else 'DENY'
         r.headers['Referrer-Policy'] = 'no-referrer'
@@ -337,6 +337,10 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
     def settings_page():
         return HTMLResponse(render_versioned_html((STATIC / 'settings.html').read_text(encoding='utf-8'), __version__))
 
+    @app.get('/appearance')
+    def appearance_page():
+        return HTMLResponse(render_versioned_html((STATIC / 'appearance.html').read_text(encoding='utf-8'), __version__))
+
     @app.get('/advanced')
     def advanced():
         # The old expert console mixed unrelated and obsolete maintenance tools.
@@ -355,6 +359,9 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
             'refined.js', 'status.js', 'settings.js', 'contextual-settings.js', 'auth.js', 'mixes.js',
             'appearance.js', 'external.js', 'playlists.js', 'playlist-artwork.js', 'playlist-workspace.js',
             'playlist-search.js', 'playlist-player.js', 'playlist-sections.js',
+            'playlist-playback-mode.js', 'playlist-now-playing.js', 'playlist-now-playing.css',
+            'external-workspace.css', 'design-system.css',
+            'playlist-visualizer.js', 'management-shell.js',
         ):
             return Response(status_code=404)
         return FileResponse(STATIC / name, media_type='text/javascript' if name.endswith('.js') else 'text/css')

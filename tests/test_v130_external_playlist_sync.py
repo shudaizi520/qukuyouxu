@@ -82,6 +82,10 @@ class FakePlex:
         self.mutations.append(("delete", str(playlist_id)))
         del self.states[str(playlist_id)]
 
+    def rename(self, playlist_id, title):
+        self.states[str(playlist_id)]["title"] = str(title)
+        self.mutations.append(("rename", str(playlist_id), str(title)))
+
 
 def owned_state(playlist_id="77", source=SOURCE, track_ids=None, title=None):
     from helper.external_playlist_sync import external_marker
@@ -101,6 +105,43 @@ def managed_for(state, **extra):
 
 
 class ExternalPlaylistSyncV130Tests(unittest.TestCase):
+    def test_owned_external_playlist_can_be_renamed_without_recreating_or_changing_tracks(self):
+        from helper.external_playlist_sync import (
+            playlist_fingerprint, rename_owned_external_playlist,
+        )
+
+        original = owned_state()
+        managed = managed_for(original, revision="rev-1", order_attention=False)
+        plex = FakePlex(states=[original])
+
+        after, revised = rename_owned_external_playlist(
+            plex, INSTALL, SOURCE["id"], managed, "新的收藏"
+        )
+
+        self.assertEqual("77", after["id"])
+        self.assertEqual("新的收藏", after["title"])
+        self.assertEqual(["1", "2"], ids(after))
+        self.assertEqual(original["summary"], after["summary"])
+        self.assertEqual("新的收藏", revised["title"])
+        self.assertEqual(playlist_fingerprint(after), revised["fingerprint"])
+        self.assertEqual("rev-1", revised["revision"])
+        self.assertEqual([("rename", "77", "新的收藏")], plex.mutations)
+
+    def test_external_rename_refuses_a_playlist_changed_outside_the_app(self):
+        from helper.engine import SafetyError
+        from helper.external_playlist_sync import rename_owned_external_playlist
+
+        original = owned_state()
+        changed = copy.deepcopy(original)
+        changed["items"].append({"id": "9", "item_id": "manual"})
+        plex = FakePlex(states=[changed])
+
+        with self.assertRaisesRegex(SafetyError, "修改"):
+            rename_owned_external_playlist(
+                plex, INSTALL, SOURCE["id"], managed_for(original), "新的收藏"
+            )
+        self.assertEqual([], plex.mutations)
+
     def test_confirmed_missing_managed_playlist_can_be_recreated_safely(self):
         from helper.clients import PlexNotFound
         from helper.external_playlist_sync import create_or_reconcile_external_playlist

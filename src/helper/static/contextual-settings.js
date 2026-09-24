@@ -62,7 +62,6 @@
   $('dailyGenerate').disabled=!!status.job?.running;
   $('dailyPublish').hidden=!ready;$('dailyPublish').disabled=!!status.job?.running||blocked||!plan.items?.length;
   $('dailyRemove').hidden=!managed.title;$('dailyRemove').disabled=!!status.job?.running;
-  $('dailyContextMessage').textContent=status.job?.running?(status.job.message||'后台正在处理…'):status.job?.error?String(status.job.error):ready?(blocked?'预览需要重新生成，暂不能发布。':'已生成 '+plan.items.length+' 首，确认后可发布到 Plex。'):managed.title?'已发布的歌单可从左侧直接播放。':'尚未生成每日推荐。';
  }
  async function refreshDaily(){dailyStatus=await api('/api/status');renderDaily();}
  async function renderSharedLibrary(){
@@ -73,7 +72,7 @@
   const rows=Array.isArray(state.items)?state.items:[];
   const linked=rows.filter(row=>row.status==='已同步').length;
   const result=state.last_result||{},attention=(result.skipped||0)+(result.errors?.length||0);
-  $('libraryShareMessage').textContent=rows.length?`主账户维护 ${rows.length} 张分类歌单，已同步 ${linked} 张。删除自己 Plex 中的歌单后，会停止给你重建那一张。${attention?'有 '+attention+' 张需要核对，程序没有覆盖手工改动。':''}`:'主账户还没有发布分类歌单，发布后会自动同步到这里。';
+  $('libraryShareMessage').textContent=rows.length?`${linked} / ${rows.length} 已同步${attention?' · '+attention+' 张待核对':''}`:'暂无分类歌单';
   const box=$('libraryShareRows');box.replaceChildren();
   for(const row of rows){
    const item=document.createElement('div');item.className='library-share-row';

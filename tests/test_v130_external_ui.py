@@ -30,8 +30,6 @@ class ExternalPlaylistUiV130Tests(unittest.TestCase):
         self.assertIn('data-match-status="matched"', page)
         self.assertIn('data-match-status="review"', page)
         self.assertIn('data-match-status="missing"', page)
-        self.assertIn("QQ 音乐", page)
-        self.assertIn("网易云音乐", page)
         self.assertNotIn("external-trust-note", page)
 
     def test_replenishment_actions_are_explicit_and_never_claim_platform_writes(self):
@@ -52,10 +50,12 @@ class ExternalPlaylistUiV130Tests(unittest.TestCase):
         self.assertIn("IMAGE_PAGE_ROWS=80", script)
         self.assertIn("encodeURIComponent", script)
 
-    def test_switching_sources_resets_paging_and_managed_title_is_not_misleadingly_editable(self):
+    def test_switching_sources_resets_paging_and_managed_title_can_be_safely_renamed(self):
         script = (STATIC / "external.js").read_text(encoding="utf-8")
-        self.assertIn("if(!current||current.id!==sourceId)page=1", script)
-        self.assertIn("$('plexPlaylistTitle').disabled=!!current.managed", script)
+        self.assertIn("if(!current||current.id!==sourceId){page=1", script)
+        self.assertNotIn("$('plexPlaylistTitle').disabled=!!current.managed", script)
+        self.assertIn("/api/playlists/rename", script)
+        self.assertIn("重命名并更新", script)
 
     def test_element_ids_are_unique_and_mobile_layout_cannot_overflow_page(self):
         page = (STATIC / "external.html").read_text(encoding="utf-8")
@@ -71,8 +71,9 @@ class ExternalPlaylistUiV130Tests(unittest.TestCase):
         self.assertIn("render_versioned_html((STATIC / 'external.html')", source)
         self.assertIn("'external.js'", source)
         page = (STATIC / "external.html").read_text(encoding="utf-8")
-        self.assertEqual(1, page.count('id="version">v2.0.6</small>'))
-        self.assertIn('/static/external.js?v=2.0.6', page)
+        self.assertNotIn('id="version"', page)
+        self.assertIn('/static/external.js?v=2.0.9', page)
+        self.assertIn('/static/external-workspace.css?v=2.0.7', page)
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ if(EMBEDDED)document.documentElement.classList.add('pch-embedded');
 if(EMBEDDED&&window.parent!==window)document.addEventListener('click',event=>{
  const link=event.target.closest('a[href][target="_top"]');if(!link)return;
  const target=new URL(link.getAttribute('href'),location.href);
- if(target.origin!==location.origin||!['/','/settings','/status','/library','/mixes','/daily','/external'].includes(target.pathname))return;
+ if(target.origin!==location.origin||!['/','/settings','/status','/library','/mixes','/daily','/external','/appearance'].includes(target.pathname))return;
  event.preventDefault();window.parent.postMessage({type:'pch-workspace-navigate',path:target.pathname+target.search},location.origin);
 },true);
 const $=id=>document.getElementById(id);
@@ -66,16 +66,18 @@ document.addEventListener('DOMContentLoaded',()=>{if($('loginForm'))$('loginForm
   if(!text)return;
   const anchor=active||trigger;
   const inlineTarget=anchor?.closest('.daily-controls')?.querySelector('#dailyFeedback');
+  let inline=null;
   if(inlineTarget){
-   const inline=document.createElement('div');inline.className='pch-inline-feedback'+(error?' is-error':'');inline.textContent=text;inline.setAttribute('role',error?'alert':'status');
+   inline=document.createElement('div');inline.className='pch-inline-feedback'+(error?' is-error':'');inline.textContent=text;inline.setAttribute('role',error?'alert':'status');
    inlineTarget.append(inline);
   }
   const toast=document.createElement('div');toast.className='pch-toast'+(error?' is-error':'');toast.setAttribute('role',error?'alert':'status');
   const icon=document.createElement('span');icon.className='pch-toast-icon';icon.textContent=error?'!':'✓';
   const msg=document.createElement('span');msg.textContent=text;
-  const close=document.createElement('button');close.textContent='×';close.setAttribute('aria-label','关闭通知');close.onclick=()=>toast.remove();
+  const dismiss=()=>{clearTimeout(toastTimer);toast.remove();inline?.remove();};
+  const close=document.createElement('button');close.textContent='×';close.setAttribute('aria-label','关闭通知');close.onclick=dismiss;
   toast.append(icon,msg,close);document.body.append(toast);
-  if(!error)toastTimer=setTimeout(()=>toast.remove(),6000);
+  toastTimer=setTimeout(dismiss,error?8000:4000);
  }
  async function run(fn){
   const b=trigger,previous=active;active=b;

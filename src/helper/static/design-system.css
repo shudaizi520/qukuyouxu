@@ -1,0 +1,731 @@
+/*
+ * Unified 2026 design foundation.
+ *
+ * Theme files define meaning, not individual pages. Components consume the
+ * semantic tokens below so changing appearance never introduces a new page
+ * strip, player color, or one-off patch surface.
+ */
+html{
+ --app-rail-width:248px;
+ --app-player-height:68px;
+ --app-rail:#f2f4f3;
+ --app-main:#ffffff;
+ --app-control:#f2f4f3;
+ --app-hover:#eaeeec;
+ --app-selected:#dff5ec;
+ --app-overlay:#ffffff;
+ --app-text:#202528;
+ --app-muted:#71797d;
+ --app-line:rgba(32,37,40,.10);
+ --app-accent:#19c783;
+ --app-accent-strong:#11ae72;
+ --app-on-accent:#ffffff;
+ --app-danger:#d94f5c;
+ --app-danger-soft:#fdecef;
+ --app-warning:#a96c21;
+ --app-font:"Microsoft YaHei UI","Microsoft YaHei","PingFang SC","Noto Sans CJK SC","Segoe UI",Arial,sans-serif;
+ --theme-canvas:var(--app-main);
+ --theme-surface:var(--app-main);
+ --theme-soft:var(--app-control);
+ --theme-text:var(--app-text);
+ --theme-muted:var(--app-muted);
+ --theme-line:var(--app-line);
+ --theme-accent:var(--app-accent);
+ --theme-accent-strong:var(--app-accent-strong);
+ --theme-on-accent:var(--app-on-accent);
+ --theme-danger:var(--app-danger);
+ --theme-danger-soft:var(--app-danger-soft);
+ --theme-warning:var(--app-warning);
+ --ink:var(--app-text);
+ --muted:var(--app-muted);
+ --brand:var(--app-accent);
+ --line:var(--app-line);
+ color-scheme:light;
+ font-family:var(--app-font);
+ color:var(--app-text);
+ background:var(--app-main);
+}
+
+html[data-appearance="warm"]{
+ --app-rail:#eee8dc;
+ --app-main:#fbf8f1;
+ --app-control:#f0eadf;
+ --app-hover:#e7dfd1;
+ --app-selected:#eadccd;
+ --app-overlay:#fbf8f1;
+ --app-text:#292724;
+ --app-muted:#746d64;
+ --app-line:rgba(71,61,49,.12);
+ --app-accent:#9b603b;
+ --app-accent-strong:#814b2d;
+ --app-on-accent:#ffffff;
+ --app-danger:#a84f48;
+ --app-danger-soft:#f7e5e1;
+ --app-warning:#9b6a2e;
+ color-scheme:light;
+}
+
+html[data-appearance="night"]{
+ --app-rail:#171717;
+ --app-main:#202020;
+ --app-control:#292929;
+ --app-hover:#303030;
+ --app-selected:#263a32;
+ --app-overlay:#292929;
+ --app-text:#ededed;
+ --app-muted:#969696;
+ --app-line:rgba(255,255,255,.09);
+ --app-accent:#22c983;
+ --app-accent-strong:#37d796;
+ --app-on-accent:#0d2a20;
+ --app-danger:#f07882;
+ --app-danger-soft:#3b2529;
+ --app-warning:#deb36d;
+ color-scheme:dark;
+}
+
+*,*::before,*::after{box-sizing:border-box}
+html,body{font-family:var(--app-font);font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased}
+body{margin:0;background:var(--app-main);color:var(--app-text);font-size:14px;font-weight:400;line-height:1.55}
+button,input,select,textarea{font:inherit;color:inherit}
+:is(h1,h2,h3,h4,strong,b){font-family:inherit;font-synthesis:none}
+h1{font-weight:600}h2,h3,h4{font-weight:600}
+.brand{font-weight:600}.eyebrow{font-weight:600}.song-title{font-weight:500}
+
+/* Shared surfaces: a page has one canvas; controls may use one derived fill. */
+.topbar{background:var(--app-main);color:var(--app-text);border-bottom:0;box-shadow:none}
+.brand{color:var(--app-text)}
+.brand small,.muted,small{color:var(--app-muted)}
+.brand-mark,.primary,.step-number{background:var(--app-accent);border-color:var(--app-accent);color:var(--app-on-accent)}
+.primary:hover:not(:disabled){background:var(--app-accent-strong);border-color:var(--app-accent-strong);color:var(--app-on-accent)}
+.card,.panel,.auth-card,.settings-section,.settings-dialog,.pch-dialog,.playlist-search-dialog,.page-disclosure,.custom-mix{
+ background:var(--app-main);color:var(--app-text);border-color:transparent;box-shadow:none;
+}
+:is(.secondary,.danger,.button){background:transparent;border-color:var(--app-line);color:var(--app-text);box-shadow:none}
+:is(.secondary,.danger,.button):hover:not(:disabled){background:var(--app-hover);box-shadow:none}
+.danger{color:var(--app-danger)}
+:is(input:not([type=checkbox]):not([type=radio]):not([type=range]),select,textarea){background:var(--app-control);color:var(--app-text);border-color:transparent;box-shadow:none}
+:is(input,select,textarea)::placeholder{color:var(--app-muted);opacity:1}
+:is(input[type=checkbox],input[type=radio],input[type=range]){accent-color:var(--app-accent)}
+:is(button,a,input,select,textarea):focus-visible{outline:2px solid color-mix(in srgb,var(--app-accent) 60%,transparent);outline-offset:2px}
+.notice,.auth-message,.pch-toast,.status-pill,.bucket,.stat,.metrics>div,.mini-stats>div,.warning-block,.qq-auth-panel,.external-trust-note{background:var(--app-control);color:var(--app-text);border-color:transparent}
+.notice.error,.auth-message.error,.pch-toast.is-error{background:var(--app-danger-soft);color:var(--app-danger)}
+.topbar nav :is(a,button),.topbar .logout{color:var(--app-muted)}
+.topbar nav :is(a,button):hover,.topbar nav :is(a,button).active,.topbar .logout:hover{background:var(--app-hover);color:var(--app-accent)}
+.appearance-trigger,.appearance-menu{background:var(--app-overlay);color:var(--app-text);border-color:var(--app-line)}
+.appearance-option{color:var(--app-text)}
+.appearance-option:hover,.appearance-option.selected{background:var(--app-hover);color:var(--app-accent)}
+.appearance-menu-heading{border-color:var(--app-line);color:var(--app-muted)}
+html[data-appearance="night"] select{color-scheme:dark}
+html[data-appearance="night"] :is(select option,select optgroup){background:var(--app-overlay);color:var(--app-text)}
+
+/* Settings use whitespace and short, indented separators instead of cards. */
+body[data-view=settings]{background:var(--app-main);color:var(--app-text)}
+body[data-view=settings] .settings-shell{background:var(--app-main)}
+body[data-view=settings] .settings-section{background:transparent;border:0;border-radius:0}
+body[data-view=settings] :is(.settings-row,.settings-user-row,.automation-row,.connection-summary,.profile-webhook-tools,.connection-tools-inline,.settings-expander-body){background:transparent;color:var(--app-text);border-color:var(--app-line)}
+body[data-view=settings] :is(.settings-person span:not(.settings-avatar),.settings-row small,.settings-static-value,.automation-controls>span,.connection-summary>span,.settings-status-line){color:var(--app-muted)}
+body[data-view=settings] .settings-avatar{background:var(--app-control);color:var(--app-accent)}
+body[data-view=settings] #managedUserList .settings-user-row:hover{background:color-mix(in srgb,var(--app-hover) 58%,transparent)}
+body[data-view=settings] .settings-about{display:flex;align-items:center;justify-content:space-between;min-height:58px;padding:0;color:var(--app-text)}
+body[data-view=settings] .settings-about span:last-child{color:var(--app-muted);font-size:13px;font-variant-numeric:tabular-nums}
+
+/* Playlist application: the document is a fixed viewport shell. Only the
+ * dedicated content panes may scroll; playback and lyric updates must never
+ * create native page scrollbars or a reserved scrollbar gutter. */
+html.playlist-shell{
+ width:100%;
+ height:100%;
+ overflow:clip;
+ scrollbar-gutter:auto;
+}
+html.playlist-shell body[data-view=playlists]{
+ width:100%;
+ height:100%;
+ max-width:100%;
+ overflow:clip;
+ overscroll-behavior:none;
+}
+html.playlist-shell body[data-view=playlists] #workspace{overflow:clip}
+
+@media(min-width:701px){
+ html.playlist-shell body[data-view=playlists] .now-playing{overflow:clip}
+}
+
+/* Playlist application: exactly one rail tone and one main tone. */
+body[data-view=playlists]{
+ --playlist-canvas:var(--app-main);
+ --playlist-surface:var(--app-main);
+ --playlist-surface-soft:var(--app-hover);
+ --playlist-line:var(--app-line);
+ --playlist-text:var(--app-text);
+ --playlist-muted:var(--app-muted);
+ --playlist-accent:var(--app-accent);
+ --playlist-accent-strong:var(--app-accent-strong);
+ --playlist-danger:var(--app-danger);
+ --playlist-danger-soft:var(--app-danger-soft);
+ --playlist-wallpaper:none;
+ background:var(--app-main);
+ color:var(--app-text);
+}
+body[data-view=playlists] #workspace{grid-template-rows:64px minmax(0,1fr) 68px;background:var(--app-main)}
+body[data-view=playlists] .topbar{
+ display:grid;
+ grid-template-columns:var(--app-rail-width) minmax(280px,1fr) auto auto;
+ align-items:center;
+ gap:18px;
+ height:64px;
+ padding:0 22px 0 0;
+ background:linear-gradient(to right,var(--app-rail) 0 var(--app-rail-width),var(--app-main) var(--app-rail-width) 100%);
+ border:0;
+}
+body[data-view=playlists] .topbar>.brand{grid-column:1;width:100%;height:100%;padding-left:22px}
+body[data-view=playlists] .playlist-global-search{grid-column:2;justify-self:start;width:min(520px,100%);height:40px;margin:0;border:0;border-radius:21px;background:var(--app-control);box-shadow:none}
+body[data-view=playlists] .playlist-global-search:focus-within{border:0;box-shadow:0 0 0 1px color-mix(in srgb,var(--app-accent) 72%,transparent)}
+body[data-view=playlists] .playlist-global-search input{height:38px;background:transparent;border:0;color:var(--app-text)}
+body[data-view=playlists] .playlist-global-search input:focus-visible{outline:0;box-shadow:none}
+body[data-view=playlists] .topbar>nav{grid-column:3;margin:0}
+body[data-view=playlists] .topbar>.topbar-menu-picker{grid-column:3;margin-left:auto}
+body[data-view=playlists] .topbar>.logout{grid-column:4}
+body[data-view=playlists] .topbar>.topbar-settings-trigger{grid-column:4;justify-self:end;margin-left:0}
+body[data-view=playlists] .playlist-hub{grid-template-columns:var(--app-rail-width) minmax(0,1fr);background:var(--app-main)}
+body[data-view=playlists] .playlist-sidebar{background:var(--app-rail);border:0}
+body[data-view=playlists] :is(.playlist-main,.playlist-section-view,.playlist-track-scroll,.playlist-search-results,.playlist-sticky-head,.playlist-workspace,.playlist-list-panel){background:var(--app-main)}
+body[data-view=playlists] .playlist-tool-dock{background:var(--app-rail);border:0}
+body[data-view=playlists] .playlist-profile-block{padding:0 4px}
+body[data-view=playlists] .playlist-profile{height:40px;padding-inline:10px;border:0;border-radius:8px;background:color-mix(in srgb,var(--app-main) 62%,var(--app-rail));color:var(--app-text)}
+body[data-view=playlists] .playlist-fixed-nav{border:0}
+body[data-view=playlists] :is(.playlist-fixed-nav button,.playlist-side-list button){font-weight:500}
+body[data-view=playlists] :is(.playlist-fixed-nav button,.playlist-side-list button):hover{background:var(--app-hover)}
+body[data-view=playlists] :is(.playlist-fixed-nav button,.playlist-side-list button).active{background:var(--app-selected);color:var(--app-accent-strong)}
+body[data-view=playlists] .playlist-side-heading-actions button{border:0;border-radius:0;background:transparent;box-shadow:none}
+body[data-view=playlists] .playlist-side-heading-actions button:hover:not(:disabled){background:transparent;color:var(--app-accent);box-shadow:none}
+body[data-view=playlists] :is(.playlist-track,.playlist-search-result){font-weight:400}
+body[data-view=playlists] :is(.playlist-track-title,.playlist-now strong,.playlist-side-list strong){font-weight:500}
+body[data-view=playlists] .playlist-track{position:relative;isolation:isolate;background:transparent}
+body[data-view=playlists] .playlist-track::before{content:"";position:absolute;z-index:0;top:4px;bottom:4px;left:28px;right:8px;border-radius:8px;background:transparent;pointer-events:none}
+body[data-view=playlists] .playlist-track>*{position:relative;z-index:1}
+body[data-view=playlists] .playlist-track:hover,body[data-view=playlists] .playlist-track.playing{background:transparent}
+body[data-view=playlists] .playlist-track:hover::before{background:color-mix(in srgb,var(--app-hover) 64%,transparent)}
+body[data-view=playlists] .playlist-track:focus-visible,body[data-view=playlists] .playlist-search-result:focus-visible{outline:0}
+body[data-view=playlists] .playlist-track:focus-visible::before{background:color-mix(in srgb,var(--app-hover) 64%,transparent)}
+body[data-view=playlists] .playlist-search-result:focus-visible{background:color-mix(in srgb,var(--app-hover) 64%,transparent)}
+body[data-view=playlists] .playlist-track.playing::before{background:var(--app-selected)}
+body[data-view=playlists] .playlist-search-result:hover{background:color-mix(in srgb,var(--app-hover) 64%,transparent)}
+body[data-view=playlists] .playlist-section-head{display:block;padding:24px 30px 12px}
+body[data-view=playlists] .playlist-section-head h1{margin:0}
+body[data-view=playlists] .playlist-section-title-link{
+ display:block;
+ margin:0;
+ padding:0;
+ border:0;
+ background:transparent;
+ color:var(--app-text);
+ font-size:inherit;
+ font-weight:inherit;
+ line-height:inherit;
+ letter-spacing:inherit;
+ text-align:left;
+ cursor:pointer;
+}
+body[data-view=playlists] .playlist-section-title-link:hover{color:var(--app-accent)}
+body[data-view=playlists] .playlist-actions .secondary{background:transparent;border-color:var(--app-line);color:var(--app-text);box-shadow:none}
+body[data-view=playlists] .playlist-actions .secondary:hover:not(:disabled){background:var(--app-hover);border-color:var(--app-line);color:var(--app-text);box-shadow:none;filter:none}
+body[data-view=playlists] .playlist-actions .secondary:disabled{background:transparent;border-color:var(--app-line);color:var(--app-muted);box-shadow:none}
+body[data-view=playlists] .playlist-player{
+ height:var(--app-player-height);
+ grid-template-rows:minmax(0,1fr);
+ padding:0 22px 4px calc(var(--app-rail-width) + 40px);
+ background:linear-gradient(to right,var(--app-rail) 0 var(--app-rail-width),var(--app-main) var(--app-rail-width) 100%);
+ border:0;
+ box-shadow:none;
+}
+body[data-view=playlists] .playlist-player-body{grid-template-columns:minmax(210px,1fr) auto minmax(210px,1fr)}
+body[data-view=playlists] .playlist-now{padding-left:0}
+body[data-view=playlists] .playlist-progress-rail{--progress-played-color:var(--app-accent);--progress-rest-color:var(--app-line);position:absolute;z-index:3;top:-1px;left:var(--app-rail-width);right:0;height:2px;display:block;background:transparent;border:0;border-radius:0;box-shadow:none}
+body[data-view=playlists] .playlist-progress-rail::before{content:"";position:absolute;inset:0;height:2px;background:linear-gradient(to right,var(--progress-played-color) 0,var(--progress-played-color) var(--playlist-played,0%),var(--progress-rest-color) var(--playlist-played,0%),var(--progress-rest-color) 100%);pointer-events:none}
+body[data-view=playlists] .playlist-progress-rail::after{content:"";position:absolute;z-index:2;top:50%;left:var(--playlist-played,0%);width:7px;height:7px;border-radius:50%;background:var(--progress-played-color);box-shadow:none;opacity:0;transform:translate(-50%,-50%);transition:opacity .15s;pointer-events:none}
+body[data-view=playlists] .playlist-progress-rail:is(:hover,:focus-within)::after{opacity:1}
+body[data-view=playlists] .playlist-progress-rail input[type=range]{position:absolute;z-index:1;top:-9px;left:0;width:100%;height:20px;margin:0;padding:0;appearance:none;-webkit-appearance:none;opacity:0;background:transparent;border:0;border-radius:0;box-shadow:none;cursor:pointer}
+body[data-view=playlists] .playlist-progress-rail input[type=range]::-webkit-slider-runnable-track{height:20px;border:0;border-radius:0;background:transparent}
+body[data-view=playlists] .playlist-progress-rail input[type=range]::-moz-range-track,body[data-view=playlists] .playlist-progress-rail input[type=range]::-moz-range-progress{height:20px;border:0;border-radius:0;background:transparent}
+body[data-view=playlists] .playlist-progress-rail input[type=range]::-webkit-slider-thumb{width:1px;height:20px;margin:0;border:0;border-radius:0;appearance:none;-webkit-appearance:none;background:transparent}
+body[data-view=playlists] .playlist-progress-rail input[type=range]::-moz-range-thumb{width:1px;height:20px;border:0;border-radius:0;background:transparent}
+
+/* Embedded tools inherit the right-hand canvas rather than painting a panel. */
+body[data-view=external],body[data-view=library],body[data-view=mixes],body[data-view=daily],body[data-view=status]{background:var(--app-main);color:var(--app-text)}
+body[data-view=external] :is(.external-shell,.external-import-card,.external-workspace,.external-detail-card,.external-command-bar){background:transparent;color:var(--app-text)}
+body[data-view=external] :is(.external-command-bar,.external-track-column-head,.external-track-row){border-color:var(--app-line)}
+body[data-view=external] .external-track-row:hover{background:color-mix(in srgb,var(--app-hover) 64%,transparent)}
+body[data-view=external] .external-track-row.external-track-playable:focus-visible{outline:0;background:color-mix(in srgb,var(--app-hover) 64%,transparent)}
+body[data-view=external] :is(.external-track-artist,.external-track-album,.external-track-duration,.external-state,.external-file-name){color:var(--app-muted)}
+
+/* Management workspace: one shared shell fills the playlist application's
+ * existing right-hand pane. Its semantic tokens deliberately map to the app
+ * palette so all three appearances stay in sync without page-level colors. */
+body[data-management-page]{
+ --management-canvas:var(--app-main);
+ --management-surface:var(--app-main);
+ --management-control:var(--app-control);
+ --management-hover:var(--app-hover);
+ --management-text:var(--app-text);
+ --management-muted:var(--app-muted);
+ --management-line:var(--app-line);
+ --management-accent:var(--app-accent);
+ --management-accent-strong:var(--app-accent-strong);
+ --management-on-accent:var(--app-on-accent);
+ margin:0;
+ background:var(--management-canvas);
+ color:var(--management-text);
+}
+body[data-management-page] [data-management-shell]{
+ width:100%;
+ max-width:none;
+ min-width:0;
+ margin:0;
+ padding:0;
+ background:var(--management-canvas);
+ color:var(--management-text);
+}
+.pch-embedded body[data-management-page] .topbar{display:none}
+.pch-embedded body[data-management-page] [data-management-shell][data-management-shell]{
+ width:100%;
+ max-width:none;
+ margin:0;
+ padding:0;
+}
+.management-stage{
+ width:min(100%,1280px);
+ min-width:0;
+ margin:0 auto 0 0;
+ padding:0 34px 48px;
+}
+.management-nav{
+ display:flex;
+ align-items:center;
+ gap:30px;
+ min-height:64px;
+ overflow-x:auto;
+ border-bottom:1px solid var(--management-line);
+ background:var(--management-canvas);
+ scrollbar-width:none;
+}
+.management-nav::-webkit-scrollbar{display:none}
+.management-nav a{
+ position:relative;
+ align-self:stretch;
+ display:flex;
+ align-items:center;
+ flex:0 0 auto;
+ border:0;
+ color:var(--management-muted);
+ font-weight:500;
+ text-decoration:none;
+ white-space:nowrap;
+}
+.management-nav a:hover{color:var(--management-text)}
+.management-nav a[aria-current=page]{color:var(--management-text);font-weight:600}
+.management-nav a[aria-current=page]::after{
+ content:"";
+ position:absolute;
+ right:0;
+ bottom:0;
+ left:0;
+ height:3px;
+ border-radius:3px 3px 0 0;
+ background:var(--management-accent);
+}
+body[data-management-page] .management-action{
+ display:inline-flex;
+ align-items:center;
+ justify-content:center;
+ min-width:96px;
+ height:40px;
+ min-height:40px;
+ padding:0 14px;
+ border:1px solid var(--management-line);
+ border-radius:9px;
+ background:transparent;
+ color:var(--management-text);
+ box-shadow:none;
+ font-weight:600;
+ line-height:1;
+ text-decoration:none;
+ white-space:nowrap;
+ cursor:pointer;
+}
+body[data-management-page] .management-action:hover:not(:disabled){
+ border-color:color-mix(in srgb,var(--management-accent) 54%,var(--management-line));
+ background:var(--management-hover);
+ color:var(--management-text);
+ box-shadow:none;
+ filter:none;
+ transform:none;
+}
+body[data-management-page] .management-action.primary{
+ border-color:var(--management-accent);
+ background:var(--management-accent);
+ color:var(--management-on-accent);
+}
+body[data-management-page] .management-action.primary:hover:not(:disabled){
+ border-color:var(--management-accent-strong);
+ background:var(--management-accent-strong);
+ color:var(--management-on-accent);
+}
+body[data-management-page] .management-action.danger{
+ background:transparent;
+ color:var(--management-text);
+}
+body[data-management-page] :is(.management-action.danger,.management-action.danger-text):hover:not(:disabled){
+ background:var(--management-hover);
+ color:var(--management-text);
+}
+body[data-management-page] .management-action:disabled{opacity:.42;cursor:not-allowed}
+body[data-management-page] input:not([type=checkbox]):not([type=radio]):not([type=range]),
+body[data-management-page] select,
+body[data-management-page] textarea{
+ min-height:40px;
+ border:1px solid transparent;
+ border-radius:9px;
+ background:var(--management-control);
+ color:var(--management-text);
+ box-shadow:none;
+}
+body[data-management-page] input:not([type=checkbox]):not([type=radio]):not([type=range]):focus,
+body[data-management-page] select:focus,
+body[data-management-page] textarea:focus{
+ border-color:var(--management-accent);
+ outline:0;
+ box-shadow:0 0 0 2px color-mix(in srgb,var(--management-accent) 18%,transparent);
+}
+body[data-management-page] :is(.card,.settings-section,.external-detail-card,.mix-card,.health-card,.page-disclosure){
+ border-color:var(--management-line);
+ background:transparent;
+ color:var(--management-text);
+ box-shadow:none;
+}
+body[data-management-page] #notice{margin:16px 0 0}
+body[data-management-page] .management-action.danger-text{color:var(--management-text)}
+body[data-management-page] .management-section{
+ width:100%;
+ margin:0;
+ padding:22px 0;
+ border:0;
+ border-bottom:1px solid var(--management-line);
+ border-radius:0;
+ background:transparent;
+ box-shadow:none;
+}
+body[data-management-page] .management-row{
+ display:flex;
+ align-items:center;
+ justify-content:space-between;
+ gap:20px;
+ min-height:68px;
+}
+body[data-management-page] .management-summary{
+ width:100%;
+ border:1px solid var(--management-line);
+ border-radius:9px;
+ background:var(--management-surface);
+ overflow:hidden;
+}
+
+/* Import: one continuous source-and-result workspace. */
+body[data-management-page=external] .external-import-card{
+ width:100%;
+ max-width:none;
+ margin:0;
+ padding:22px 0;
+ border:0;
+ border-bottom:1px solid var(--management-line);
+ border-radius:0;
+ background:transparent;
+ box-shadow:none;
+}
+body[data-management-page=external] .external-import-form{
+ width:100%;
+ max-width:none;
+ grid-template-columns:minmax(0,1fr) auto;
+ gap:16px;
+}
+body[data-management-page=external] .external-url-field{grid-template-columns:104px minmax(0,1fr)}
+body[data-management-page=external] .external-url-field input,
+body[data-management-page=external] .external-command-bar input:not([type=checkbox]),
+body[data-management-page=external] .external-command-bar select{
+ height:40px;
+ min-height:40px;
+ padding:0 12px;
+ border:1px solid transparent;
+ border-radius:9px;
+ background:var(--management-control);
+ color:var(--management-text);
+}
+body[data-management-page=external] .external-workspace{border:0}
+body[data-management-page=external] .external-command-bar{
+ width:100%;
+ max-width:none;
+ min-height:68px;
+ margin:0;
+ padding:13px 0;
+ border-bottom:1px solid var(--management-line);
+}
+body[data-management-page=external] .external-detail-card{
+ margin:22px 0 0;
+ padding:0;
+ border:0;
+ border-radius:0;
+}
+body[data-management-page=external] .external-counts{margin:0 0 12px}
+body[data-management-page=external] .external-track-list{border-color:var(--management-line)}
+body[data-management-page=external] .external-paging{min-height:58px;margin:0}
+
+/* Smart playlists: policies and playlists form one full-width ruled list. */
+body[data-management-page=mixes] .contextual-settings-card{
+ margin:0;
+ padding:22px 0;
+ border:0;
+ border-bottom:1px solid var(--management-line);
+ border-radius:0;
+ background:transparent;
+}
+body[data-management-page=mixes] .contextual-settings-grid{
+ grid-template-columns:repeat(4,minmax(120px,1fr)) auto;
+ gap:12px;
+}
+body[data-management-page=mixes] .mix-list{margin:0;border:0}
+body[data-management-page=mixes] .mix-automation-row{
+ min-height:68px;
+ padding:13px 0;
+ border-bottom:1px solid var(--management-line);
+}
+body[data-management-page=mixes] .mix-row{
+ margin:0;
+ padding:18px 0;
+ border:0;
+ border-bottom:1px solid var(--management-line);
+ border-radius:0;
+ background:transparent;
+ box-shadow:none;
+}
+body[data-management-page=mixes] .mix-row-head{gap:24px}
+body[data-management-page=mixes] .mix-icon{background:var(--management-control);color:var(--management-accent)}
+body[data-management-page=mixes] .mix-state{color:var(--management-muted)}
+body[data-management-page=mixes] .mix-actions{gap:8px}
+body[data-management-page=mixes] .custom-mix{
+ margin:0;
+ border:0;
+ border-bottom:1px solid var(--management-line);
+ border-radius:0;
+ background:transparent;
+}
+
+/* Library: summary strip, schedule and managed playlists share the same grid. */
+body[data-management-page=library] .library-overview{
+ display:grid;
+ grid-template-columns:minmax(0,1fr) auto;
+ align-items:stretch;
+ width:100%;
+ margin:22px 0 0;
+ padding:0;
+ border:1px solid var(--management-line);
+ border-radius:9px;
+ background:var(--management-surface);
+}
+body[data-management-page=library] .library-metrics{
+ display:grid;
+ grid-template-columns:repeat(5,minmax(104px,1fr));
+ min-width:0;
+}
+body[data-management-page=library] .library-metrics>div{
+ min-width:0;
+ padding:16px 18px;
+ border-right:1px solid var(--management-line);
+}
+body[data-management-page=library] .library-auth{padding:12px 18px}
+body[data-management-page=library] .library-automation-line{
+ min-height:68px;
+ margin:0;
+ padding:13px 0;
+ border-bottom:1px solid var(--management-line);
+}
+body[data-management-page=library] :is(.managed-playlists-card,.library-result,.metadata-review-card,.unclassified-card){
+ margin:0;
+ padding:22px 0;
+ border:0;
+ border-bottom:1px solid var(--management-line);
+ border-radius:0;
+ background:transparent;
+}
+body[data-management-page=library] .managed-playlist-row{border-color:var(--management-line)}
+body[data-management-page=library] .page-footer{border-color:var(--management-line);color:var(--management-muted)}
+
+/* Status: the first strip reads as one summary, not three floating cards. */
+body[data-management-page=status] .health-grid{
+ display:grid;
+ grid-template-columns:repeat(3,minmax(0,1fr));
+ gap:0;
+ margin:22px 0;
+ border:1px solid var(--management-line);
+ border-radius:9px;
+ overflow:hidden;
+}
+body[data-management-page=status] .health-card{
+ min-height:84px;
+ margin:0;
+ padding:16px 20px;
+ border:0;
+ border-right:1px solid var(--management-line);
+ border-radius:0;
+ background:transparent;
+}
+body[data-management-page=status] .health-card:last-child{border-right:0}
+body[data-management-page=status] .health-icon{background:var(--management-control);color:var(--management-accent)}
+body[data-management-page=status] .status-primary{gap:0;margin:0;border-top:1px solid var(--management-line)}
+body[data-management-page=status] .status-primary>.card{
+ padding:22px 20px;
+ border:0;
+ border-bottom:1px solid var(--management-line);
+ border-radius:0;
+ background:transparent;
+}
+body[data-management-page=status] .status-primary>.card:first-child{border-right:1px solid var(--management-line)}
+body[data-management-page=status] .page-disclosure{
+ margin:0;
+ border:0;
+ border-bottom:1px solid var(--management-line);
+ border-radius:0;
+ background:transparent;
+}
+
+/* Settings groups use soft surfaces and spacing instead of separator lines. */
+body[data-management-page=settings] .settings-workspace{
+ width:100%;
+ max-width:1040px;
+ margin:0;
+}
+body[data-management-page=settings] .settings-panel{width:100%;max-width:none;margin:0 0 18px;padding:0}
+body[data-management-page=settings] .settings-panel+.settings-panel{margin-top:0;padding-top:0}
+body[data-management-page=settings] .settings-panel+.settings-panel::before{content:none}
+body[data-management-page=settings] .settings-card{
+ margin:0 0 18px;
+ padding:22px;
+ border:0;
+ border-radius:14px;
+ background:var(--management-control);
+ box-shadow:none;
+ overflow:visible;
+}
+body[data-management-page=settings] .settings-section+.settings-section{margin-top:0;padding-top:22px}
+body[data-management-page=settings] .settings-section+.settings-section::before{
+ content:none;
+}
+body[data-management-page=settings] .settings-section-title{margin:0 0 16px;padding:0;border:0}
+body[data-management-page=settings] .settings-card-heading>div{display:grid;gap:4px}
+body[data-management-page=settings] .settings-user-header,
+body[data-management-page=settings] #managedUserList .settings-user-row{border:0}
+body[data-management-page=settings] #managedUserList .settings-user-row{padding-inline:10px}
+body[data-management-page=settings] .connection-summary{border:0;border-radius:10px;background:var(--management-canvas);padding:12px 14px}
+body[data-management-page=settings] .profile-webhook-tools{margin-top:18px;padding:16px;border:0;border-radius:11px;background:var(--management-canvas)}
+body[data-management-page=settings] .profile-webhook-tools::before{content:none}
+body[data-management-page=settings] .profile-webhook-tools .webhook-setup-action{padding:0}
+body[data-management-page=settings] .profile-webhook-tools .webhook-setup-action code{padding:9px 11px;border:0;border-radius:8px;background:var(--management-control)}
+body[data-management-page=settings] .automation-list{padding:22px}
+body[data-management-page=settings] .automation-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+body[data-management-page=settings] .automation-row{
+ min-width:0;
+ min-height:132px;
+ display:flex;
+ flex-direction:column;
+ align-items:stretch;
+ justify-content:space-between;
+ gap:18px;
+ padding:16px;
+ border:0;
+ border-radius:11px;
+ background:var(--management-canvas);
+}
+body[data-management-page=settings] .automation-row+.automation-row{border:0}
+body[data-management-page=settings] .automation-row+.automation-row::before{content:none}
+body[data-management-page=settings] .automation-row>strong{font-size:14px}
+body[data-management-page=settings] .automation-controls{width:100%;justify-content:flex-start;gap:8px}
+body[data-management-page=settings] .automation-controls>span{min-width:0;text-align:left}
+body[data-management-page=settings] .automation-controls select{width:auto;min-width:0;flex:1}
+body[data-management-page=settings] .settings-security-card{padding-bottom:14px}
+body[data-management-page=settings] .settings-password{border:0;border-radius:10px;background:var(--management-canvas)}
+body[data-management-page=settings] .settings-password>summary{padding:0 14px}
+body[data-management-page=settings] .settings-password .settings-expander-body{padding:16px 14px;border:0}
+body[data-management-page=settings] .settings-about{display:flex;align-items:center;justify-content:space-between;padding:14px;color:var(--management-muted);font-size:13px}
+body[data-management-page=appearance] .appearance-theme-section{padding:0 0 30px}
+body[data-management-page=appearance] .appearance-theme-grid{display:grid;grid-template-columns:repeat(3,190px);justify-content:start;gap:14px}
+body[data-management-page=appearance] .appearance-theme-card{
+ position:relative;
+ width:190px;
+ min-height:0;
+ display:flex;
+ flex-direction:column;
+ gap:11px;
+ padding:9px 9px 12px;
+ border:1px solid var(--management-line);
+ border-radius:12px;
+ background:transparent;
+ color:var(--management-text);
+ text-align:left;
+ cursor:pointer;
+ transition:border-color .16s ease,background .16s ease,transform .16s ease;
+}
+body[data-management-page=appearance] .appearance-theme-card:hover{background:var(--management-hover);transform:translateY(-1px)}
+body[data-management-page=appearance] .appearance-theme-card.selected{border-color:var(--management-accent);background:color-mix(in srgb,var(--app-selected) 58%,transparent)}
+body[data-management-page=appearance] .appearance-theme-card.selected::after{content:"✓";position:absolute;top:15px;right:15px;display:grid;place-items:center;width:19px;height:19px;border-radius:50%;background:var(--management-accent);color:var(--management-on-accent);font-size:12px;font-weight:700}
+body[data-management-page=appearance] .appearance-theme-copy{display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:0 3px}
+body[data-management-page=appearance] .appearance-theme-copy strong{font-size:14px;font-weight:650}
+body[data-management-page=appearance] .appearance-theme-preview{position:relative;display:block;width:100%;height:92px;overflow:hidden;border:1px solid rgba(127,127,127,.2);border-radius:8px;background:var(--preview-main)}
+body[data-management-page=appearance] .appearance-theme-preview i{position:absolute;display:block;border-radius:3px;background:var(--preview-control)}
+body[data-management-page=appearance] .appearance-theme-preview .preview-sidebar{inset:0 auto 0 0;width:26%;border-radius:0;background:var(--preview-side)}
+body[data-management-page=appearance] .appearance-theme-preview .preview-search{top:12px;left:34%;width:42%;height:8px}
+body[data-management-page=appearance] .appearance-theme-preview .preview-content{top:30px;left:34%;width:53%;height:38px;background:repeating-linear-gradient(180deg,var(--preview-line) 0 4px,transparent 4px 11px)}
+body[data-management-page=appearance] .appearance-theme-preview .preview-player{right:7px;bottom:7px;left:31%;height:8px;background:linear-gradient(90deg,var(--preview-accent) 0 58%,var(--preview-control) 58%)}
+body[data-management-page=appearance] .preview-light{--preview-main:#fff;--preview-side:#f0f2f1;--preview-control:#e4e8e6;--preview-line:#cbd2cf;--preview-accent:#19c989}
+body[data-management-page=appearance] .preview-warm{--preview-main:#fbf8f1;--preview-side:#efe8dc;--preview-control:#e5dacb;--preview-line:#cabca9;--preview-accent:#bb7951}
+body[data-management-page=appearance] .preview-night{--preview-main:#171b1d;--preview-side:#202628;--preview-control:#30383a;--preview-line:#4a5558;--preview-accent:#38cfaa}
+body[data-management-page=settings] .settings-account-actions{display:flex;justify-content:flex-start;margin-top:18px;padding:0 0 18px}
+
+@media(max-width:700px){
+ body[data-management-page] .management-stage{padding:0 16px 36px}
+ body[data-management-page] .management-nav{gap:22px;min-height:56px}
+ body[data-management-page=external] .external-import-form{grid-template-columns:1fr}
+ body[data-management-page=mixes] .contextual-settings-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ body[data-management-page=mixes] .contextual-settings-grid .management-action{grid-column:1/-1}
+ body[data-management-page=library] .library-overview{grid-template-columns:1fr}
+ body[data-management-page=library] .library-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+ body[data-management-page=library] .library-metrics>div{border-bottom:1px solid var(--management-line)}
+ body[data-management-page=status] .health-grid{grid-template-columns:1fr}
+ body[data-management-page=status] .health-card{border-right:0;border-bottom:1px solid var(--management-line)}
+ body[data-management-page=status] .health-card:last-child{border-bottom:0}
+ body[data-management-page=status] .status-primary>.card:first-child{border-right:0}
+ body[data-management-page=settings] .automation-grid.automation-grid{grid-template-columns:1fr}
+ body[data-management-page=appearance] .appearance-theme-grid.appearance-theme-grid{grid-template-columns:repeat(2,190px)}
+}
+
+@media(max-width:460px){body[data-management-page=appearance] .appearance-theme-grid.appearance-theme-grid{grid-template-columns:190px}}
+
+/* Immersive player is one intentional mode, never a fourth application theme. */
+body[data-view=playlists].now-playing-open{--immersive-bg:#07191f;--immersive-text:#f6fbfa;--immersive-muted:rgba(237,247,246,.66);--immersive-accent:#45d9ad;--immersive-line:rgba(255,255,255,.14)}
+body[data-view=playlists].now-playing-open .playlist-player{padding-left:22px;background:transparent;color:var(--immersive-text,#f6fbfa)}
+body[data-view=playlists].now-playing-open .playlist-progress-rail{--progress-played-color:var(--immersive-accent,#45d9ad);--progress-rest-color:var(--immersive-line,rgba(255,255,255,.14));left:22px;right:22px}
+
+@media(max-width:700px){
+ html{--app-rail-width:0px;--app-player-height:104px}
+ body[data-view=playlists] #workspace{grid-template-rows:56px minmax(0,1fr) 104px}
+ body[data-view=playlists] .topbar{display:flex;height:56px;padding:0 12px;gap:10px;background:var(--app-main)}
+ body[data-view=playlists] .topbar>.brand{display:none}
+ body[data-view=playlists] .playlist-global-search{flex:1;width:auto}
+ body[data-view=playlists] .topbar>.topbar-settings-trigger{margin-left:0}
+ body[data-view=playlists] .playlist-hub{grid-template-columns:minmax(0,1fr)}
+ body[data-view=playlists] .playlist-player{height:104px;padding-inline:8px;background:var(--app-main)}
+ body[data-view=playlists] .playlist-player-body{grid-template-columns:minmax(0,1fr) auto;grid-template-rows:44px 40px;grid-template-areas:"now tools" "center center"}
+ body[data-view=playlists] .playlist-player .playlist-now{padding-left:0}
+ body[data-view=playlists] .playlist-progress-rail{left:0;right:0}
+ body[data-view=playlists].now-playing-open .playlist-progress-rail{left:8px;right:8px}
+ body[data-view=playlists].now-playing-open .playlist-player{padding-left:8px}
+}

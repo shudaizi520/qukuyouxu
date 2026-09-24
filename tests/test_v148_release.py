@@ -102,7 +102,11 @@ class PlaylistNavigationTests(unittest.TestCase):
         script = (ROOT / "src/helper/static/playlists.js").read_text(encoding="utf-8")
         self.assertTrue('id="playlistLoadMore"' in page)
         self.assertTrue('TRACK_BATCH_SIZE' in script)
-        self.assertTrue('onStateChange:refreshPlayingRows' in script)
+        self.assertTrue('onStateChange:handlePlayerState' in script)
+        handler = script.split("function handlePlayerState", 1)[1].split(
+            "const playlistPlayer", 1
+        )[0]
+        self.assertIn("if(!meta?.timeline)refreshPlayingRows()", handler)
 
     def test_plex_webhook_shortcut_is_explicit_and_keeps_manual_connection(self):
         page = (ROOT / "src/helper/static/settings.html").read_text(encoding="utf-8")

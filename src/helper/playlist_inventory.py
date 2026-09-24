@@ -31,7 +31,7 @@ def capabilities(*, source, smart):
     managed = source in {"assistant", "external"}
     return {
         "can_play": True,
-        "can_rename": native,
+        "can_rename": native or source == "external",
         "can_add_tracks": (native and not smart) or managed,
         "can_remove_tracks": (native and not smart) or managed,
         "can_delete": native or managed,
@@ -45,7 +45,13 @@ def assistant_playlist_row(row):
     section = "smart" if kind in {"daily", "smart"} else (
         "library" if kind == "category" else "custom"
     )
-    result.update(section=section, source=source, smart=False, stale=False)
+    sidebar_group = "favorite" if kind == "favorite" else (
+        "personal" if kind == "external" else ""
+    )
+    result.update(
+        section=section, source=source, smart=False, stale=False,
+        sidebar_group=sidebar_group,
+    )
     result.update(capabilities(source=source, smart=False))
     if kind in {"daily", "smart", "category"}:
         result["can_add_tracks"] = False
@@ -79,6 +85,7 @@ def native_playlist_row(row):
         "section": "custom",
         "source": "plex",
         "smart": smart,
+        "sidebar_group": "plex_smart" if smart else "personal",
         "source_section": str(row.get("source_section") or ""),
         "stale": False,
     }
@@ -95,15 +102,53 @@ def normalize_native_playlist_rows(rows):
     ]
 
 
+def _playlist_priority(row):
+    """Keep every surface on the user-defined, cross-type playlist order."""
+    kind = str(row.get("kind") or "")
+    key = str(row.get("key") or "")
+    if kind == "daily":
+        return 0
+    if kind == "favorite":
+        return 1
+    if kind in {"plex", "external"}:
+        return 2
+    if kind == "smart" and key == "weekly":
+        return 3
+    if kind == "smart" and key == "time_capsule":
+        return 4
+    if kind == "category":
+        return 6
+    return 5
+
+
+def order_playlist_rows(rows):
+    """Return a stable ordering without mutating the caller's list."""
+    return [
+        row for _index, row in sorted(
+            enumerate(rows or []),
+            key=lambda pair: (_playlist_priority(pair[1]), pair[0]),
+        )
+    ]
+
+
 def merge_playlist_rows(assistant_rows, plex_rows):
     assistant_rows = [dict(row) for row in (assistant_rows or [])]
+    native = normalize_native_playlist_rows(plex_rows)
+    native_by_id = {row["playlist_id"]: row for row in native}
+    for row in assistant_rows:
+        live = native_by_id.get(str(row.get("playlist_id") or ""))
+        if not live:
+            continue
+        if row.get("count") is None:
+            row["count"] = live["count"]
+        if not row.get("updated_at"):
+            row["updated_at"] = live["updated_at"]
     owned = {
         str(row.get("playlist_id")) for row in assistant_rows
         if str(row.get("playlist_id") or "")
     }
-    native = normalize_native_playlist_rows(plex_rows)
-    return [
+    return order_playlist_rows([
         *assistant_rows,
         *(row for row in native
           if row["playlist_id"] not in owned),
-    ]
+    ])

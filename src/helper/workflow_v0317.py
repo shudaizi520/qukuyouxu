@@ -52,6 +52,34 @@ def _topic_sources(store):
     return [row for row in (store.get("sources", []) or []) if str(row.get("kind") or "").startswith("qq_")]
 
 
+def managed_classified_track_ids(store, managed=None):
+    """Return the unique members proven by each managed playlist's current snapshot."""
+    from .engine import fingerprint
+
+    managed = dict(store.get("managed", {}) or {}) if managed is None else dict(managed or {})
+    snapshots = {
+        str(row.get("id") or ""): row for row in (store.get("snapshots", []) or [])
+        if isinstance(row, dict) and row.get("id")
+    }
+    covered = set()
+    for record in managed.values():
+        if not isinstance(record, dict):
+            continue
+        state = (snapshots.get(str(record.get("snapshot_id") or "")) or {}).get("after") or {}
+        try:
+            if (not state or str(state.get("id") or "") != str(record.get("id") or "")
+                    or not record.get("fingerprint")
+                    or fingerprint(state) != record.get("fingerprint")):
+                continue
+        except (KeyError, TypeError, ValueError):
+            continue
+        covered.update(
+            str(row.get("id")) for row in (state.get("items") or [])
+            if isinstance(row, dict) and str(row.get("id") or "").isdigit()
+        )
+    return covered
+
+
 def _review(plan, sources, managed=None):
     if not plan or plan.get("applied"):
         return None
@@ -59,11 +87,20 @@ def _review(plan, sources, managed=None):
     groups = []
     for item in eligible_discovery_groups(plan, managed):
         blocked = [str(value) for value in (item.get("blocked") or [])]
-        kind = "theme" if str(item.get("kind") or "").startswith("qq_") else str(item.get("kind") or "category")
+        source = source_map.get(str(item.get("id") or ""), {})
+        source_theme_key = theme_key(source) if source else None
+        item_kind = str(item.get("kind") or "")
+        kind = "theme" if item_kind.startswith("qq_") or item_kind == "local_theme" or source_theme_key else item_kind or "category"
+        dimension = str(item.get("dimension") or "")
+        if kind == "theme" and not dimension:
+            topic = next((row for row in TOPICS if row["key"] == source_theme_key), None)
+            if topic is None:
+                topic = next((row for row in TOPICS if row["name"] == str(item.get("title") or "")), None)
+            dimension = str((topic or {}).get("dimension") or "主题")
         before = item.get("before") or {}
         groups.append({
             "id": str(item.get("id") or ""), "title": str(item.get("title") or ""), "kind": kind,
-            "dimension": str(item.get("dimension") or ""), "count": len(item.get("desired") or []),
+            "dimension": dimension, "count": len(item.get("desired") or []),
             "existing_count": len(before.get("items") or []), "add_count": len(item.get("add") or []),
             "action": str(item.get("action") or "unchanged"), "blocked": blocked,
             "default_selected": not blocked and source_map.get(str(item.get("id") or ""), {}).get("enabled", True) is not False,
@@ -172,6 +209,8 @@ def build_workflow_status(store, engine, qq_status):
     else:
         discovery_phase = "before_analysis"
     matched = int((base_plan or {}).get("union_covered") or (plan or {}).get("covered") or 0)
+    if managed:
+        matched = max(matched, len(managed_classified_track_ids(store, managed)))
     review_count = int((base_plan or {}).get("metadata_review_count") or (plan or {}).get("metadata_review_count") or 0)
     topics = _topic_sources(store)
     if hasattr(engine, "theme_status"):
@@ -200,7 +239,7 @@ def build_workflow_status(store, engine, qq_status):
                 **{key: job.get(key) for key in ("running", "kind", "message", "error", "started_at", "finished_at", "progress_current", "progress_total")},
                 "can_pause": bool(running and str(job.get("kind") or "") in {"preview", "incremental"}),
             },
-            "summary": {"library_count": library_count, "matched": matched, "review_count": review_count, "managed": len(managed)},
+            "summary": {"library_count": library_count, "matched": matched, "unclassified": max(0, library_count - matched), "review_count": review_count, "managed": len(managed)},
             "discovery": {"phase": discovery_phase, "threshold": threshold, "candidate_count": len(visible_groups)},
             "settings": {"initialized": bool(store.get("managed", {}) or (saved_plan and saved_plan.get("applied"))), "enabled": bool(settings.get("auto_enabled")), "schedule": "daily_midnight_beijing", "next_run": store.get("library_auto_next_at")},
             "review": _workflow_review(plan, base_plan, sources, managed), "qq_auth": dict(qq_status or {}),

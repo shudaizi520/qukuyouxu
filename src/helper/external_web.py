@@ -45,6 +45,7 @@ def _public_track(row, catalog=None):
         "album": row.get("album"),
         "duration_ms": row.get("duration_ms"),
         "plex_duration": matched.get("duration"),
+        "thumb": str(matched.get("thumb") or ""),
         "version_label": row.get("version_label"),
         "source_url": row.get("source_url"),
         "status": row.get("status"),

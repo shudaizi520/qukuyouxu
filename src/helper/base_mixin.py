@@ -33,6 +33,7 @@ class BaseMixin:
                 evidence.append((g.get('id'),tuple(sorted(str((r.get('local') or {}).get('id','')) for r in g.get('matched_rows') or []))))
         return digest({'connection':[cfg.get(k) for k in ('plex_url','plex_token','section','account_label')],
                        'metadata_overrides':self.store.get('metadata_overrides',{}),'theme_evidence':evidence,
+                       'manual_edits':self.store.get('playlist_manual_edits',{}),
                        'base_policy':BASE_POLICY,'single_revision':self.store.get('single_revision',0),'min_tracks':cfg.get('min_tracks',5)})
 
     def preview_base(self):
@@ -75,10 +76,14 @@ class BaseMixin:
                 raw.append({'id':cid,'title':title,'kind':'base','desired':[],'matched':0,
                             'evidence':{},'inferred_count':0,'blocked':[]})
         groups=[];base_ids=set()
+        disabled={str(value) for value in (self.store.get('managed_disabled_categories',[]) or [])}
         era_ids={'base:'+normalize(title) for title in ERA_CATEGORIES+ALBUM_ERA_CATEGORIES}
         language_ids={'base:'+normalize(title) for title in LANGUAGE_CATEGORIES}
         for g in raw:
-            cid=g['id'];title=managed.get(cid,{}).get('title') or g['title'];desired=list(g['desired']);blocked=[];current=None;add=desired[:];action='create'
+            cid=g['id'];title=managed.get(cid,{}).get('title') or g['title']
+            from .playlist_hub import apply_manual_edits
+            desired=apply_manual_edits(self.store,'category',cid,list(g['desired']));blocked=[];current=None;add=desired[:];action='create'
+            if cid in disabled:blocked.append('已停止维护：保留 Plex 中现有歌单，不再自动写入')
             if cid in managed:
                 try:
                     current=p.playlist_state(managed[cid]['id'])
@@ -94,7 +99,7 @@ class BaseMixin:
             if any(s.get('category_id')==cid and s.get('status') in ('prepared','uncertain','restoring') for s in snapshots):
                 blocked.append('上次写入结果待核对：请先核对快照和Plex')
             base_ids.update(desired)
-            groups.append({**g,'title':title,'add':add,'action':action,'before':current,'blocked':blocked})
+            groups.append({**g,'title':title,'desired':desired,'matched':len(desired),'add':add,'action':action,'before':current,'blocked':blocked})
         if any(g['id'] in era_ids and any('不符合当前' in b for b in g['blocked']) for g in groups):
             # Append-only maintenance must not leave one track in an obsolete
             # decade and also publish it into a new one. No silent deletion.
@@ -142,6 +147,7 @@ class BaseMixin:
         fresh={t['id']:track_fingerprint(t) for t in fresh_tracks}
         fresh_evidence={t['id']:base_track_fingerprint(t) for t in fresh_enriched}
         managed=self.store.get('managed');existing_titles={x.get('title') for x in p.playlists()};result={'written':0,'unchanged':0,'skipped':0,'errors':[]}
+        disabled={str(value) for value in (self.store.get('managed_disabled_categories',[]) or [])}
         fresh_effective,_=prepare_catalog(fresh_enriched,self.store.get('metadata_overrides',{}))
         from .engine import digest
         fresh_single=digest([(t['id'],t.get('_qq_single')) for t in self.single_attach(fresh_effective,plan['machine'])])
@@ -157,7 +163,7 @@ class BaseMixin:
             return result
         for g in plan['groups']:
             cid=g['id']
-            if (allowed_ids is not None and cid not in allowed_ids) or g['blocked'] or automatic and cid not in managed:
+            if (allowed_ids is not None and cid not in allowed_ids) or cid in disabled or g['blocked'] or automatic and cid not in managed:
                 result['skipped']+=1;continue
             if any(fresh.get(k)!=plan['track_fingerprints'].get(k) or
                    fresh_evidence.get(k)!=plan.get('album_evidence_fingerprints',{}).get(k) for k in g['desired']):

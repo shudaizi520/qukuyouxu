@@ -1,8 +1,28 @@
+function playlistPriority(item){
+ if(item.kind==='daily')return 0;
+ if(item.kind==='favorite')return 1;
+ if(item.kind==='plex'||item.kind==='external')return 2;
+ if(item.kind==='smart'&&item.key==='weekly')return 3;
+ if(item.kind==='smart'&&item.key==='time_capsule')return 4;
+ if(item.kind==='category')return 6;
+ return 5;
+}
+
+export function orderPlaylists(items){
+ return (items||[]).map((item,index)=>({item,index})).sort((left,right)=>playlistPriority(left.item)-playlistPriority(right.item)||left.index-right.index).map(row=>row.item);
+}
+
 export function groupPlaylists(items){
+ const ordered=orderPlaylists(items);
+ const sidebarGroup=item=>item.sidebar_group||(item.kind==='favorite'?'favorite':item.kind==='external'?'personal':item.kind==='plex'?(item.smart?'plex_smart':'personal'):'');
+ const sidebarPriority={favorite:0,personal:1,plex_smart:2};
+ const sidebar=ordered.map((item,index)=>({item,index,group:sidebarGroup(item)})).filter(row=>row.group).sort((left,right)=>sidebarPriority[left.group]-sidebarPriority[right.group]||left.index-right.index).map(row=>row.item);
  return {
-  smart:items.filter(row=>row.section==='smart'),
-  library:items.filter(row=>row.section==='library'),
-  custom:items.filter(row=>row.section==='custom'),
+  all:ordered,
+  sidebar,
+  smart:ordered.filter(row=>row.section==='smart'),
+  library:ordered.filter(row=>row.section==='library'),
+  custom:ordered.filter(row=>row.section==='custom'),
  };
 }
 
@@ -26,7 +46,7 @@ export function createPlaylistSections({document,onOpenPlaylist,onOpenTool,creat
  }
  function renderCustom(refreshArtwork=true){
   const box=byId('customPlaylistList'),nextViews=new Map(),buttons=[];
-  for(const item of groups.custom){
+  for(const item of groups.sidebar){
    const key=itemKey(item);let view=customViews.get(key);
    if(!view){
     const button=document.createElement('button'),text=document.createElement('span'),title=document.createElement('strong'),meta=document.createElement('small');
@@ -42,13 +62,12 @@ export function createPlaylistSections({document,onOpenPlaylist,onOpenTool,creat
    button.onclick=()=>onOpenPlaylist(item);nextViews.set(key,view);buttons.push(button);
   }
   customViews=nextViews;
-  if(!buttons.length){const empty=document.createElement('span');empty.className='playlist-side-empty';empty.textContent='还没有自建歌单';buttons.push(empty);}
+  if(!buttons.length){const empty=document.createElement('span');empty.className='playlist-side-empty';empty.textContent='还没有歌单';buttons.push(empty);}
   box.replaceChildren(...buttons);
  }
  function renderSection(section){
   const rows=groups[section]||[],box=byId('playlistSectionCards'),cards=[];
   byId('playlistSectionTitle').textContent=section==='smart'?'智能歌单':'曲库整理';
-  byId('playlistSectionSettings').textContent='设置';
   for(const item of rows){
    const key=section+'\t'+itemKey(item);let view=cardViews.get(key);
    if(!view){

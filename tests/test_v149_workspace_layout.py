@@ -12,11 +12,13 @@ class WorkspaceLayoutTests(unittest.TestCase):
         self.assertNotIn('id="customPlaylistCount"', html)
         self.assertNotIn("customPlaylistCount", (STATIC / "playlist-sections.js").read_text())
 
-    def test_contextual_settings_are_in_hubs(self):
+    def test_hub_title_itself_opens_settings_without_a_separate_settings_button(self):
         html = (STATIC / "playlists.html").read_text()
-        self.assertIn('id="playlistSectionSettings"', html)
+        self.assertNotIn('id="playlistSectionSettings"', html)
+        self.assertIn('id="playlistSectionTitle"', html)
         js = (STATIC / "playlists.js").read_text()
-        self.assertIn("$('playlistSectionSettings').onclick", js)
+        self.assertNotIn("$('playlistSectionSettings').onclick", js)
+        self.assertIn("$('playlistSectionTitle').onclick", js)
         settings = (STATIC / "settings.html").read_text()
         for name in ("playlists", "recommend", "automation"):
             self.assertNotIn(f'data-settings-target="{name}"', settings)
@@ -101,9 +103,10 @@ class WorkspaceLayoutTests(unittest.TestCase):
         self.assertIn("type:'pch-playlists-changed'", smart)
         self.assertIn("event.data?.type==='pch-playlists-changed'", hub)
 
-    def test_library_list_uses_compact_more_menu(self):
+    def test_library_list_uses_direct_inline_actions(self):
         library = (STATIC / "theme_home.js").read_text()
-        self.assertIn("managed-playlist-more", library)
+        self.assertIn("managed-playlist-actions-inline", library)
+        self.assertNotIn("managed-playlist-more", library)
         self.assertIn("pch-open-playlist", library)
 
     def test_daily_settings_show_bounded_preview_before_publication(self):

@@ -13,6 +13,24 @@ sys.path.insert(0, str(ROOT / "src"))
 
 
 class PlaylistHubRowsTests(unittest.TestCase):
+    def test_assistant_playlist_count_is_backfilled_from_the_same_plex_playlist(self):
+        from helper.playlist_inventory import merge_playlist_rows
+
+        assistant = [{
+            "source": "assistant", "kind": "category", "key": "base:国语",
+            "playlist_id": "99", "title": "国语", "count": None,
+        }]
+        plex = [{
+            "ratingKey": "99", "playlistType": "audio", "title": "国语",
+            "leafCount": "2239", "updatedAt": "123",
+        }]
+
+        rows = merge_playlist_rows(assistant, plex)
+
+        self.assertEqual(1, len(rows))
+        self.assertEqual(2239, rows[0]["count"])
+        self.assertEqual(123, rows[0]["updated_at"])
+
     def setUp(self):
         from helper.external_store import ExternalRepository
         from helper.profiles import ProfileRegistry
@@ -140,7 +158,7 @@ class PlaylistHubRowsTests(unittest.TestCase):
         self.assertEqual({}, self.store.catalog_tracks([]))
 
     def test_every_automatic_playlist_writer_applies_manual_track_choices(self):
-        for name in ("daily.py", "smart_mix_web.py", "engine.py", "external_service.py"):
+        for name in ("daily.py", "smart_mix_web.py", "engine.py", "external_service.py", "base_mixin.py"):
             source = (ROOT / "src/helper" / name).read_text(encoding="utf-8")
             self.assertIn("apply_manual_edits", source, name)
 
@@ -159,6 +177,17 @@ class _PlaylistPlex:
         if str(playlist_id) != str(self.state["id"]):
             raise ValueError("missing")
         return {**self.state, "items": [dict(row) for row in self.state["items"]]}
+
+    def playlists(self):
+        return [{
+            "ratingKey": str(self.state["id"]), "playlistType": "audio",
+            "title": str(self.state["title"]), "summary": str(self.state.get("summary") or ""),
+        }]
+
+    def rename(self, playlist_id, title):
+        if str(playlist_id) != str(self.state["id"]):
+            raise ValueError("missing")
+        self.state["title"] = str(title)
 
     def open_audio_part(self, track_id, range_header=""):
         self.last_audio = (str(track_id), range_header)
@@ -274,6 +303,36 @@ class PlaylistHubPlaybackTests(unittest.TestCase):
         self.assertEqual(["第一首", "第二首"], [row["title"] for row in result["tracks"]])
         self.assertEqual([180, 200], [row["duration"] for row in result["tracks"]])
         self.assertEqual("/library/metadata/10/thumb/1", result["tracks"][0]["thumb"])
+
+    def test_imported_playlist_rename_updates_its_managed_record(self):
+        from helper.external_playlist_sync import external_marker, playlist_fingerprint
+        from helper.external_store import ExternalRepository
+        from helper.playlist_hub import rename_playlist
+
+        repository = ExternalRepository(self.store)
+        source = repository.upsert_source("default", {
+            "provider": "qq", "external_id": "rename-1", "url": "https://y.qq.com/rename-1",
+            "title": "旧名字", "revision": "r1", "tracks": [
+                {"source_track_key": "a", "position": 0, "title": "第一首", "artists": ["甲"]},
+            ],
+        }, 4_000)
+        self.state.update({
+            "title": "旧名字",
+            "summary": external_marker(self.store.get("installation_id"), source["id"]) + "\n由曲库有序管理",
+        })
+        repository.save_managed("default", source["id"], {
+            "id": "900", "title": "旧名字", "fingerprint": playlist_fingerprint(self.state),
+            "revision": "r1",
+        })
+
+        result = rename_playlist(self.engine, "external", source["id"], "新名字")
+
+        managed = repository.get_managed("default", source["id"])
+        self.assertEqual({"message": "歌单已重命名", "title": "新名字"}, result)
+        self.assertEqual("新名字", self.state["title"])
+        self.assertEqual("新名字", managed["title"])
+        self.assertEqual(playlist_fingerprint(self.state), managed["fingerprint"])
+        self.assertEqual(["10", "20"], [row["id"] for row in self.state["items"]])
 
     def test_detail_uses_only_selected_catalog_rows(self):
         from helper.playlist_hub import playlist_detail
@@ -821,6 +880,7 @@ class PlaylistHubPageTests(unittest.TestCase):
         embedded_routes = web.split("embedded =", 1)[1].split("r.headers['X-Frame-Options']", 1)[0]
         self.assertIn("'/status'", embedded_routes)
         self.assertIn("'/settings'", embedded_routes)
+        self.assertIn("'/appearance'", embedded_routes)
 
     def test_home_is_a_single_management_and_playback_surface(self):
         page = (STATIC / "playlists.html").read_text(encoding="utf-8")
@@ -1001,7 +1061,7 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn('id="playerVolume"', player)
         self.assertNotIn('id="playlistPlayer" class="playlist-player" hidden', page)
         self.assertIn('<audio id="playerAudio" preload="none"></audio>', page)
-        self.assertIn("import {createPlaylistPlayer}", script)
+        self.assertIn("import {createPlaylistPlayer,normalizePlaybackTrack}", script)
         self.assertIn("export function createPlaylistPlayer", player_script)
         self.assertIn("let playbackGeneration=0", player_script)
         self.assertIn("generation!==playbackGeneration", player_script)
@@ -1210,25 +1270,16 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertNotIn("playlistPlayer.stop()", open_workspace)
         self.assertNotIn("playerAudio", open_workspace)
 
-    def test_embedded_external_preview_uses_the_single_bottom_player(self):
+    def test_embedded_external_import_does_not_take_over_the_bottom_player(self):
         external = (STATIC / "external.js").read_text(encoding="utf-8")
         script = (STATIC / "playlists.js").read_text(encoding="utf-8")
         player = (STATIC / "playlist-player.js").read_text(encoding="utf-8")
-        external_web = (ROOT / "src/helper/external_web.py").read_text(encoding="utf-8")
-
-        self.assertIn("pch-player-preview", external)
-        self.assertIn("window.parent.postMessage", external)
-        self.assertIn("pch-player-preview", script)
+        self.assertNotIn("pch-player-preview", external)
+        self.assertNotIn("pch-player-preview", script)
         self.assertIn("playlistToolFrame", script)
         self.assertIn("event.origin!==location.origin", script)
-        self.assertIn("playPreview", player)
-        self.assertIn("context.kind==='preview'&&track.source?track.source", player)
-        self.assertIn("previewKey", player)
-        audio_route = external_web.split(
-            '@app.get("/api/external/sources/{source_id}/tracks/{track_key}/audio")', 1
-        )[1]
-        self.assertIn('offset: str = "0"', audio_route)
-        self.assertIn("offset_seconds=offset", audio_route)
+        self.assertNotIn("playPreview", player)
+        self.assertNotIn("previewKey", player)
 
     def test_returning_from_a_tool_refreshes_the_playlist_inventory(self):
         script = (STATIC / "playlists.js").read_text(encoding="utf-8")
@@ -1280,22 +1331,17 @@ class PlaylistHubPageTests(unittest.TestCase):
 
 
 class ExternalPlaylistPreviewUiTests(unittest.TestCase):
-    def test_audio_player_is_hidden_and_playback_controls_stay_in_the_track_row(self):
+    def test_matched_import_rows_are_metadata_only(self):
         page = (STATIC / "external.html").read_text(encoding="utf-8")
         script = (STATIC / "external.js").read_text(encoding="utf-8")
-        self.assertIn('<audio id="auditionPlayer" preload="none" hidden>', page)
-        self.assertNotIn("auditionBar", page + script)
-        self.assertNotIn("auditionLabel", page + script)
-        self.assertIn("external-preview-button", script)
-        self.assertIn("external-preview-progress", script)
-        self.assertIn("player.addEventListener('timeupdate'", script)
-        self.assertNotIn("button.textContent='暂停'", script)
-        self.assertIn("external-preview-active", script)
-        self.assertIn("if(current)stopAudition()", script)
+        self.assertNotIn('id="auditionPlayer"', page)
+        self.assertNotIn("external-preview", page + script)
+        self.assertNotIn("audition", page.lower() + script.lower())
+        self.assertIn("external-track-duration", script)
 
     def test_external_page_uses_clear_primary_sections_without_instruction_blocks(self):
         page = (STATIC / "external.html").read_text(encoding="utf-8")
-        self.assertIn("导入歌单", page)
+        self.assertNotIn("<h1>导入歌单</h1>", page)
         self.assertIn("Plex 歌单", page)
         self.assertIn("缺失歌曲", page)
         self.assertNotIn("external-trust-note", page)
@@ -1306,16 +1352,16 @@ class ExternalPlaylistPreviewUiTests(unittest.TestCase):
         page = (STATIC / "external.html").read_text(encoding="utf-8")
         script = (STATIC / "external.js").read_text(encoding="utf-8")
         hub_script = (STATIC / "playlists.js").read_text(encoding="utf-8")
-        styles = (STATIC / "product.css").read_text(encoding="utf-8")
-        self.assertIn("external-page-title", page)
+        styles = (STATIC / "external-workspace.css").read_text(encoding="utf-8")
+        self.assertNotIn("external-page-title", page)
         self.assertIn('id="sourceSelector"', page)
-        self.assertIn("function showPreviewError", script)
+        self.assertNotIn("function showPreviewError", script)
         self.assertNotIn("ResizeObserver", script)
         self.assertNotIn("pch-tool-height", script)
         self.assertNotIn("pch-tool-height", hub_script)
         self.assertNotIn("player.play().catch(()=>notify('浏览器暂时无法播放", script)
         self.assertIn(".pch-embedded body[data-view=external] .external-shell", styles)
-        self.assertIn(".external-track-list{max-height:none;overflow:visible", styles)
+        self.assertNotIn("max-height", styles)
         self.assertNotIn("is-auto-height", styles)
 
 

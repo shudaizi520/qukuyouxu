@@ -21,7 +21,7 @@ class PageVersionV0330Tests(unittest.TestCase):
         self.assertEqual('<header><small id="version">v0.3.30</small></header>', rendered)
         self.assertNotIn("v0.3.25", rendered)
 
-    def test_every_served_page_has_one_replaceable_version_slot(self):
+    def test_only_settings_exposes_the_version_in_the_interface(self):
         try:
             from helper.page_version import render_versioned_html
         except ModuleNotFoundError:
@@ -30,10 +30,12 @@ class PageVersionV0330Tests(unittest.TestCase):
         if not callable(render_versioned_html):
             return
         static = ROOT / "src" / "helper" / "static"
-        for name in ("daily.html", "home.html", "status.html", "settings.html", "mixes.html"):
+        for name in ("daily.html", "home.html", "status.html", "mixes.html"):
             with self.subTest(page=name):
                 rendered = render_versioned_html((static / name).read_text(encoding="utf-8"), "0.3.30")
-                self.assertEqual(1, rendered.count('id="version">v0.3.30</small>'))
+                self.assertNotIn('id="version"', rendered)
+        settings = render_versioned_html((static / "settings.html").read_text(encoding="utf-8"), "0.3.30")
+        self.assertEqual(1, settings.count('id="version">v0.3.30</small>'))
 
 
 if __name__ == "__main__":

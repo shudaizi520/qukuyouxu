@@ -37,10 +37,10 @@ def test_heart_click_uses_optimistic_toggle_without_generic_busy_spinner():
     assert "onLikedChange:(track,liked)=>action(()=>setLiked(track,liked))" not in playlists
 
 
-def test_library_organizer_has_single_heading_and_primary_action_above_summary():
+def test_library_organizer_has_no_duplicate_heading_and_keeps_primary_action_in_task_panel():
     html = (STATIC / "home.html").read_text()
-    assert html.index('id="incrementalAction"') < html.index('id="libraryOverview"')
-    assert html.count("<h1>曲库整理</h1>") == 1
+    assert html.index('id="task"') < html.index('id="incrementalAction"') < html.index('id="upstreamError"')
+    assert "<h1>曲库整理</h1>" not in html
     assert "分类歌单" in html
     assert css_rules(".pch-embedded body[data-view=library] .wrap")["max-width"] == "1120px"
 
@@ -49,9 +49,9 @@ def test_import_controls_are_grouped_in_one_inset_column():
     html = (STATIC / "external.html").read_text()
     assert html.count('class="external-command-actions"') == 4
     assert html.count('class="external-command-bar"') == 3
-    assert css_rules(".pch-embedded body[data-view=external] .external-shell")["max-width"] == "1040px"
-    css = (STATIC / "product.css").read_text()
-    assert "body[data-view=external] .external-command-bar{display:grid;grid-template-columns:100px minmax(0,1fr) auto" in css
+    css = (STATIC / "external-workspace.css").read_text()
+    assert "max-width:none" in css
+    assert "body[data-view=external] .external-command-bar{position:relative;display:grid;grid-template-columns:116px minmax(0,1fr) auto" in css
 
 
 def test_import_mobile_actions_override_old_full_width_file_control():
@@ -64,13 +64,13 @@ def test_review_uses_candidate_selection_then_one_global_confirmation():
     """A selected candidate is batch-confirmable without a second row action."""
     script = (STATIC / "external.js").read_text()
     review_actions = script.split("function renderReviewActions", 1)[1].split(
-        "function auditionButton", 1
+        "function audioTime", 1
     )[0]
     assert "check.checked=true" in review_actions
     assert "confirm.textContent='确认'" not in review_actions
     assert "missing.value='__missing__'" in review_actions
     assert "标记为缺失" in review_actions
-    assert "select.value==='__missing__'" in review_actions
+    assert "select.onchange" in review_actions
     assert "const checks=[...document.querySelectorAll('#trackList .external-review-check')]" in script
 
 

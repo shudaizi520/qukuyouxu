@@ -19,6 +19,13 @@ class PlaylistSectionUiTests(unittest.TestCase):
         self.assertNotIn('id="playlistAddTrack"', page)
         self.assertEqual(1, page.count('id="playlistSectionView"'))
 
+    def test_sidebar_uses_the_filtered_personal_playlist_order(self):
+        page = (STATIC / "playlists.html").read_text(encoding="utf-8")
+        sections = (STATIC / "playlist-sections.js").read_text(encoding="utf-8")
+        self.assertIn("<h2>歌单</h2>", page)
+        self.assertIn("for(const item of groups.sidebar)", sections)
+        self.assertIn("plex_smart", sections)
+
     def test_sections_module_groups_without_kind_badges(self):
         script = (STATIC / "playlist-sections.js").read_text(encoding="utf-8")
         self.assertIn("row.section==='smart'", script)

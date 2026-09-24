@@ -55,15 +55,22 @@
    const openPlaylist=()=>{if(window.parent!==window)window.parent.postMessage({type:'pch-open-playlist',kind:'category',key:String(row.category_id)},location.origin);else location.assign('/');};
    const info=document.createElement('div'),title=button(row.title,'managed-playlist-title',openPlaylist),meta=document.createElement('span');
    meta.textContent=(row.count==null?'曲目数待核对':row.count+' 首')+' · '+row.status+(row.enabled?'':' · 已停止维护');info.append(title,meta);
-   const actions=document.createElement('div');actions.className='managed-playlist-actions';
-   if(row.safe_to_forget)actions.append(button('清除记录','danger',async()=>{if(!await PCHUI.confirm('Plex 中已经找不到“'+row.title+'”。只清除助手里的历史记录，不删除歌曲或音乐文件。确定继续？'))return;await action(async()=>{const r=await post('/api/managed/forget',{confirm:true,category_id:row.category_id,playlist_id:row.playlist_id,title:row.title});note(r.message);await loadManaged(true);await refresh();});}));
-   actions.append(button(row.enabled?'停止维护':'已停止','secondary',async()=>{if(!await PCHUI.confirm('停止维护“'+row.title+'”？Plex 中的歌单和歌曲都会保留。'))return;await action(async()=>{const r=await post('/api/managed/disable',{confirm:true,category_id:row.category_id});note(r.message);await loadManaged(true);});},!row.enabled));
-   actions.append(button('移除歌单','danger',async()=>{if(!await PCHUI.confirm('从 Plex 移除助手创建的“'+row.title+'”（'+row.count+' 首）？\\n\\n只删除这张歌单，不删除歌曲；操作前会保存恢复快照。'))return;await action(async()=>{const r=await post('/api/managed/remove',{confirm:true,category_id:row.category_id,title:row.title});note(r.message);await loadManaged(true);await refresh();});},!row.safe_to_remove));
-   if(!row.safe_to_remove)actions.lastChild.title='歌单被手动修改或管理标记不符时，为保护内容不能移除';
-   if(row.safe_to_forget){actions.lastChild.remove();actions.lastChild.title='只清除助手本地历史记录，不访问 Plex 删除接口';}
-   const open=button('打开','managed-playlist-open',openPlaylist);
-   const more=document.createElement('details');more.className='managed-playlist-more';const summary=document.createElement('summary');summary.textContent='···';summary.setAttribute('aria-label','更多'+row.title+'操作');more.append(summary,actions);
-   line.append(info,open,more);box.append(line);
+   const actions=document.createElement('div');actions.className='managed-playlist-actions managed-playlist-actions-inline';
+   const open=button('打开','managed-playlist-action managed-playlist-open',openPlaylist);actions.append(open);
+   if(row.safe_to_forget){
+    actions.append(button('清除记录','managed-playlist-action danger-text',async()=>{if(!await PCHUI.confirm('Plex 中已经找不到“'+row.title+'”。只清除助手里的历史记录，不删除歌曲或音乐文件。确定继续？'))return;await action(async()=>{const r=await post('/api/managed/forget',{confirm:true,category_id:row.category_id,playlist_id:row.playlist_id,title:row.title});note(r.message);await loadManaged(true);await refresh();});}));
+   }else{
+    if(row.can_accept_changes){
+     actions.append(button('接受改动','managed-playlist-action',async()=>{if(!await PCHUI.confirm('接受“'+row.title+'”当前在 Plex 里的删除结果？\n\n被删掉的歌曲以后也不会被自动加回；不会修改音乐文件。'))return;await action(async()=>{const r=await post('/api/managed/reconcile',{confirm:true,category_id:row.category_id,action:'accept'});note(r.message);await loadManaged(true);await refresh();});}));
+    }
+    if(row.can_restore_changes){
+     actions.append(button('恢复原状','managed-playlist-action',async()=>{if(!await PCHUI.confirm('把“'+row.title+'”在 Plex 外部删除的歌曲加回来？不会重建歌单，也不会修改音乐文件。'))return;await action(async()=>{const r=await post('/api/managed/reconcile',{confirm:true,category_id:row.category_id,action:'restore'});note(r.message);await loadManaged(true);await refresh();});}));
+    }
+    actions.append(button(row.enabled?'停止维护':'恢复维护','managed-playlist-action',async()=>{const verb=row.enabled?'停止':'恢复';if(!await PCHUI.confirm(verb+'维护“'+row.title+'”？Plex 中现有歌单和歌曲都会保留。'))return;await action(async()=>{const r=await post(row.enabled?'/api/managed/disable':'/api/managed/enable',{confirm:true,category_id:row.category_id});note(r.message);await loadManaged(true);await refresh();});}));
+    const remove=button('移除歌单','managed-playlist-action danger-text',async()=>{if(!await PCHUI.confirm('从 Plex 移除助手创建的“'+row.title+'”（'+row.count+' 首）？\\n\\n只删除这张歌单，不删除歌曲；操作前会保存恢复快照。'))return;await action(async()=>{const r=await post('/api/managed/remove',{confirm:true,category_id:row.category_id,title:row.title});note(r.message);await loadManaged(true);await refresh();});},!row.safe_to_remove);
+    if(!row.safe_to_remove)remove.title='只有当前账户中带助手管理标记、身份一致且不受保护的歌单可以移除';actions.append(remove);
+   }
+   line.append(info,actions);box.append(line);
   }
   const retired=get('retiredPlaylists'),disclosure=get('retiredDisclosure');retired.replaceChildren();
   disclosure.hidden=!retiredRows.length;get('retiredCount').textContent=retiredRows.length?retiredRows.length+' 个':'';

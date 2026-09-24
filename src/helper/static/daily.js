@@ -19,7 +19,7 @@ function addSong(row,index){
 }
 function setFlow(stage){for(const [id,n] of [['flowGenerate',1],['flowPreview',2],['flowPublish',3]]){$(id).classList.toggle('active',n===stage);$(id).classList.toggle('done',n<stage);}}
 function render(s){
- current=s;clearDailyPollErrors();renderDailyOperation(s);$('version').textContent='v'+s.version;
+ current=s;clearDailyPollErrors();renderDailyOperation(s);
  const need=setupNeeded(s);$('setupPrompt').hidden=!need;$('dailyArea').hidden=need;
  const job=s.job||{},running=!!job.running,cfg=s.daily_settings||{},plan=s.daily_plan||{},published=s.daily_published||null,managed=s.daily_managed||null,repair=s.daily_repair||null;
  const previewReady=!!(plan.id&&!plan.applied),source=previewReady?plan:(published||plan),isPublished=!previewReady&&!!published,blocking=dailyBlockReasons(plan),publishable=previewReady&&!blocking.length;

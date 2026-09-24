@@ -216,9 +216,38 @@ def attach_routes(app, store, engine, body, ensure_idle):
                     values['album'] = album
                 rules[tid] = {**values, 'fingerprint': identity_fingerprint(t), 'confirmed_at': time.time()}
             _, audit = prepare_catalog(tracks, rules)
-            store.set_many({'metadata_overrides': rules, 'metadata_audit': audit, 'plan': None, 'daily_plan': None})
+            base_plan = store.get('base_plan')
+            if base_plan:
+                base_plan = {
+                    **base_plan,
+                    'invalidated_reason': '标签核对结果已更新，请重新分析曲库。',
+                    'metadata_review_count': sum(row.get('status') in ('incomplete', 'conflict', 'stale_correction') for row in audit),
+                }
+            store.set_many({'metadata_overrides': rules, 'metadata_audit': audit, 'plan': None, 'base_plan': base_plan, 'daily_plan': None})
             store.log('助手内部曲目信息已更新，未修改音乐文件/Plex标签：ID ' + tid)
         return {'message': '已保存到助手内部；原文件和Plex标签未改。请重新生成分类/每日预览。'}
+
+    @app.get('/api/base/unclassified')
+    def base_unclassified(offset: int=0, limit: int=50):
+        if not 0 <= offset <= 100000 or not 1 <= limit <= 100:
+            raise ValueError('查询范围无效')
+        plan = store.get('base_plan') or {}
+        rows = list(plan.get('unclassified') or [])
+        if not rows and not plan:
+            from .workflow_v0317 import managed_classified_track_ids
+            covered = managed_classified_track_ids(store)
+            rows = [
+                row for row in (store.get('catalog', []) or [])
+                if isinstance(row, dict) and str(row.get('id') or '') not in covered
+            ]
+        items = [{
+            key: row.get(key) for key in ('id', 'title', 'artist', 'album', 'year', 'genres', 'styles', '_metadata_status')
+        } for row in rows[offset:offset + limit]]
+        return {
+            'items': items, 'total': len(rows), 'offset': offset,
+            'next': offset + limit if offset + limit < len(rows) else None,
+            'stale': bool(plan.get('invalidated_reason')),
+        }
 
     @app.post('/api/base/schedule')
     async def base_schedule(req: Request):

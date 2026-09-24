@@ -82,7 +82,7 @@ def test_library_playlist_rows_have_balanced_horizontal_insets():
     rules = css_rules("body[data-view=library] .managed-playlist-row")
 
     assert rules["padding"] == "14px 20px"
-    assert css_rules("body[data-view=library] .managed-playlist-more .managed-playlist-actions")["right"] == "20px"
+    assert css_rules("body[data-view=library] .managed-playlist-actions-inline")["flex-wrap"] == "nowrap"
 
 
 def test_truenas_install_uses_mutable_latest_tag_for_one_click_updates():

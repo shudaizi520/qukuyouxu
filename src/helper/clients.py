@@ -316,6 +316,41 @@ class PlexClient:
     def track_section(self,track_id):
         return self.track_metadata(track_id)['library_section_id']
 
+    def _bounded_xml_bytes(self,path,limit):
+        if (not isinstance(path,str) or not path.startswith('/') or path.startswith('//')
+                or not isinstance(limit,int) or not 1<=limit<=1024*1024):
+            raise PlexError('拒绝异常Plex歌词路径')
+        try:
+            with self.session.request('GET',self.base+path,timeout=(5,20),
+                                      allow_redirects=False,stream=True) as response:
+                if response.status_code==404:raise PlexNotFound('Plex 中没有歌词')
+                if response.status_code!=200:raise PlexError(f'Plex歌词返回HTTP {response.status_code}')
+                chunks=[];size=0
+                for chunk in response.iter_content(65536):
+                    size+=len(chunk)
+                    if size>limit:raise PlexError('Plex歌词响应过大')
+                    chunks.append(chunk)
+                return b''.join(chunks)
+        except requests.RequestException:
+            raise PlexError('Plex歌词连接失败，请稍后重试') from None
+
+    def track_lyrics(self,track_id):
+        from .lyrics import MAX_LYRICS_BYTES,parse_plex_lyrics
+        track_id=str(track_id or '')
+        if not track_id.isdigit():raise PlexError('歌词曲目ID无效')
+        tracks=[row for row in self._xml(f'/library/metadata/{track_id}').findall('Track')
+                if str(row.get('ratingKey') or '')==track_id]
+        if len(tracks)!=1:raise PlexError('Plex歌词曲目不存在或不唯一')
+        streams=[stream for stream in tracks[0].findall('./Media/Part/Stream')
+                 if str(stream.get('streamType') or '')=='4'
+                 and str(stream.get('id') or '').isdigit()]
+        if not streams:return {'kind':'none','lines':[]}
+        selected=lambda row:str(row.get('selected') or '').strip().lower() in {'1','true','yes'}
+        streams.sort(key=lambda row:not selected(row))
+        stream_id=str(streams[0].get('id'))
+        payload=self._bounded_xml_bytes(f'/library/streams/{stream_id}',MAX_LYRICS_BYTES)
+        return parse_plex_lyrics(payload)
+
     def _audio_source(self, track_id):
         track_id = str(track_id or '')
         if not track_id.isdigit():raise PlexError('音频曲目ID无效')
@@ -366,6 +401,8 @@ class PlexClient:
             (container == 'flac' and codec in {'', 'flac'})
             or (container == 'mp3' and codec in {'', 'mp3'})
             or (container in {'m4a', 'mp4'} and codec in {'', 'aac', 'mp3'})
+            or (container == 'ogg' and codec in {'', 'vorbis', 'opus'})
+            or (container == 'opus' and codec in {'', 'opus'})
         )
         if browser_safe and offset_seconds == 0:
             headers = {'Range': range_header} if range_header else {}

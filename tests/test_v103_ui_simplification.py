@@ -62,14 +62,14 @@ class UISimplificationV103Tests(unittest.TestCase):
         task = page.by_id("task")
         for control in ("analyzeLibrary", "pause", "progressArea"):
             self.assertIn(task, page.by_id(control)["ancestors"])
-        heading = next(node for node in page.nodes if "library-page-head" in node["classes"])
-        self.assertIn(heading, page.by_id("incrementalAction")["ancestors"])
+        self.assertIn(task, page.by_id("incrementalAction")["ancestors"])
+        self.assertNotIn("library-page-head", html)
         self.assertNotIn('id="autoToggle"', html)
         self.assertNotIn("workflow-path", html)
         self.assertNotIn("<th>说明</th>", html)
         self.assertTrue(page.by_id("taskMessage")["hidden"])
         self.assertTrue(page.by_id("progressDetail")["hidden"])
-        self.assertTrue(page.by_id("nextStep")["hidden"])
+        self.assertNotIn('id="nextStep"', html)
 
     def test_plex_account_page_has_one_connection_module(self):
         page = self.parse("settings.html")

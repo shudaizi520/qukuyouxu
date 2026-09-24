@@ -15,23 +15,27 @@ class Element {
  querySelector(selector){for(const child of this.children){if(selector==='nav'&&child.tagName==='nav')return child;if(selector.startsWith('.')&&child.className.split(' ').includes(selector.slice(1)))return child;const nested=child.querySelector(selector);if(nested)return nested;}return null;}
 }
 
-function fixture(saved='',{blocked=false,embedded=false,parentWindow=null,frames=[],withActions=false}={}){
+function fixture(saved='',{blocked=false,embedded=false,parentWindow=null,frames=[],withActions=false,withSettingsPanel=false}={}){
  const header=new Element('header'),events={},storage={value:saved};
  let navigation=null,logout=null,status=null,settings=null;
+ const appearanceChoices=[];
  if(withActions){
   navigation=new Element('nav');status=new Element('a');settings=new Element('button');
   logout=new Element('button');logout.className='logout';
   navigation.append(status,settings);header.append(navigation,logout);
  }
+ if(withSettingsPanel){
+  for(const theme of ['light','warm','night']){const choice=new Element('button');choice.dataset.theme=theme;appearanceChoices.push(choice);}
+ }
  storage.getItem=()=>{if(blocked)throw Error('storage blocked');return storage.value;};
  storage.setItem=(_key,value)=>{if(blocked)throw Error('storage blocked');storage.value=value;};
  const document={documentElement:{dataset:{}},querySelector:selector=>selector==='.topbar'?header:null,
-  querySelectorAll:selector=>selector==='iframe'?frames:[],
+  querySelectorAll:selector=>selector==='iframe'?frames:selector==='[data-appearance-choice]'?appearanceChoices:[],
   createElement:tag=>new Element(tag),addEventListener:(name,fn)=>{events[name]=fn;}};
  const window={location:{search:''},localStorage:storage,events:{},addEventListener(name,fn){this.events[name]=fn;}};
  window.self=window;window.top=embedded?{}:window;window.parent=parentWindow||window;
  new Function('window','document','URLSearchParams',source)(window,document,URLSearchParams);
- return {window,document,header,events,storage,navigation,logout,status,settings,mount:()=>events.DOMContentLoaded()};
+ return {window,document,header,events,storage,navigation,logout,status,settings,appearanceChoices,mount:()=>events.DOMContentLoaded()};
 }
 
 test('invalid or blocked storage falls back to the readable light theme',()=>{
@@ -73,29 +77,26 @@ test('embedded tools inherit the theme without a duplicate clothing control',()=
  assert.equal(setup.header.children.length,0);
 });
 
-test('one top-right menu contains navigation, appearance, and logout',()=>{
+test('the top-right menu control is the existing direct settings action without a popup',()=>{
  const setup=fixture('',{withActions:true});setup.mount();
- const picker=setup.header.children.at(-1),trigger=picker.children[0],menu=picker.children[1];
  assert.equal(setup.navigation.hidden,true);
- assert.equal(trigger.getAttribute('aria-label'),'打开菜单');
- assert.equal(setup.status.parentNode,menu);
- assert.equal(setup.settings.parentNode,menu);
- assert.equal(setup.logout.parentNode,menu);
- trigger.events.click();
- assert.equal(menu.hidden,false);
- setup.settings.events.click();
- assert.equal(menu.hidden,true);
- assert.equal(trigger.focused,true);
+ assert.equal(setup.settings.parentNode,setup.header);
+ assert.equal(setup.settings.getAttribute('aria-label'),'打开全部设置');
+ assert.match(setup.settings.className,/appearance-trigger/);
+ assert.equal(setup.header.querySelector('.appearance-menu'),null);
+ assert.equal(setup.logout.parentNode,setup.navigation);
 });
 
-test('open menu leaves arrow keys alone when focus is outside it',()=>{
- const setup=fixture('',{withActions:true});setup.mount();
- const picker=setup.header.children.at(-1),trigger=picker.children[0];
- trigger.events.click();
- setup.document.activeElement=new Element('input');
- let prevented=false;
- setup.events.keydown({key:'ArrowDown',preventDefault(){prevented=true;}});
- assert.equal(prevented,false);
+test('appearance choices live in settings and update the parent workspace immediately',()=>{
+ const frames=[];
+ const parent=fixture('',{frames});parent.mount();
+ const child=fixture('',{embedded:true,parentWindow:parent.window,withSettingsPanel:true});
+ frames.push({contentWindow:child.window});child.mount();
+ assert.equal(child.appearanceChoices[0].getAttribute('aria-pressed'),'true');
+ child.appearanceChoices[1].events.click();
+ assert.equal(parent.window.PCHAppearance.getTheme(),'warm');
+ assert.equal(child.document.documentElement.dataset.appearance,'warm');
+ assert.equal(child.appearanceChoices[1].getAttribute('aria-pressed'),'true');
 });
 
 test('blocked storage still synchronizes a parent theme with embedded tools',()=>{

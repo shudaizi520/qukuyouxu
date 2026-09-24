@@ -1,0 +1,66 @@
+/* Import workspace: a quiet settings area followed by playlist-style results. */
+body[data-view=external]{font-family:"Segoe UI Variable Text","Microsoft YaHei UI","Microsoft YaHei","PingFang SC","Noto Sans CJK SC",system-ui,sans-serif;font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased}
+body[data-view=external] .external-shell,.pch-embedded body[data-view=external] .external-shell{width:100%;max-width:none;margin:0;padding:30px clamp(24px,4vw,72px) 56px}
+body[data-view=external] .external-page-title{margin:0 0 24px!important}
+body[data-view=external] .external-page-title h1{font-size:30px;font-weight:650;letter-spacing:-.02em}
+body[data-view=external] .external-import-card,body[data-view=external] .external-workspace{width:100%;max-width:none;margin:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}
+body[data-view=external] .external-import-card{margin-bottom:22px}
+body[data-view=external] .external-import-form{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:18px;padding:2px 0}
+body[data-view=external] .external-url-field{display:grid;grid-template-columns:116px minmax(0,1fr);align-items:center;gap:18px}
+body[data-view=external] .external-url-field>span{font-size:14px;font-weight:600}
+body[data-view=external] .external-url-field input{height:42px;padding:8px 14px;border:0;border-radius:8px;background:var(--theme-soft);box-shadow:none;color:var(--theme-text)}
+body[data-view=external] .external-url-field input:focus{outline:2px solid color-mix(in srgb,var(--theme-accent) 32%,transparent);outline-offset:1px}
+body[data-view=external] .external-command-actions{display:flex;align-items:center;justify-content:flex-end;gap:18px}
+body[data-view=external] .external-file-action,body[data-view=external] .external-text-action{min-height:auto;padding:7px 0;border:0;border-radius:0;background:transparent;box-shadow:none;color:var(--theme-accent);font-weight:600;cursor:pointer}
+body[data-view=external] .external-file-action:hover,body[data-view=external] .external-text-action:hover{text-decoration:underline;text-underline-offset:4px}
+body[data-view=external] .external-file-name{margin:8px 0 0;padding-left:134px;color:var(--theme-muted);font-size:12px}
+body[data-view=external] .external-settings{margin-bottom:20px}
+body[data-view=external] .external-command-bar{position:relative;display:grid;grid-template-columns:116px minmax(0,1fr) auto;align-items:center;gap:18px;min-height:62px;width:100%;max-width:none;margin:0;padding:10px 0;border:0;background:transparent}
+body[data-view=external] .external-command-bar+.external-command-bar::before{content:"";position:absolute;top:0;right:0;left:134px;height:1px;background:var(--theme-line);opacity:.68}
+body[data-view=external] .external-command-bar>label:first-child,body[data-view=external] #replenishmentCard>strong{font-size:14px;font-weight:600}
+body[data-view=external] .external-command-main{display:flex;align-items:center;gap:12px;min-width:0}
+body[data-view=external] .external-command-bar :is(select,input:not([type=checkbox])){width:100%;max-width:720px;height:40px;padding:7px 2px;border:0;border-bottom:1px solid var(--theme-line);border-radius:0;background:transparent;box-shadow:none;color:var(--theme-text)}
+body[data-view=external] .external-state{margin:0;padding:4px 8px;white-space:nowrap}
+body[data-view=external] .external-follow-label{display:flex;align-items:center;gap:7px;white-space:nowrap;font-size:13px}
+body[data-view=external] .external-follow-label input{width:17px;height:17px}
+body[data-view=external] .external-detail-card{margin:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}
+body[data-view=external] .external-counts{display:flex;align-items:center;gap:30px;margin:0 0 8px}
+body[data-view=external] .external-count-tab,body[data-view=external] .external-count-tab:hover:not(:disabled),body[data-view=external] .external-count-tab:focus-visible{display:flex;align-items:baseline;gap:7px;min-width:0;padding:8px 1px 11px;border:0;border-bottom:3px solid transparent;border-radius:0;background:transparent;box-shadow:none;color:var(--theme-muted)}
+body[data-view=external] .external-count-tab strong{font-size:15px;font-weight:650;color:inherit}
+body[data-view=external] .external-count-tab.active{border-bottom-color:var(--theme-accent);color:var(--theme-accent)}
+body[data-view=external] .external-review-toolbar{min-height:48px;padding:8px 0;border:0;background:transparent}
+body[data-view=external] .external-track-column-head,body[data-view=external] .external-track-row{display:grid;grid-template-columns:44px minmax(220px,1.3fr) minmax(140px,.8fr) minmax(170px,1fr) 64px;align-items:center;gap:16px;min-width:0}
+body[data-view=external] .external-detail-card[data-status=review] .external-track-column-head,body[data-view=external] .external-detail-card[data-status=review] .external-track-row{grid-template-columns:44px minmax(200px,1.15fr) minmax(120px,.7fr) minmax(150px,.85fr) 64px minmax(240px,.9fr)}
+body[data-view=external] .external-track-column-head{position:static;height:40px;padding:0 10px;border:0;background:transparent;color:var(--theme-muted);font-size:12px}
+body[data-view=external] .external-track-row{min-height:58px;padding:8px 10px;border:0;border-radius:7px;background:transparent}
+body[data-view=external] .external-track-row:hover{background:color-mix(in srgb,var(--theme-soft) 58%,transparent)}
+body[data-view=external] .external-track-row.external-track-playable{cursor:pointer}
+body[data-view=external] .external-track-row.external-track-playable:focus-visible{outline:2px solid color-mix(in srgb,var(--theme-accent) 55%,transparent);outline-offset:-2px;background:color-mix(in srgb,var(--theme-soft) 58%,transparent)}
+body[data-view=external] .external-track-row.external-track-missing{grid-template-columns:44px minmax(0,1fr)}
+body[data-view=external] .external-track-number{color:var(--theme-muted);font-variant-numeric:tabular-nums;text-align:center}
+body[data-view=external] .external-track-identity strong{font-size:14px;font-weight:600}
+body[data-view=external] :is(.external-track-artist,.external-track-album,.external-track-duration){min-width:0;overflow:hidden;color:var(--theme-muted);font-size:13px;text-overflow:ellipsis;white-space:nowrap}
+body[data-view=external] .external-track-duration{font-variant-numeric:tabular-nums}
+body[data-view=external] .external-track-actions{display:flex;align-items:center;gap:10px;min-width:0}
+body[data-view=external] .external-candidate-select{width:100%;min-width:0;height:36px;border:0;border-bottom:1px solid var(--theme-line);border-radius:0;background:transparent;color:var(--theme-text)}
+body[data-view=external] .external-paging{display:flex;justify-content:center;align-items:center;gap:14px;margin:18px 0 0}
+body[data-view=external] .external-paging .secondary{min-height:auto;padding:7px 4px;border:0;background:transparent;box-shadow:none;color:var(--theme-accent)}
+
+@media(max-width:900px){
+ body[data-view=external] .external-command-bar{grid-template-columns:100px minmax(0,1fr)}
+ body[data-view=external] .external-command-bar>.external-command-actions{grid-column:2;justify-content:flex-start}
+ body[data-view=external] .external-track-column-head,body[data-view=external] .external-track-row,body[data-view=external] .external-detail-card[data-status=review] .external-track-column-head,body[data-view=external] .external-detail-card[data-status=review] .external-track-row{grid-template-columns:38px minmax(180px,1.3fr) minmax(120px,.8fr) minmax(220px,1fr)}
+ body[data-view=external] .external-track-column-head span:nth-child(4),body[data-view=external] .external-track-column-head span:nth-child(5),body[data-view=external] .external-track-album,body[data-view=external] .external-track-duration{display:none}
+ body[data-view=external] .external-detail-card[data-status=review] .external-track-actions{grid-column:4}
+}
+@media(max-width:640px){
+ body[data-view=external] .external-shell,.pch-embedded body[data-view=external] .external-shell{padding:20px 16px 38px}
+ body[data-view=external] .external-import-form,body[data-view=external] .external-url-field,body[data-view=external] .external-command-bar{grid-template-columns:1fr;gap:7px}
+ body[data-view=external] .external-import-form>.external-command-actions,body[data-view=external] .external-command-bar>.external-command-actions{grid-column:1;justify-content:flex-start}
+ body[data-view=external] .external-file-name{padding-left:0}
+ body[data-view=external] .external-command-bar+.external-command-bar::before{left:0}
+ body[data-view=external] .external-track-column-head,body[data-view=external] .external-track-row,body[data-view=external] .external-detail-card[data-status=review] .external-track-column-head,body[data-view=external] .external-detail-card[data-status=review] .external-track-row{grid-template-columns:30px minmax(0,1fr) auto;gap:9px}
+ body[data-view=external] .external-track-column-head span:nth-child(3),body[data-view=external] .external-track-artist{display:none}
+ body[data-view=external] .external-detail-card[data-status=review] .external-track-actions{grid-column:2/-1}
+ body[data-view=external] .external-track-missing{grid-template-columns:30px minmax(0,1fr)!important}
+}

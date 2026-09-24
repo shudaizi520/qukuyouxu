@@ -117,6 +117,44 @@ class PlaylistInventoryTests(unittest.TestCase):
                 self.assertFalse(row["can_add_tracks"])
         external = assistant_playlist_row({"kind": "external", "playlist_id": "91", "key": "external"})
         self.assertTrue(external["can_add_tracks"])
+        self.assertTrue(external["can_rename"])
+
+    def test_sidebar_groups_keep_personal_playlists_together_without_assistant_duplicates(self):
+        from helper.playlist_inventory import assistant_playlist_row, native_playlist_row
+
+        favorite = assistant_playlist_row({"kind": "favorite", "key": "liked"})
+        external = assistant_playlist_row({"kind": "external", "key": "source", "playlist_id": "8"})
+        daily = assistant_playlist_row({"kind": "daily", "key": "daily", "playlist_id": "9"})
+        category = assistant_playlist_row({"kind": "category", "key": "base:国语", "playlist_id": "10"})
+        manual = native_playlist_row({"ratingKey": "11", "title": "自建", "smart": "0"})
+        smart = native_playlist_row({"ratingKey": "12", "title": "规则", "smart": "1"})
+
+        self.assertEqual("favorite", favorite["sidebar_group"])
+        self.assertEqual("personal", external["sidebar_group"])
+        self.assertEqual("personal", manual["sidebar_group"])
+        self.assertEqual("plex_smart", smart["sidebar_group"])
+        self.assertEqual("", daily["sidebar_group"])
+        self.assertEqual("", category["sidebar_group"])
+
+    def test_inventory_uses_the_same_fixed_playlist_priority_as_the_interface(self):
+        from helper.playlist_inventory import order_playlist_rows
+
+        rows = [
+            {"kind": "category", "key": "base:国语"},
+            {"kind": "smart", "key": "time_capsule"},
+            {"kind": "plex", "key": "90"},
+            {"kind": "smart", "key": "weekly"},
+            {"kind": "external", "key": "qq-1"},
+            {"kind": "favorite", "key": "liked"},
+            {"kind": "daily", "key": "daily"},
+        ]
+
+        ordered = order_playlist_rows(rows)
+
+        self.assertEqual(
+            ["daily", "liked", "90", "qq-1", "weekly", "time_capsule", "base:国语"],
+            [row["key"] for row in ordered],
+        )
 
     def writable_engine(self):
         store = _Store({

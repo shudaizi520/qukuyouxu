@@ -18,7 +18,10 @@ class ReleaseVersionTests(unittest.TestCase):
                 html = (ROOT / "src/helper/static" / name).read_text(encoding="utf-8")
                 pages.append(html)
                 self.assertIn("?v=2.0.6", html)
-                self.assertIn(">v2.0.6<", html)
+                if name == "settings.html":
+                    self.assertIn(">v2.0.6<", html)
+                else:
+                    self.assertNotIn('id="version"', html)
         self.assertNotIn("1.4.5", "".join(pages))
 
     def test_release_notes_describe_external_playlist_workflow_and_limits(self):

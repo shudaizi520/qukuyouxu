@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {createPlaylistSections} from '../src/helper/static/playlist-sections.js';
+import {createPlaylistSections,groupPlaylists,orderPlaylists} from '../src/helper/static/playlist-sections.js';
 
 class FakeClassList {
  constructor(){this.values=new Set();}
@@ -18,14 +18,51 @@ class FakeElement {
 const elements=new Map([
  ['customPlaylistList',new FakeElement('nav')],
  ['playlistSectionCards',new FakeElement()],
- ['playlistSectionTitle',new FakeElement('h1')],
- ['playlistSectionSettings',new FakeElement('button')],
+ ['playlistSectionTitle',new FakeElement('button')],
 ]);
 const document={
  createElement:tag=>new FakeElement(tag),
  getElementById:id=>elements.get(id),
 };
 const smart={section:'smart',kind:'daily',key:'daily',title:'每日推荐',can_play:true,count:50};
+
+test('playlists keep the user-defined cross-section priority',()=>{
+ const input=[
+  {section:'library',kind:'category',key:'base:国语'},
+  {section:'smart',kind:'smart',key:'time_capsule'},
+  {section:'custom',kind:'plex',key:'90'},
+  {section:'smart',kind:'smart',key:'weekly'},
+ {section:'custom',kind:'external',key:'qq-1'},
+  {section:'custom',kind:'plex',key:'91',smart:true},
+  {section:'custom',kind:'favorite',key:'liked'},
+  {section:'smart',kind:'daily',key:'daily'},
+ ];
+
+ const ordered=orderPlaylists(input);
+ assert.deepEqual(ordered.map(row=>row.key),[
+  'daily','liked','90','qq-1','91','weekly','time_capsule','base:国语',
+ ]);
+ const groups=groupPlaylists(input);
+ assert.deepEqual(groups.all.map(row=>row.key),ordered.map(row=>row.key));
+ assert.deepEqual(groups.smart.map(row=>row.key),['daily','weekly','time_capsule']);
+ assert.deepEqual(groups.custom.map(row=>row.key),['liked','90','qq-1','91']);
+ assert.deepEqual(groups.library.map(row=>row.key),['base:国语']);
+ assert.deepEqual(groups.sidebar.map(row=>row.key),['liked','90','qq-1','91']);
+});
+
+test('sidebar omits assistant-generated playlists and keeps personal before Plex rules',()=>{
+ const input=[
+  {section:'custom',kind:'plex',key:'rule',smart:true,title:'四星'},
+  {section:'smart',kind:'daily',key:'daily',title:'每日推荐'},
+  {section:'library',kind:'category',key:'base:国语',title:'国语'},
+  {section:'custom',kind:'plex',key:'manual',smart:false,title:'自建'},
+  {section:'smart',kind:'smart',key:'weekly',title:'每周常听'},
+  {section:'custom',kind:'external',key:'imported',title:'导入'},
+  {section:'custom',kind:'favorite',key:'liked',title:'我喜欢'},
+ ];
+ const groups=groupPlaylists(input);
+ assert.deepEqual(groups.sidebar.map(row=>row.key),['liked','manual','imported','rule']);
+});
 
 test('artwork nodes are reused only inside the same full profile scope',()=>{
  const sections=createPlaylistSections({

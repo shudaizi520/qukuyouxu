@@ -27,14 +27,21 @@ def _with_favicon(source):
 
 def render_versioned_html(source, version, defer_version=False):
     marker = '<small id="version">'
-    if source.count(marker) != 1:
-        raise RuntimeError("HTML page must contain exactly one version slot")
-    start = source.index(marker) + len(marker)
-    end = source.find("</small>", start)
-    if end < 0:
-        raise RuntimeError("HTML version slot is not closed")
     value = "" if defer_version else "v" + str(version)
-    rendered = _with_favicon(source[:start] + value + source[end:])
+    visible_slots = source.count(marker)
+    if visible_slots > 1:
+        raise RuntimeError("HTML page must not contain multiple visible version slots")
+    rendered = source
+    if visible_slots:
+        start = rendered.index(marker) + len(marker)
+        end = rendered.find("</small>", start)
+        if end < 0:
+            raise RuntimeError("HTML version slot is not closed")
+        rendered = rendered[:start] + value + rendered[end:]
+    meta = re.compile(r'(<meta\s+name="app-version"\s+content=")[^"]*(")', re.I)
+    if meta.search(rendered):
+        rendered = meta.sub(lambda match: match.group(1) + str(version) + match.group(2), rendered, count=1)
+    rendered = _with_favicon(rendered)
     asset = re.compile(r'((?:href|src)="/static/[^"?]+)\?v=[^"]*')
     return asset.sub(lambda match: match.group(1) + "?v=" + str(version), rendered)
 

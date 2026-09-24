@@ -17,7 +17,7 @@ function renderSections(rows,saved){
  for(const row of Array.isArray(rows)?rows:[]){if(row.type&&row.type!=='artist')continue;const id=String(row.id??row.key??'').trim();if(!/^\d+$/.test(id)||seen.has(id))continue;seen.add(id);const o=document.createElement('option');o.value=id;o.textContent=(row.title||'音乐资料库')+' · '+id;select.append(o);}
  const value=String(saved||'');if(value&&!seen.has(value)){const o=document.createElement('option');o.value=value;o.textContent='已保存的音乐资料库 · '+value;select.append(o);}
  if(!value){const o=document.createElement('option');o.value='';o.textContent=seen.size?'请选择音乐资料库':'请先连接 Plex';select.prepend(o);}
- select.value=value;$('sectionHint').textContent=seen.size?'已读取 '+seen.size+' 个音乐资料库。':'尚未读取资料库。';
+ select.value=value;
 }
 function renderOfficialSections(rows,saved){
  const select=$('officialSection');select.replaceChildren();const seen=new Set();
@@ -84,7 +84,6 @@ function renderProfiles(data){
 function render(s,saved){
  current=s;const c=s.settings||{};
  $('version').textContent='v'+s.version;$('plexUrl').value=c.plex_url||'';$('accountLabel').value=c.account_label||'';$('plexToken').value='';
- $('tokenHint').textContent=c.token_present?'Plex Token 已保存；不修改时留空。':'尚未保存 Plex Token。';
  renderSavedConnection(saved);renderWebhook(s.webhook);
  renderSections(s.plex_connection?.sections,c.section);renderOfficialSections(s.plex_connection?.sections,c.section);
  $('accountName').textContent=PCHAuth.status().username||'admin';
@@ -262,7 +261,7 @@ $('testPlex').onclick=()=>action(async()=>{const r=await post('/api/plex/check',
 for(const id of ['dailyAutomationHour','smartIntervalDays','smartAutomationHour','libraryAutomationEnabled','libraryAutomationHour']){$(id).onchange=()=>action(async()=>{try{const saved=await post('/api/automation',automationPayload());renderAutomation(saved);}finally{await refresh();}});}
 $('copyWebhook').onclick=()=>action(async()=>{await copyWebhookAddress();note('地址已复制。');});
 $('passwordForm').onsubmit=e=>{e.preventDefault();action(async()=>{const a=$('newPassword').value,b=$('confirmPassword').value;if(a!==b)throw Error('两次输入的新密码不一致');const r=await post('/api/auth/password',{current_password:$('currentPassword').value,new_password:a,confirm_password:b});$('currentPassword').value='';$('newPassword').value='';$('confirmPassword').value='';note(r.message+'，其它旧登录会话已退出。');});};
-async function boot(){const panel=location.hash.slice(1);try{await refresh();await resumePlexLogin();}catch(e){note(e.message,true);}if(settingsAnchors[panel])showSettingsPanel(panel,false);startWebhookPolling();}
+async function boot(){const panel=new URLSearchParams(location.search).get('panel')||location.hash.slice(1);try{await refresh();await resumePlexLogin();}catch(e){note(e.message,true);}if(settingsAnchors[panel])showSettingsPanel(panel,false);startWebhookPolling();}
 window.addEventListener('pch-auth-ready',boot);window.addEventListener('pch-auth-login',boot);window.addEventListener('pch-auth-logout',()=>{plexPin='';stopPlexPolling();});
 window.addEventListener('pagehide',()=>{stopPlexPolling();stopProfileStatusPolling();clearInterval(webhookTimer);webhookTimer=null;});
 window.addEventListener('visibilitychange',()=>{if(document.hidden){stopPlexPolling();stopProfileStatusPolling();}else{if(plexPin)schedulePlexPolling(0);scheduleProfileStatusPoll();}});

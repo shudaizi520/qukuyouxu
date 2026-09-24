@@ -46,6 +46,172 @@ class _Plex:
 
 
 class RecoveryRegressionTests(unittest.TestCase):
+    def managed_engine(self, root, current_ids=("1", "3")):
+        from helper.engine import Engine, fingerprint
+        from helper.store import Store
+
+        store = Store(Path(root))
+        settings = store.get("settings")
+        settings.update(plex_url="http://plex:32400", plex_token="secret", section="15")
+        store.set("settings", settings)
+        engine = Engine(store)
+        marker = engine.marker("base:djmix")
+        expected = {
+            "id": "p1", "title": "DJ混音", "summary": marker,
+            "items": [
+                {"id": "1", "item_id": "a"},
+                {"id": "2", "item_id": "b"},
+                {"id": "3", "item_id": "c"},
+            ],
+        }
+        expected_by_id = {row["id"]: row for row in expected["items"]}
+        current = {
+            **expected,
+            "items": [
+                dict(expected_by_id.get(value, {"id": value, "item_id": "external-" + value}))
+                for value in current_ids
+            ],
+        }
+        plex = _Plex(current)
+        engine.plex_factory = lambda _cfg: plex
+        snapshot = {
+            "id": "base-write-1", "kind": "base", "category_id": "base:djmix",
+            "title": "DJ混音", "status": "applied", "created_at": 1,
+            "before": None, "after": expected, "marker": marker,
+        }
+        engine._save_snapshot(snapshot)
+        store.set("managed", {"base:djmix": {
+            "id": "p1", "title": "DJ混音", "fingerprint": fingerprint(expected),
+            "snapshot_id": snapshot["id"],
+        }})
+        store.set("catalog", [
+            {"id": value, "title": "歌曲" + value, "available": True}
+            for value in ("1", "2", "3", "4")
+        ])
+        return store, engine, plex, expected
+
+    def test_accepting_external_removal_records_a_stable_manual_exclusion(self):
+        from helper.daily_mix_v036 import managed_playlist_rows, reconcile_managed_playlist
+        from helper.engine import fingerprint
+
+        with tempfile.TemporaryDirectory() as root:
+            store, engine, plex, _expected = self.managed_engine(root)
+            row = managed_playlist_rows(engine)[0]
+            self.assertTrue(row["can_accept_changes"])
+            self.assertTrue(row["can_restore_changes"])
+
+            result = reconcile_managed_playlist(engine, "base:djmix", "accept")
+
+            self.assertIn("保留", result["message"])
+            self.assertEqual(["2"], store.get("playlist_manual_edits")["category:base:djmix"]["exclude"])
+            self.assertEqual(fingerprint(plex.playlist_state("p1")), store.get("managed")["base:djmix"]["fingerprint"])
+            self.assertEqual("正常", managed_playlist_rows(engine)[0]["status"])
+
+    def test_marked_playlist_with_manually_changed_members_can_still_be_explicitly_deleted(self):
+        from helper.daily_mix_v036 import managed_playlist_rows, remove_managed_playlist
+
+        with tempfile.TemporaryDirectory() as root:
+            store, engine, _plex, _expected = self.managed_engine(root, current_ids=("1", "3"))
+            row = managed_playlist_rows(engine)[0]
+            self.assertTrue(row["safe_to_remove"])
+            self.assertIn("手动修改", row["status"])
+
+            result = remove_managed_playlist(engine, "base:djmix", "DJ混音")
+
+            self.assertIn("音乐文件未删除", result["message"])
+            self.assertEqual({}, store.get("managed"))
+            snapshot = next(item for item in store.get("snapshots") if item["id"] == result["snapshot_id"])
+            self.assertEqual(["1", "3"], [item["id"] for item in snapshot["before"]["items"]])
+
+    def test_explicit_delete_still_rejects_missing_marker_protected_title_and_scope_mismatch(self):
+        from helper.daily_mix_v036 import remove_managed_playlist
+        from helper.engine import SafetyError
+
+        cases = ("marker", "protected", "scope")
+        for case in cases:
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as root:
+                store, engine, plex, _expected = self.managed_engine(root, current_ids=("1", "3"))
+                if case == "marker":
+                    plex.state["summary"] = ""
+                    message = "标记"
+                elif case == "protected":
+                    plex.state["title"] = "我喜欢"
+                    message = "永久保护"
+                else:
+                    managed = store.get("managed")
+                    managed["base:djmix"]["scope"] = "another-library"
+                    store.set("managed", managed)
+                    message = "资料库"
+                with self.assertRaisesRegex(SafetyError, message):
+                    remove_managed_playlist(engine, "base:djmix", plex.state["title"])
+                self.assertIn("base:djmix", store.get("managed"))
+
+    def test_failed_plex_delete_keeps_the_local_managed_record(self):
+        from helper.daily_mix_v036 import remove_managed_playlist
+        from helper.engine import SafetyError
+
+        with tempfile.TemporaryDirectory() as root:
+            store, engine, plex, _expected = self.managed_engine(root, current_ids=("1", "3"))
+            def fail_delete(_playlist_id):
+                raise RuntimeError("Plex refused")
+            plex.delete_playlist = fail_delete
+
+            with self.assertRaisesRegex(SafetyError, "需要人工核对"):
+                remove_managed_playlist(engine, "base:djmix", "DJ混音")
+
+            self.assertIn("base:djmix", store.get("managed"))
+            self.assertEqual("uncertain", store.get("snapshots")[-1]["status"])
+
+    def test_restoring_external_removal_readds_missing_members_and_updates_fingerprint(self):
+        from helper.daily_mix_v036 import reconcile_managed_playlist
+        from helper.engine import fingerprint
+
+        with tempfile.TemporaryDirectory() as root:
+            store, engine, plex, _expected = self.managed_engine(root)
+
+            result = reconcile_managed_playlist(engine, "base:djmix", "restore")
+
+            self.assertIn("恢复", result["message"])
+            self.assertEqual({"1", "2", "3"}, {row["id"] for row in plex.state["items"]})
+            self.assertEqual(fingerprint(plex.playlist_state("p1")), store.get("managed")["base:djmix"]["fingerprint"])
+
+    def test_reconciliation_rejects_external_additions_and_reordering(self):
+        from helper.daily_mix_v036 import reconcile_managed_playlist
+        from helper.engine import SafetyError
+
+        for current_ids in (("1", "2", "3", "4"), ("2", "1", "3")):
+            with self.subTest(current_ids=current_ids), tempfile.TemporaryDirectory() as root:
+                _store, engine, _plex, _expected = self.managed_engine(root, current_ids=current_ids)
+                with self.assertRaisesRegex(SafetyError, "只能处理.*删除"):
+                    reconcile_managed_playlist(engine, "base:djmix", "accept")
+
+    def test_base_playlist_can_stop_maintenance_without_a_theme_source(self):
+        from helper.daily_mix_v036 import disable_managed_playlist, managed_playlist_rows
+
+        with tempfile.TemporaryDirectory() as root:
+            store, engine, _plex, _expected = self.managed_engine(root, current_ids=("1", "2", "3"))
+
+            result = disable_managed_playlist(engine, "base:djmix")
+
+            self.assertIn("停止维护", result["message"])
+            self.assertEqual(["base:djmix"], store.get("managed_disabled_categories"))
+            self.assertFalse(managed_playlist_rows(engine)[0]["enabled"])
+
+    def test_stopped_base_playlist_can_resume_maintenance(self):
+        from helper.daily_mix_v036 import (
+            disable_managed_playlist, enable_managed_playlist, managed_playlist_rows,
+        )
+
+        with tempfile.TemporaryDirectory() as root:
+            store, engine, _plex, _expected = self.managed_engine(root, current_ids=("1", "2", "3"))
+            disable_managed_playlist(engine, "base:djmix")
+
+            result = enable_managed_playlist(engine, "base:djmix")
+
+            self.assertIn("恢复维护", result["message"])
+            self.assertEqual([], store.get("managed_disabled_categories"))
+            self.assertTrue(managed_playlist_rows(engine)[0]["enabled"])
+
     def test_daily_restore_completes_when_plex_preserves_membership_in_its_own_order(self):
         from helper.engine import Engine, fingerprint
         from helper.store import Store

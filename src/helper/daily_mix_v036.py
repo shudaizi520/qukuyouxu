@@ -92,12 +92,71 @@ def _managed_source(store, category_id):
     return next((row for row in store.get("sources", []) if row.get("id") == category_id), None)
 
 
+def _disabled_categories(store):
+    return {
+        str(value) for value in (store.get("managed_disabled_categories", []) or [])
+        if str(value)
+    }
+
+
+def _expected_managed_state(engine, category_id, record, current):
+    """Return the last proven state and removed IDs for a removal-only external edit."""
+    from .engine import SafetyError, fingerprint, state_ids
+
+    if (str(current.get("id") or "") != str(record.get("id") or "")
+            or str(current.get("title") or "") != str(record.get("title") or "")
+            or engine.marker(category_id) not in str(current.get("summary") or "")):
+        raise SafetyError("歌单名称、标识或助手管理标记已经变化，不能自动处理")
+    snapshot_id = str(record.get("snapshot_id") or "")
+    snapshot = next(
+        (row for row in (engine.store.get("snapshots", []) or [])
+         if str(row.get("id") or "") == snapshot_id),
+        None,
+    )
+    expected = (snapshot or {}).get("after") or {}
+    if (not expected or fingerprint(expected) != record.get("fingerprint")
+            or str(expected.get("id") or "") != str(record.get("id") or "")
+            or str(expected.get("title") or "") != str(record.get("title") or "")
+            or engine.marker(category_id) not in str(expected.get("summary") or "")):
+        raise SafetyError("找不到该歌单最后一次可信快照，不能自动处理")
+    expected_ids = state_ids(expected)
+    current_ids = state_ids(current)
+    if (len(set(expected_ids)) != len(expected_ids)
+            or len(set(current_ids)) != len(current_ids)):
+        raise SafetyError("歌单含有重复歌曲，不能自动处理")
+    iterator = iter(expected_ids)
+    if not all(any(value == candidate for candidate in iterator) for value in current_ids):
+        raise SafetyError("只能处理在 Plex 外部删除歌曲的情况；检测到新增或顺序变化")
+    current_set = set(current_ids)
+    removed = [value for value in expected_ids if value not in current_set]
+    if not removed:
+        raise SafetyError("没有检测到可接受或恢复的外部删除")
+    return snapshot, expected, removed
+
+
+def _managed_scope_error(engine, record, current, identity):
+    if str(current.get("id") or "") != str(record.get("id") or ""):
+        return "Plex 歌单标识不一致"
+    if record.get("title") and str(current.get("title") or "") != str(record.get("title") or ""):
+        return "歌单名称与托管记录不一致"
+    snapshot = next((row for row in engine.store.get("snapshots", [])
+                     if str(row.get("id") or "") == str(record.get("snapshot_id") or "")), {})
+    expected_machine = str(record.get("machine") or snapshot.get("machine") or "")
+    if expected_machine and expected_machine != str(identity.get("machine") or ""):
+        return "Plex 服务器身份与托管记录不一致"
+    expected_scope = str(record.get("scope") or snapshot.get("scope") or "")
+    if expected_scope and expected_scope != str(engine.daily_scope() or ""):
+        return "音乐资料库身份与托管记录不一致"
+    return ""
+
+
 def managed_playlist_rows(engine):
     from .engine import fingerprint, safe_error
     from .managed_cleanup_v0317 import is_confirmed_missing
     store = engine.store
     managed = store.get("managed", {}) or {}
     sources = {row.get("id"): row for row in store.get("sources", [])}
+    disabled = _disabled_categories(store)
     if not managed:
         return []
     plex = engine.plex_factory(store.get("settings"))
@@ -109,10 +168,12 @@ def managed_playlist_rows(engine):
             "category_id": category_id,
             "playlist_id": str(record.get("id") or ""),
             "title": str(record.get("title") or source.get("name") or ""),
-            "enabled": source.get("enabled", True) is not False,
+            "enabled": category_id not in disabled and source.get("enabled", True) is not False,
             "count": None,
             "safe_to_remove": False,
             "safe_to_forget": False,
+            "can_accept_changes": False,
+            "can_restore_changes": False,
             "status": "需要核对",
             "machine": identity.get("machine", ""),
         }
@@ -120,12 +181,23 @@ def managed_playlist_rows(engine):
             current = plex.playlist_state(record["id"])
             marker_ok = engine.marker(category_id) in current.get("summary", "")
             unchanged = fingerprint(current) == record.get("fingerprint")
+            scope_error = _managed_scope_error(engine, record, current, identity)
+            removable = marker_ok and not scope_error and current.get("title") not in PROTECTED_TITLES
             row.update(
                 title=current.get("title", row["title"]),
                 count=len(current.get("items", [])),
-                safe_to_remove=bool(marker_ok and unchanged and current.get("title") not in PROTECTED_TITLES),
-                status="正常" if marker_ok and unchanged else "已手动修改，受到保护",
+                safe_to_remove=bool(removable),
+                status=("正常" if marker_ok and unchanged and not scope_error else
+                        "已手动修改，可删除或核对" if removable else
+                        scope_error or "助手管理标记缺失，需要核对"),
             )
+            if marker_ok and not scope_error and not unchanged:
+                try:
+                    _expected_managed_state(engine, category_id, record, current)
+                    row["can_accept_changes"] = True
+                    row["can_restore_changes"] = True
+                except Exception:
+                    pass
         except Exception as exc:
             row["safe_to_forget"] = is_confirmed_missing(exc)
             row["status"] = "Plex 中已不存在，可清除本地记录" if row["safe_to_forget"] else safe_error(exc)
@@ -139,22 +211,143 @@ def disable_managed_playlist(engine, category_id):
         from .engine import SafetyError
         raise SafetyError("这不是助手托管的分类歌单")
     sources = store.get("sources", [])
-    changed = False
     for source in sources:
         if source.get("id") == category_id:
             source["enabled"] = False
             source["approved"] = False
-            changed = True
-    if not changed:
-        from .engine import SafetyError
-        raise SafetyError("找不到该歌单的分类来源，未修改")
-    store.set_many({"sources": sources, "plan": None})
+    disabled = _disabled_categories(store)
+    disabled.add(category_id)
+    plan = store.get("plan")
+    base_plan = store.get("base_plan")
+    if plan and not plan.get("applied"):
+        plan = {**plan, "invalidated_reason": "歌单维护状态已变化，请重新整理预览。"}
+    if base_plan and not base_plan.get("applied"):
+        base_plan = {**base_plan, "invalidated_reason": "歌单维护状态已变化，请重新整理预览。"}
+    store.set_many({
+        "sources": sources,
+        "managed_disabled_categories": sorted(disabled),
+        "plan": plan,
+        "base_plan": base_plan,
+    })
     store.log("已停止维护分类歌单：" + str((store.get("managed") or {})[category_id].get("title") or category_id))
     return {"message": "已停止维护；Plex 中的歌单和歌曲保持不变。"}
 
 
-def remove_managed_playlist(engine, category_id, confirm_title):
+def enable_managed_playlist(engine, category_id):
+    store = engine.store
+    managed = store.get("managed", {}) or {}
+    if category_id not in managed:
+        from .engine import SafetyError
+        raise SafetyError("这不是助手托管的分类歌单")
+    sources = store.get("sources", [])
+    for source in sources:
+        if source.get("id") == category_id:
+            source["enabled"] = True
+            source["approved"] = False
+    disabled = _disabled_categories(store)
+    disabled.discard(category_id)
+    plan = store.get("plan")
+    base_plan = store.get("base_plan")
+    if plan and not plan.get("applied"):
+        plan = {**plan, "invalidated_reason": "歌单维护状态已变化，请重新整理预览。"}
+    if base_plan and not base_plan.get("applied"):
+        base_plan = {**base_plan, "invalidated_reason": "歌单维护状态已变化，请重新整理预览。"}
+    store.set_many({
+        "sources": sources,
+        "managed_disabled_categories": sorted(disabled),
+        "plan": plan,
+        "base_plan": base_plan,
+    })
+    title = str(managed[category_id].get("title") or category_id)
+    store.log("已恢复维护分类歌单：" + title)
+    return {"message": "已恢复维护；Plex 中现有歌单保持不变，后续整理会继续维护。"}
+
+
+def reconcile_managed_playlist(engine, category_id, action):
+    """Accept or restore a proven removal-only edit made outside this application."""
     from .engine import SafetyError, fingerprint, safe_error
+
+    category_id, action = str(category_id or ""), str(action or "")
+    if action not in {"accept", "restore"}:
+        raise SafetyError("处理方式无效")
+    with engine.exclusive():
+        store = engine.store
+        managed = dict(store.get("managed", {}) or {})
+        record = managed.get(category_id)
+        if not record:
+            raise SafetyError("这不是助手托管的分类歌单")
+        plex = engine.plex_factory(store.get("settings"))
+        current = plex.playlist_state(record["id"])
+        _source_snapshot, expected, removed = _expected_managed_state(
+            engine, category_id, record, current,
+        )
+        snapshot = {
+            "id": uuid.uuid4().hex,
+            "kind": "managed_external_" + action,
+            "category_id": category_id,
+            "title": current["title"],
+            "created_at": time.time(),
+            "status": "prepared",
+            "before": current,
+            "after": None,
+            "add": list(removed) if action == "restore" else [],
+            "marker": engine.marker(category_id),
+            "plan_id": "",
+        }
+        engine._save_snapshot(snapshot)
+        try:
+            if action == "restore":
+                plex.append(record["id"], removed)
+                after = plex.playlist_state(record["id"])
+                actual_ids = [str(row.get("id")) for row in after.get("items", [])]
+                expected_ids = [str(row.get("id")) for row in expected.get("items", [])]
+                if (str(after.get("id")) != str(record.get("id"))
+                        or str(after.get("title")) != str(record.get("title"))
+                        or engine.marker(category_id) not in str(after.get("summary") or "")
+                        or len(actual_ids) != len(expected_ids)
+                        or set(actual_ids) != set(expected_ids)):
+                    raise SafetyError("Plex 没有确认恢复结果，停止后续操作")
+                message = "已恢复被外部删除的歌曲；歌单和音乐文件均未重建。"
+            else:
+                after = current
+                edits_all = dict(store.get("playlist_manual_edits", {}) or {})
+                edit_key = "category:" + category_id
+                edits = dict(edits_all.get(edit_key, {}) or {})
+                excluded = [
+                    str(value) for value in edits.get("exclude", [])
+                    if str(value).isdigit()
+                ]
+                for value in removed:
+                    if value not in excluded:
+                        excluded.append(value)
+                edits_all[edit_key] = {
+                    "include": [str(value) for value in edits.get("include", []) if str(value).isdigit()],
+                    "exclude": excluded,
+                    "updated_at": time.time(),
+                }
+                store.set("playlist_manual_edits", edits_all)
+                message = "已接受并保留当前改动；被删除的歌曲会保持排除，不会被自动加回。"
+            snapshot.update(status="applied", after=after)
+            engine._save_snapshot(snapshot)
+            managed[category_id] = {
+                **record,
+                "fingerprint": fingerprint(after),
+                "snapshot_id": snapshot["id"],
+                "count": len(after.get("items", [])),
+            }
+            store.set_many({"managed": managed, "plan": None, "base_plan": None})
+            store.log(("已接受外部歌单改动：" if action == "accept" else "已恢复外部删除歌曲：") + current["title"])
+            return {"message": message, "count": len(after.get("items", []))}
+        except Exception as exc:
+            snapshot.update(status="uncertain" if action == "restore" else "failed", error=safe_error(exc))
+            engine._save_snapshot(snapshot)
+            if isinstance(exc, SafetyError):
+                raise
+            raise SafetyError("处理结果需要人工核对：" + safe_error(exc)) from None
+
+
+def remove_managed_playlist(engine, category_id, confirm_title):
+    from .engine import SafetyError, safe_error
     with engine.exclusive():
         store = engine.store
         managed = dict(store.get("managed", {}) or {})
@@ -173,8 +366,9 @@ def remove_managed_playlist(engine, category_id, confirm_title):
             raise SafetyError("Plex 歌单标识不一致，拒绝删除")
         if engine.marker(category_id) not in current.get("summary", ""):
             raise SafetyError("助手管理标记缺失，拒绝删除")
-        if fingerprint(current) != record.get("fingerprint"):
-            raise SafetyError("歌单已被手动修改，拒绝删除")
+        scope_error = _managed_scope_error(engine, record, current, identity)
+        if scope_error:
+            raise SafetyError(scope_error + "，拒绝删除")
         snapshot = {
             "id": uuid.uuid4().hex,
             "kind": "managed_remove",
@@ -586,6 +780,15 @@ def attach_v036_routes(app, store, engine, body, ensure_idle):
         with engine.exclusive():
             return disable_managed_playlist(engine, str(data.get("category_id") or ""))
 
+    @app.post("/api/managed/enable")
+    async def managed_enable(req: Request):
+        data = await body(req)
+        ensure_idle()
+        if data.get("confirm") is not True:
+            raise SafetyError("请确认恢复维护")
+        with engine.exclusive():
+            return enable_managed_playlist(engine, str(data.get("category_id") or ""))
+
     @app.post("/api/managed/remove")
     async def managed_remove(req: Request):
         data = await body(req)
@@ -594,6 +797,16 @@ def attach_v036_routes(app, store, engine, body, ensure_idle):
             raise SafetyError("请确认移除助手分类歌单")
         return remove_managed_playlist(
             engine, str(data.get("category_id") or ""), str(data.get("title") or "")
+        )
+
+    @app.post("/api/managed/reconcile")
+    async def managed_reconcile(req: Request):
+        data = await body(req)
+        ensure_idle()
+        if data.get("confirm") is not True:
+            raise SafetyError("请确认处理外部歌单改动")
+        return reconcile_managed_playlist(
+            engine, str(data.get("category_id") or ""), str(data.get("action") or "")
         )
 
     @app.post("/api/managed/restore")

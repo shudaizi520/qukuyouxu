@@ -1,6 +1,7 @@
 import {createPlaylistWorkspace} from './playlist-workspace.js';
 import {createLibrarySearch} from './playlist-search.js';
-import {createPlaylistPlayer} from './playlist-player.js';
+import {createPlaylistPlayer,normalizePlaybackTrack} from './playlist-player.js?v=2.0.9';
+import {createNowPlaying} from './playlist-now-playing.js';
 import {createPlaylistSections} from './playlist-sections.js';
 import {createPlaylistArtwork} from './playlist-artwork.js';
 
@@ -44,11 +45,13 @@ function newWebPlayerId(){
 let webPlayerId=sessionStorage.getItem(WEB_PLAYER_KEY)||'';
 if(!webPlayerId){webPlayerId=newWebPlayerId();sessionStorage.setItem(WEB_PLAYER_KEY,webPlayerId);}
 
-function notify(message,error=false,timeout=0){
+function notify(message,error=false,timeout){
  clearTimeout(noticeTimer);
+ if(window.PCHUI&&timeout===undefined){PCHUI.notify(message,{error});return;}
  const node=$('playlistNotice');
  node.hidden=!message;node.textContent=message||'';node.className='notice'+(error?' error':'');
- if(message&&timeout>0)noticeTimer=setTimeout(()=>{if(node.textContent===message){node.hidden=true;node.textContent='';}},timeout);
+ const delay=timeout??(error?8000:4000);
+ if(message&&delay>0)noticeTimer=setTimeout(()=>{if(node.textContent===message){node.hidden=true;node.textContent='';}},delay);
 }
 async function action(fn){
  try{return await (window.PCHUI?PCHUI.run(fn):fn());}
@@ -100,8 +103,6 @@ function paintLiked(track,liked,rating){
  track.liked=liked;track.user_rating=rating;
  for(const row of tracks){if(String(row.id)===String(track.id)){row.liked=liked;row.user_rating=rating;}}
  refreshLikedRows(track);playlistPlayer.syncLiked(track);librarySearch.updateLiked(track.id,liked,rating);
- const frame=$('playlistToolFrame');
- if(frame.contentWindow&&new URL(frame.src,location.href).pathname==='/external')frame.contentWindow.postMessage({type:'pch-player-like-state',trackId:String(track.id),profileId:loadedProfileId,liked,user_rating:rating},location.origin);
 }
 async function setLiked(track,liked){
  const trackId=String(track.id),profileId=loadedProfileId,profileGeneration=profileRequest;
@@ -155,12 +156,6 @@ function refreshPlayingRows(){
   row.classList.toggle('playing',isPlaying);
   row.querySelector('.playlist-track-number').textContent=isPlaying&&!playlistPlayer.paused()?'❚❚':String(original+1);
  }
- postPreviewState();
-}
-function postPreviewState(){
- const frame=$('playlistToolFrame');
- if(!frame.contentWindow||new URL(frame.src,location.href).pathname!=='/external')return;
- frame.contentWindow.postMessage({type:'pch-player-preview-state',key:playlistPlayer.previewKey(),playing:$('playlistPlayer').dataset.playing==='true'},location.origin);
 }
 function renderNextTrackBatch(){
  const box=$('playlistTracks'),end=Math.min(filtered.length,renderedTrackCount+TRACK_BATCH_SIZE);
@@ -194,7 +189,18 @@ function renderTracks(){
  renderNextTrackBatch();
 }
 
-const playlistPlayer=createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange:refreshPlayingRows,reportPlayback:reportWebPlayback,onLikedChange:updateLiked});
+let nowPlaying=null;
+function handlePlayerState(snapshot,meta){
+ if(!meta?.timeline)refreshPlayingRows();
+ nowPlaying?.update(snapshot);
+}
+const playlistPlayer=createPlaylistPlayer({document,mediaUrl,formatTime,onStateChange:handlePlayerState,reportPlayback:reportWebPlayback,onLikedChange:updateLiked});
+nowPlaying=createNowPlaying({
+ document,requestJson:path=>json(path),getProfileId:()=>loadedProfileId,
+ lyricsUrl:(trackId,profileId)=>'/api/playlists/library/tracks/'+encoded(trackId)+'/lyrics?profile_id='+encoded(profileId),
+ artworkUrl:(track,profileId)=>mediaUrl('artwork',{...track,profile_id:profileId},{profileId}),
+ togglePlayback:()=>playlistPlayer.togglePlayback(),
+});
 function playingFrom(item){return playlistPlayer.isContext(playlistContext(item));}
 function renderPlaylistList(){
  playlistSections.setItems(playlists,profileArtworkScope(loadedProfileId));
@@ -380,7 +386,7 @@ const librarySearch=createLibrarySearch({
 });
 
 function mount(){
- librarySearch.mount();playlistPlayer.mount();
+ librarySearch.mount();playlistPlayer.mount();nowPlaying.mount();
  $('playlistLoadMore').onclick=renderNextTrackBatch;
  document.querySelector('.playlist-track-scroll').onscroll=event=>{
   const box=event.currentTarget;
@@ -400,7 +406,7 @@ function mount(){
   const result=await json('/api/playlists/remove','POST',{kind:selected.kind,key:selected.key,title:selected.title,confirm:true});if(profileId!==loadedProfileId||requestId!==profileRequest)return;notify(result.message);current=null;await loadPlaylists({section:'smart'},requestId);
  });
  $('smartHubButton').onclick=()=>openSection('smart');$('libraryHubButton').onclick=()=>openSection('library');
- $('playlistSectionSettings').onclick=()=>{const section=workspace.current().section==='library'?'library':'smart';openWorkspacePage(section==='library'?'/library':'/mixes',section==='library'?'曲库整理设置':'智能歌单设置','tool',{type:'section',section});};
+ $('playlistSectionTitle').onclick=()=>{const section=workspace.current().section==='library'?'library':'smart';openWorkspacePage(section==='library'?'/library':'/mixes',section==='library'?'曲库整理设置':'智能歌单设置','tool',{type:'section',section});};
  $('customPlaylistRefresh').onclick=()=>action(()=>loadPlaylists(workspace.current(),profileRequest));
  $('customPlaylistCreate').onclick=openCreateDialog;
  $('mobileSettings').onclick=()=>openWorkspacePage('/settings','设置','system');
@@ -423,6 +429,14 @@ function mount(){
    return;
   }
   if(event.data?.type==='pch-playlists-changed'){action(refreshPlaylistSidebar);return;}
+  if(event.data?.type==='pch-play-imported-queue'){
+   const profileId=String(event.data.profile_id||''),sourceId=String(event.data.source_id||'');
+   if(!profileId||profileId!==loadedProfileId||!sourceId||!Array.isArray(event.data.tracks))return;
+   const queue=event.data.tracks.slice(0,200).filter(track=>track&&/^\d+$/.test(String(track.id||''))).map(track=>normalizePlaybackTrack(track,loadedProfileId));
+   const index=Math.trunc(Number(event.data.index));
+   if(!queue.length||!Number.isInteger(index)||index<0||index>=queue.length)return;
+   playlistPlayer.playAt(queue,index,{kind:'external',key:sourceId,profileId:loadedProfileId});return;
+  }
   if(event.data?.type==='pch-open-playlist'){
    const item=playlists.find(row=>row.kind===event.data.kind&&String(row.key)===String(event.data.key));
    if(item)action(()=>openPlaylist(item));else action(async()=>{await refreshPlaylistSidebar();const fresh=playlists.find(row=>row.kind===event.data.kind&&String(row.key)===String(event.data.key));if(fresh)await openPlaylist(fresh);});
@@ -432,17 +446,10 @@ function mount(){
    const target=new URL(String(event.data.path||''),location.origin);
    if(target.origin!==location.origin)return;
    if(target.pathname==='/'){action(returnFromWorkspace);return;}
-   const destinations={'/settings':['设置','system'],'/status':['运行状态','system'],'/library':['曲库整理设置','tool'],'/mixes':['智能歌单设置','tool'],'/daily':['每日推荐','tool'],'/external':['外部歌单','tool']};
+   const destinations={'/settings':['设置','system'],'/status':['运行状态','system'],'/library':['曲库整理设置','tool'],'/mixes':['智能歌单设置','tool'],'/daily':['每日推荐','tool'],'/external':['外部歌单','tool'],'/appearance':['外观','system']};
    const destination=destinations[target.pathname];if(destination)openWorkspacePage(target.pathname+target.search,...destination);
    return;
   }
-  if(event.data?.type==='pch-player-preview-query'){postPreviewState();return;}
-  if(event.data?.type!=='pch-player-preview')return;
-  const track=event.data.track;if(!track||typeof track.source!=='string'||!track.source.startsWith('/api/external/'))return;
-  if(!loadedProfileId||String(track.profile_id||'')!==loadedProfileId||String(track.profileId||'')!==loadedProfileId)return;
-  const source=new URL(track.source,location.origin);
-  if(source.origin!==location.origin||source.searchParams.get('profile_id')!==loadedProfileId)return;
-  playlistPlayer.playPreview(track);
  });
  window.addEventListener('keydown',event=>{if(event.key==='Escape')setSidebarOpen(false);});
  document.addEventListener('visibilitychange',()=>{if(!document.hidden)return;const event=playlistPlayer.paused()?'pause':'progress';playlistPlayer.flush(event,true);});
