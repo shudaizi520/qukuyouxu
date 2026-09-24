@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from tools.capture_theme_matrix import compare_images, matrix_cases
+from tools.capture_theme_matrix import _prepare_screenshot, compare_images, matrix_cases
 from PIL import Image
 
 
@@ -31,3 +31,18 @@ def test_pixel_comparison_writes_a_diff_and_reports_changed_ratio(tmp_path: Path
 
     assert compare_images(first, second, diff, threshold=12) == 1 / 16
     assert diff.exists()
+
+
+def test_screenshot_preparation_waits_for_async_page_data():
+    calls = []
+
+    class PageStub:
+        def wait_for_load_state(self, state):
+            calls.append(("state", state))
+
+        def wait_for_timeout(self, milliseconds):
+            calls.append(("timeout", milliseconds))
+
+    _prepare_screenshot(PageStub())
+
+    assert calls == [("state", "networkidle"), ("timeout", 150)]

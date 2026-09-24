@@ -90,6 +90,7 @@ def _ensure_authenticated(page: Page, base_url: str) -> None:
 
 
 def _prepare_screenshot(page: Page) -> None:
+    page.wait_for_load_state("networkidle")
     page.wait_for_timeout(150)
 
 
