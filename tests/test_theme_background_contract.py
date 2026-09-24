@@ -13,6 +13,8 @@ def test_background_layer_never_handles_input_or_duplicates_when_embedded():
     assert ".pch-embedded .app-theme-background" in css
     assert "display:none" in compact
     assert "prefers-reduced-motion:reduce" in compact
+    assert "body{isolation:isolate}" in compact
+    assert "z-index:-1" in compact
 
 
 def test_background_stylesheet_never_targets_controls_or_navigation():

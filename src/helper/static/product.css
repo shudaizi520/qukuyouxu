@@ -79,7 +79,7 @@ button,.primary,.secondary,.danger,.button{min-height:36px;padding:7px 13px;bord
 .actions{gap:8px}.field label,label{font-size:13px}.field input,.field select,input:not([type=checkbox]):not([type=radio]),select,textarea{min-height:38px;padding:8px 10px;border-radius:7px;font-size:14px}.form-grid{gap:14px 18px}.field small{font-size:12px}input[type=checkbox]{width:15px;height:15px;flex:none}.check-label{font-weight:400;font-size:13px;gap:7px!important;margin:0}
 .section-note{border:0;padding:0;margin:10px 0;color:var(--muted);font-size:12px}.section-note:empty,.muted:empty{display:none}.empty{padding:20px;font-size:13px}.page-footer,.footer{color:var(--muted);font-size:11px;margin-top:16px;padding:0}.page-footer{display:flex;justify-content:space-between}.footer{max-width:1232px;margin:0 auto 22px}.compact-diagnostics{margin-top:14px;font-size:12px}.compact-diagnostics summary{font-weight:500;color:var(--muted)}summary{cursor:pointer}
 .section-footer{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:16px -18px -18px;padding:12px 18px;border-top:1px solid var(--line)}.auto-copy{display:flex;flex-direction:column;gap:3px;cursor:pointer;font-weight:400}.auto-copy strong{font-size:13px;font-weight:600}.auto-copy span{font-size:12px}
-.toggle,.switch-row>input[type=checkbox]{appearance:none;width:34px;height:20px;border-radius:11px;border:0;background:var(--app-line);position:relative;cursor:pointer;margin:0;flex:none}.toggle:before,.switch-row>input[type=checkbox]:before{content:"";position:absolute;width:14px;height:14px;border-radius:50%;top:3px;left:3px;background:var(--app-main)}.toggle:checked,.switch-row>input[type=checkbox]:checked{background:var(--brand)}.toggle:checked:before,.switch-row>input[type=checkbox]:checked:before{left:17px}.toggle:disabled{opacity:.45;cursor:not-allowed}
+.toggle,.switch-row>input[type=checkbox]{appearance:none;width:34px;height:20px;border-radius:11px;border:0;background:var(--app-line);position:relative;cursor:pointer;margin:0;flex:none}.toggle:before,.switch-row>input[type=checkbox]:before{content:"";position:absolute;width:14px;height:14px;border-radius:50%;top:3px;left:3px;background:var(--app-main)}.toggle:checked,.switch-row>input[type=checkbox]:checked{background:var(--brand)}.toggle:checked:before,.switch-row>input[type=checkbox]:checked:before{left:17px}
 /* Library: no four-step dashboard; one continuous reading order. */
 .library-overview{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:16px 0;border-top:1px solid var(--line);flex-wrap:wrap}.library-metrics{display:flex;align-items:center;gap:28px;flex-wrap:wrap}.library-metrics>div{display:flex;align-items:baseline;gap:7px}.library-metrics strong{font-size:22px;font-weight:650;letter-spacing:-.5px;font-variant-numeric:tabular-nums}.library-metrics span{font-size:12px;color:var(--muted)}
 .library-auth{font-size:12px;color:var(--brand);margin-left:auto}.library-auth summary{display:flex;gap:14px;align-items:center;list-style:none}.library-auth summary::-webkit-details-marker{display:none}.connection-label:before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:currentColor;margin-right:6px}.library-auth[open]{width:100%;margin:0}.library-auth[open] summary{justify-content:flex-end;margin-bottom:10px}.library-auth .qq-auth-panel{border-radius:8px;background:var(--app-main);padding:14px;gap:12px;color:var(--ink)}.qq-auth-panel h3{font-size:14px}.qq-auth-panel p{font-size:12px;margin:4px 0}.qr-box img{width:180px;height:180px}
@@ -330,7 +330,7 @@ body[data-view=playlists] .topbar nav button:hover,body[data-view=playlists] .to
 .mix-card .managed-note{min-height:0;margin:8px 0 0;font-size:12px}
 .mix-schedule{margin-top:12px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--app-surface)}
 .mix-schedule .switch-row span{display:grid;gap:2px}.mix-schedule small{display:block;color:var(--muted);font-weight:400;font-size:11px}
-.mix-schedule>p{margin:7px 0 0;font-size:11px}.mix-schedule input:disabled{opacity:.45}
+.mix-schedule>p{margin:7px 0 0;font-size:11px}
 @media(max-width:600px){.mix-card .button-row>button{flex:1}.mix-schedule{padding:11px}}
 
 /* v0.4.22: make multi-user setup readable without Plex terminology knowledge. */
@@ -415,7 +415,6 @@ body[data-view=settings] input.toggle{appearance:none;width:42px;height:24px;fle
 body[data-view=settings] input.toggle:before{content:"";position:absolute;width:18px;height:18px;left:3px;top:3px;border-radius:50%;background:var(--app-main);box-shadow:var(--app-shadow);transition:transform .16s}
 body[data-view=settings] input.toggle:checked{background:var(--app-accent)}
 body[data-view=settings] input.toggle:checked:before{transform:translateX(18px)}
-body[data-view=settings] input.toggle:disabled{opacity:.45;cursor:not-allowed}
 body[data-view=settings] .settings-expander>summary{min-height:64px;padding:0 20px;display:flex;align-items:center;justify-content:space-between;gap:18px;list-style:none;cursor:pointer;font-weight:600}
 body[data-view=settings] .settings-expander>summary::-webkit-details-marker{display:none}
 body[data-view=settings] .settings-expander>summary>span:last-child{color:var(--app-muted);font-size:13px;font-weight:400}
@@ -513,7 +512,6 @@ body[data-view=mixes] .mix-refresh:hover:not(:disabled){border-color:var(--app-l
 body[data-view=mixes] .mix-refresh svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 body[data-view=mixes] .mix-refresh.pch-pending:before{content:none}
 body[data-view=mixes] .mix-refresh.pch-pending svg{animation:pch-spin .7s linear infinite}
-body[data-view=mixes] .mix-actions button:disabled{opacity:.4;cursor:not-allowed;box-shadow:none}
 body[data-view=mixes] .mix-preview-summary{color:var(--app-muted);font-size:12px}
 body[data-view=mixes] section.mix-adjust:not([open])>.mix-panel-head{display:flex}
 body[data-view=mixes] section.mix-adjust:not([open])>.mix-options{display:grid}

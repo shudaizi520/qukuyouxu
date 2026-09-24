@@ -11,7 +11,35 @@ from urllib.parse import urljoin
 from PIL import Image, ImageChops
 from playwright.sync_api import Page, sync_playwright
 
+if __package__:
+    from .playwright_runtime import prepare_playwright_environment
+else:
+    from playwright_runtime import prepare_playwright_environment
+
 SCREENSHOT_STYLE = "*{animation:none!important;transition:none!important}"
+MASK_SELECTORS = (
+    "#version",
+    "#progressText",
+    "#progressPercent",
+    "#progressDetail",
+    "#lastRun",
+    "#behaviorStatus",
+    "#dailyDiagnostics",
+    "#taskBadge",
+    "#taskMessage",
+    "#dailyContextState",
+    "#plexLoginStatus",
+    "#webhookUrl",
+    "#webhookMessage",
+    "#webhookLast",
+    "#notice",
+    "#playlistNotice",
+    "[data-timestamp]",
+    "[data-live-status]",
+    ".pch-inline-feedback",
+    ".pch-toast",
+    "time",
+)
 
 
 @dataclass(frozen=True)
@@ -95,29 +123,7 @@ def _prepare_screenshot(page: Page) -> None:
 
 
 def _mask_locators(page: Page):
-    selectors = (
-        "#version",
-        "#progressText",
-        "#progressPercent",
-        "#progressDetail",
-        "#lastRun",
-        "#behaviorStatus",
-        "#dailyDiagnostics",
-        "#taskBadge",
-        "#taskMessage",
-        "#dailyContextState",
-        "#plexLoginStatus",
-        "#webhookMessage",
-        "#webhookLast",
-        "#notice",
-        "#playlistNotice",
-        "[data-timestamp]",
-        "[data-live-status]",
-        ".pch-inline-feedback",
-        ".pch-toast",
-        "time",
-    )
-    return [page.locator(selector) for selector in selectors]
+    return [page.locator(selector) for selector in MASK_SELECTORS]
 
 
 def _capture_case(
@@ -180,6 +186,7 @@ def _capture_embedded_settings(
 
 def capture_matrix(base_url: str, output: Path, mode: str) -> list[Path]:
     captures: list[Path] = []
+    prepare_playwright_environment()
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         context = browser.new_context(device_scale_factor=1)

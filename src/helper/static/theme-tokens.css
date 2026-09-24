@@ -23,7 +23,7 @@ html{
  --icon-active:var(--app-accent);
  --icon-danger:var(--app-danger);
  --focus-ring:color-mix(in srgb,var(--app-accent) 60%,transparent);
- --app-shadow:0 10px 28px color-mix(in srgb,var(--app-text) 12%,transparent);
+ --app-shadow:0 2px 12px color-mix(in srgb,var(--app-text) 2%,transparent);
  --background-color:var(--app-main);
  --background-image:none;
  --background-overlay:transparent;

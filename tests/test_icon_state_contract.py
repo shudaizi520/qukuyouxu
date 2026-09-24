@@ -52,6 +52,23 @@ def test_shared_controls_and_icons_have_one_state_owner():
     ):
         assert re.search(pattern, legacy) is None
 
+    non_component_css = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in STATIC.glob("*.css")
+        if path.name not in {"ui-components.css", "home.css"}
+    )
+    for forbidden in (
+        r"\.management-action:hover:not\(:disabled\)",
+        r"\.management-action\.primary:hover:not\(:disabled\)",
+        r"\.management-action\.danger",
+        r"\.management-action:disabled",
+        r"\.management-action\.danger-text",
+        r"\.mix-schedule input:disabled\s*\{[^}]*opacity",
+        r"\.mix-actions button:disabled\s*\{[^}]*opacity",
+        r"input\.toggle:disabled\s*\{[^}]*opacity",
+    ):
+        assert re.search(forbidden, non_component_css) is None
+
 
 def test_every_interactive_svg_uses_the_shared_icon_contract():
     for name in ("playlists.html", "mixes.html", "status.html"):

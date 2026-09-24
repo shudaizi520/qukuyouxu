@@ -124,9 +124,15 @@ def test_legacy_centered_page_shells_are_neutralized_for_embedded_management_pag
 
 def test_management_components_use_shared_theme_tokens_and_control_geometry():
     css = (STATIC / "management-shell.css").read_text(encoding="utf-8")
+    component_css = (STATIC / "ui-components.css").read_text(encoding="utf-8")
     root = _rule(css, "body[data-management-page]")
     action = _rule(css, "body[data-management-page] .management-action")
-    danger = _rule(css, "body[data-management-page] .management-action.danger")
+    action_visual = _rule(
+        component_css, "body[data-management-page] .management-action"
+    )
+    danger = _rule(
+        component_css, "body[data-management-page] .management-action.danger"
+    )
     field = _rule(css, "body[data-management-page] input:not([type=checkbox]):not([type=radio]):not([type=range])")
 
     assert root.get("--management-canvas") == "var(--app-main)"
@@ -136,8 +142,8 @@ def test_management_components_use_shared_theme_tokens_and_control_geometry():
     assert action.get("min-width") == "96px"
     assert action.get("height") == "40px"
     assert action.get("border-radius") == "9px"
-    assert danger.get("color") == "var(--management-text)"
-    assert danger.get("background") == "transparent"
+    assert action_visual.get("background") == "transparent"
+    assert danger.get("color") == "var(--app-danger)"
     assert field.get("min-height") == "40px"
     assert field.get("border-radius") == "9px"
 

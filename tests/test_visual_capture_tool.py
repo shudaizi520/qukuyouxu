@@ -1,6 +1,11 @@
 from pathlib import Path
 
-from tools.capture_theme_matrix import _prepare_screenshot, compare_images, matrix_cases
+from tools.capture_theme_matrix import (
+    MASK_SELECTORS,
+    _prepare_screenshot,
+    compare_images,
+    matrix_cases,
+)
 from PIL import Image
 
 
@@ -46,3 +51,7 @@ def test_screenshot_preparation_waits_for_async_page_data():
     _prepare_screenshot(PageStub())
 
     assert calls == [("state", "networkidle"), ("timeout", 150)]
+
+
+def test_visual_masks_cover_credential_bearing_fields():
+    assert "#webhookUrl" in MASK_SELECTORS

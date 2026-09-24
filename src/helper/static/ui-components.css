@@ -21,8 +21,43 @@
 .primary:hover:not(:disabled){background:var(--app-accent-strong);border-color:var(--app-accent-strong);color:var(--app-on-accent)}
 .secondary:hover:not(:disabled),.button.secondary:hover:not(:disabled){background:var(--app-hover);border-color:var(--app-line);box-shadow:none}
 .danger:hover:not(:disabled){background:var(--app-danger-soft);border-color:var(--app-danger);color:var(--app-danger);box-shadow:none}
-:is(button,input,select,textarea):disabled{opacity:.42;cursor:not-allowed}
+:is(button,input,select,textarea):disabled{opacity:.42;cursor:not-allowed;box-shadow:none}
 :is(button,a,input,select,textarea,summary):focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
+
+body[data-management-page] .management-action{
+ border-color:var(--app-line);
+ background:transparent;
+ color:var(--app-text);
+ box-shadow:none;
+}
+body[data-management-page] .management-action:hover:not(:disabled){
+ border-color:color-mix(in srgb,var(--app-accent) 54%,var(--app-line));
+ background:var(--app-hover);
+ color:var(--app-text);
+ box-shadow:none;
+ filter:none;
+ transform:none;
+}
+body[data-management-page] .management-action.primary{
+ border-color:var(--app-accent);
+ background:var(--app-accent);
+ color:var(--app-on-accent);
+}
+body[data-management-page] .management-action.primary:hover:not(:disabled){
+ border-color:var(--app-accent-strong);
+ background:var(--app-accent-strong);
+ color:var(--app-on-accent);
+}
+body[data-management-page] .management-action.danger,
+body[data-management-page] .management-action.danger-text{
+ color:var(--app-danger);
+}
+body[data-management-page] .management-action.danger:hover:not(:disabled),
+body[data-management-page] .management-action.danger-text:hover:not(:disabled){
+ border-color:var(--app-danger);
+ background:var(--app-danger-soft);
+ color:var(--app-danger);
+}
 
 /* Text-symbol controls share the same color state as SVG controls. */
 :is(.mix-icon,.health-icon,.playlist-section-art){color:var(--icon-active)}

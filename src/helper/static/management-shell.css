@@ -81,44 +81,15 @@ body[data-management-page] .management-action{
  height:40px;
  min-height:40px;
  padding:0 14px;
- border:1px solid var(--management-line);
+ border-width:1px;
+ border-style:solid;
  border-radius:9px;
- background:transparent;
- color:var(--management-text);
- box-shadow:none;
  font-weight:600;
  line-height:1;
  text-decoration:none;
  white-space:nowrap;
  cursor:pointer;
 }
-body[data-management-page] .management-action:hover:not(:disabled){
- border-color:color-mix(in srgb,var(--management-accent) 54%,var(--management-line));
- background:var(--management-hover);
- color:var(--management-text);
- box-shadow:none;
- filter:none;
- transform:none;
-}
-body[data-management-page] .management-action.primary{
- border-color:var(--management-accent);
- background:var(--management-accent);
- color:var(--management-on-accent);
-}
-body[data-management-page] .management-action.primary:hover:not(:disabled){
- border-color:var(--management-accent-strong);
- background:var(--management-accent-strong);
- color:var(--management-on-accent);
-}
-body[data-management-page] .management-action.danger{
- background:transparent;
- color:var(--management-text);
-}
-body[data-management-page] :is(.management-action.danger,.management-action.danger-text):hover:not(:disabled){
- background:var(--management-hover);
- color:var(--management-text);
-}
-body[data-management-page] .management-action:disabled{opacity:.42;cursor:not-allowed}
 body[data-management-page] input:not([type=checkbox]):not([type=radio]):not([type=range]),
 body[data-management-page] select,
 body[data-management-page] textarea{
@@ -143,7 +114,6 @@ body[data-management-page] :is(.card,.settings-section,.external-detail-card,.mi
  box-shadow:none;
 }
 body[data-management-page] #notice{margin:16px 0 0}
-body[data-management-page] .management-action.danger-text{color:var(--management-text)}
 body[data-management-page] .management-section{
  width:100%;
  margin:0;
@@ -446,4 +416,3 @@ body[data-management-page=settings] .settings-account-actions{display:flex;justi
 }
 
 @media(max-width:460px){body[data-management-page=appearance] .appearance-theme-grid.appearance-theme-grid{grid-template-columns:190px}}
-

@@ -1,4 +1,5 @@
 /* Background themes are presentation-only and never participate in input. */
+body{isolation:isolate}
 .app-theme-background{
  position:fixed;
  inset:0;
