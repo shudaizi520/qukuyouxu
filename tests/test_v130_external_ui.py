@@ -72,8 +72,8 @@ class ExternalPlaylistUiV130Tests(unittest.TestCase):
         self.assertIn("'external.js'", source)
         page = (STATIC / "external.html").read_text(encoding="utf-8")
         self.assertNotIn('id="version"', page)
-        self.assertIn('/static/external.js?v=2.0.9', page)
-        self.assertIn('/static/external-workspace.css?v=2.0.7', page)
+        self.assertIn('/static/external.js?v=app', page)
+        self.assertIn('/static/external-workspace.css?v=app', page)
 
 
 if __name__ == "__main__":

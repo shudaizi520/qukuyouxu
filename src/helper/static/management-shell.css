@@ -1,0 +1,449 @@
+/* Management workspace: one shared shell fills the playlist application's
+ * existing right-hand pane. Its semantic tokens deliberately map to the app
+ * palette so all three appearances stay in sync without page-level colors. */
+body[data-management-page]{
+ --management-canvas:var(--app-main);
+ --management-surface:var(--app-main);
+ --management-control:var(--app-control);
+ --management-hover:var(--app-hover);
+ --management-text:var(--app-text);
+ --management-muted:var(--app-muted);
+ --management-line:var(--app-line);
+ --management-accent:var(--app-accent);
+ --management-accent-strong:var(--app-accent-strong);
+ --management-on-accent:var(--app-on-accent);
+ margin:0;
+ background:var(--management-canvas);
+ color:var(--management-text);
+}
+body[data-management-page] [data-management-shell]{
+ width:100%;
+ max-width:none;
+ min-width:0;
+ margin:0;
+ padding:0;
+ background:var(--management-canvas);
+ color:var(--management-text);
+}
+.pch-embedded body[data-management-page] .topbar{display:none}
+.pch-embedded body[data-management-page] [data-management-shell][data-management-shell]{
+ width:100%;
+ max-width:none;
+ margin:0;
+ padding:0;
+}
+.management-stage{
+ width:min(100%,1280px);
+ min-width:0;
+ margin:0 auto 0 0;
+ padding:0 34px 48px;
+}
+.management-nav{
+ display:flex;
+ align-items:center;
+ gap:30px;
+ min-height:64px;
+ overflow-x:auto;
+ border-bottom:1px solid var(--management-line);
+ background:var(--management-canvas);
+ scrollbar-width:none;
+}
+.management-nav::-webkit-scrollbar{display:none}
+.management-nav a{
+ position:relative;
+ align-self:stretch;
+ display:flex;
+ align-items:center;
+ flex:0 0 auto;
+ border:0;
+ color:var(--management-muted);
+ font-weight:500;
+ text-decoration:none;
+ white-space:nowrap;
+}
+.management-nav a:hover{color:var(--management-text)}
+.management-nav a[aria-current=page]{color:var(--management-text);font-weight:600}
+.management-nav a[aria-current=page]::after{
+ content:"";
+ position:absolute;
+ right:0;
+ bottom:0;
+ left:0;
+ height:3px;
+ border-radius:3px 3px 0 0;
+ background:var(--management-accent);
+}
+body[data-management-page] .management-action{
+ display:inline-flex;
+ align-items:center;
+ justify-content:center;
+ min-width:96px;
+ height:40px;
+ min-height:40px;
+ padding:0 14px;
+ border:1px solid var(--management-line);
+ border-radius:9px;
+ background:transparent;
+ color:var(--management-text);
+ box-shadow:none;
+ font-weight:600;
+ line-height:1;
+ text-decoration:none;
+ white-space:nowrap;
+ cursor:pointer;
+}
+body[data-management-page] .management-action:hover:not(:disabled){
+ border-color:color-mix(in srgb,var(--management-accent) 54%,var(--management-line));
+ background:var(--management-hover);
+ color:var(--management-text);
+ box-shadow:none;
+ filter:none;
+ transform:none;
+}
+body[data-management-page] .management-action.primary{
+ border-color:var(--management-accent);
+ background:var(--management-accent);
+ color:var(--management-on-accent);
+}
+body[data-management-page] .management-action.primary:hover:not(:disabled){
+ border-color:var(--management-accent-strong);
+ background:var(--management-accent-strong);
+ color:var(--management-on-accent);
+}
+body[data-management-page] .management-action.danger{
+ background:transparent;
+ color:var(--management-text);
+}
+body[data-management-page] :is(.management-action.danger,.management-action.danger-text):hover:not(:disabled){
+ background:var(--management-hover);
+ color:var(--management-text);
+}
+body[data-management-page] .management-action:disabled{opacity:.42;cursor:not-allowed}
+body[data-management-page] input:not([type=checkbox]):not([type=radio]):not([type=range]),
+body[data-management-page] select,
+body[data-management-page] textarea{
+ min-height:40px;
+ border:1px solid transparent;
+ border-radius:9px;
+ background:var(--management-control);
+ color:var(--management-text);
+ box-shadow:none;
+}
+body[data-management-page] input:not([type=checkbox]):not([type=radio]):not([type=range]):focus,
+body[data-management-page] select:focus,
+body[data-management-page] textarea:focus{
+ border-color:var(--management-accent);
+ outline:0;
+ box-shadow:0 0 0 2px color-mix(in srgb,var(--management-accent) 18%,transparent);
+}
+body[data-management-page] :is(.card,.settings-section,.external-detail-card,.mix-card,.health-card,.page-disclosure){
+ border-color:var(--management-line);
+ background:transparent;
+ color:var(--management-text);
+ box-shadow:none;
+}
+body[data-management-page] #notice{margin:16px 0 0}
+body[data-management-page] .management-action.danger-text{color:var(--management-text)}
+body[data-management-page] .management-section{
+ width:100%;
+ margin:0;
+ padding:22px 0;
+ border:0;
+ border-bottom:1px solid var(--management-line);
+ border-radius:0;
+ background:transparent;
+ box-shadow:none;
+}
+body[data-management-page] .management-row{
+ display:flex;
+ align-items:center;
+ justify-content:space-between;
+ gap:20px;
+ min-height:68px;
+}
+body[data-management-page] .management-summary{
+ width:100%;
+ border:1px solid var(--management-line);
+ border-radius:9px;
+ background:var(--management-surface);
+ overflow:hidden;
+}
+
+/* Import: one continuous source-and-result workspace. */
+body[data-management-page=external] .external-import-card{
+ width:100%;
+ max-width:none;
+ margin:0;
+ padding:22px 0;
+ border:0;
+ border-bottom:1px solid var(--management-line);
+ border-radius:0;
+ background:transparent;
+ box-shadow:none;
+}
+body[data-management-page=external] .external-import-form{
+ width:100%;
+ max-width:none;
+ grid-template-columns:minmax(0,1fr) auto;
+ gap:16px;
+}
+body[data-management-page=external] .external-url-field{grid-template-columns:104px minmax(0,1fr)}
+body[data-management-page=external] .external-url-field input,
+body[data-management-page=external] .external-command-bar input:not([type=checkbox]),
+body[data-management-page=external] .external-command-bar select{
+ height:40px;
+ min-height:40px;
+ padding:0 12px;
+ border:1px solid transparent;
+ border-radius:9px;
+ background:var(--management-control);
+ color:var(--management-text);
+}
+body[data-management-page=external] .external-workspace{border:0}
+body[data-management-page=external] .external-command-bar{
+ width:100%;
+ max-width:none;
+ min-height:68px;
+ margin:0;
+ padding:13px 0;
+ border-bottom:1px solid var(--management-line);
+}
+body[data-management-page=external] .external-detail-card{
+ margin:22px 0 0;
+ padding:0;
+ border:0;
+ border-radius:0;
+}
+body[data-management-page=external] .external-counts{margin:0 0 12px}
+body[data-management-page=external] .external-track-list{border-color:var(--management-line)}
+body[data-management-page=external] .external-paging{min-height:58px;margin:0}
+
+/* Smart playlists: policies and playlists form one full-width ruled list. */
+body[data-management-page=mixes] .contextual-settings-card{
+ margin:0;
+ padding:22px 0;
+ border:0;
+ border-bottom:1px solid var(--management-line);
+ border-radius:0;
+ background:transparent;
+}
+body[data-management-page=mixes] .contextual-settings-grid{
+ grid-template-columns:repeat(4,minmax(120px,1fr)) auto;
+ gap:12px;
+}
+body[data-management-page=mixes] .mix-list{margin:0;border:0}
+body[data-management-page=mixes] .mix-automation-row{
+ min-height:68px;
+ padding:13px 0;
+ border-bottom:1px solid var(--management-line);
+}
+body[data-management-page=mixes] .mix-row{
+ margin:0;
+ padding:18px 0;
+ border:0;
+ border-bottom:1px solid var(--management-line);
+ border-radius:0;
+ background:transparent;
+ box-shadow:none;
+}
+body[data-management-page=mixes] .mix-row-head{gap:24px}
+body[data-management-page=mixes] .mix-icon{background:var(--management-control);color:var(--management-accent)}
+body[data-management-page=mixes] .mix-state{color:var(--management-muted)}
+body[data-management-page=mixes] .mix-actions{gap:8px}
+body[data-management-page=mixes] .custom-mix{
+ margin:0;
+ border:0;
+ border-bottom:1px solid var(--management-line);
+ border-radius:0;
+ background:transparent;
+}
+
+/* Library: summary strip, schedule and managed playlists share the same grid. */
+body[data-management-page=library] .library-overview{
+ display:grid;
+ grid-template-columns:minmax(0,1fr) auto;
+ align-items:stretch;
+ width:100%;
+ margin:22px 0 0;
+ padding:0;
+ border:1px solid var(--management-line);
+ border-radius:9px;
+ background:var(--management-surface);
+}
+body[data-management-page=library] .library-metrics{
+ display:grid;
+ grid-template-columns:repeat(5,minmax(104px,1fr));
+ min-width:0;
+}
+body[data-management-page=library] .library-metrics>div{
+ min-width:0;
+ padding:16px 18px;
+ border-right:1px solid var(--management-line);
+}
+body[data-management-page=library] .library-auth{padding:12px 18px}
+body[data-management-page=library] .library-automation-line{
+ min-height:68px;
+ margin:0;
+ padding:13px 0;
+ border-bottom:1px solid var(--management-line);
+}
+body[data-management-page=library] :is(.managed-playlists-card,.library-result,.metadata-review-card,.unclassified-card){
+ margin:0;
+ padding:22px 0;
+ border:0;
+ border-bottom:1px solid var(--management-line);
+ border-radius:0;
+ background:transparent;
+}
+body[data-management-page=library] .managed-playlist-row{border-color:var(--management-line)}
+body[data-management-page=library] .page-footer{border-color:var(--management-line);color:var(--management-muted)}
+
+/* Status: the first strip reads as one summary, not three floating cards. */
+body[data-management-page=status] .health-grid{
+ display:grid;
+ grid-template-columns:repeat(3,minmax(0,1fr));
+ gap:0;
+ margin:22px 0;
+ border:1px solid var(--management-line);
+ border-radius:9px;
+ overflow:hidden;
+}
+body[data-management-page=status] .health-card{
+ min-height:84px;
+ margin:0;
+ padding:16px 20px;
+ border:0;
+ border-right:1px solid var(--management-line);
+ border-radius:0;
+ background:transparent;
+}
+body[data-management-page=status] .health-card:last-child{border-right:0}
+body[data-management-page=status] .health-icon{background:var(--management-control);color:var(--management-accent)}
+body[data-management-page=status] .status-primary{gap:0;margin:0;border-top:1px solid var(--management-line)}
+body[data-management-page=status] .status-primary>.card{
+ padding:22px 20px;
+ border:0;
+ border-bottom:1px solid var(--management-line);
+ border-radius:0;
+ background:transparent;
+}
+body[data-management-page=status] .status-primary>.card:first-child{border-right:1px solid var(--management-line)}
+body[data-management-page=status] .page-disclosure{
+ margin:0;
+ border:0;
+ border-bottom:1px solid var(--management-line);
+ border-radius:0;
+ background:transparent;
+}
+
+/* Settings groups use soft surfaces and spacing instead of separator lines. */
+body[data-management-page=settings] .settings-workspace{
+ width:100%;
+ max-width:1040px;
+ margin:0;
+}
+body[data-management-page=settings] .settings-panel{width:100%;max-width:none;margin:0 0 18px;padding:0}
+body[data-management-page=settings] .settings-panel+.settings-panel{margin-top:0;padding-top:0}
+body[data-management-page=settings] .settings-panel+.settings-panel::before{content:none}
+body[data-management-page=settings] .settings-card{
+ margin:0 0 18px;
+ padding:22px;
+ border:0;
+ border-radius:14px;
+ background:var(--management-control);
+ box-shadow:none;
+ overflow:visible;
+}
+body[data-management-page=settings] .settings-section+.settings-section{margin-top:0;padding-top:22px}
+body[data-management-page=settings] .settings-section+.settings-section::before{
+ content:none;
+}
+body[data-management-page=settings] .settings-section-title{margin:0 0 16px;padding:0;border:0}
+body[data-management-page=settings] .settings-card-heading>div{display:grid;gap:4px}
+body[data-management-page=settings] .settings-user-header,
+body[data-management-page=settings] #managedUserList .settings-user-row{border:0}
+body[data-management-page=settings] #managedUserList .settings-user-row{padding-inline:10px}
+body[data-management-page=settings] .connection-summary{border:0;border-radius:10px;background:var(--management-canvas);padding:12px 14px}
+body[data-management-page=settings] .profile-webhook-tools{margin-top:18px;padding:16px;border:0;border-radius:11px;background:var(--management-canvas)}
+body[data-management-page=settings] .profile-webhook-tools::before{content:none}
+body[data-management-page=settings] .profile-webhook-tools .webhook-setup-action{padding:0}
+body[data-management-page=settings] .profile-webhook-tools .webhook-setup-action code{padding:9px 11px;border:0;border-radius:8px;background:var(--management-control)}
+body[data-management-page=settings] .automation-list{padding:22px}
+body[data-management-page=settings] .automation-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+body[data-management-page=settings] .automation-row{
+ min-width:0;
+ min-height:132px;
+ display:flex;
+ flex-direction:column;
+ align-items:stretch;
+ justify-content:space-between;
+ gap:18px;
+ padding:16px;
+ border:0;
+ border-radius:11px;
+ background:var(--management-canvas);
+}
+body[data-management-page=settings] .automation-row+.automation-row{border:0}
+body[data-management-page=settings] .automation-row+.automation-row::before{content:none}
+body[data-management-page=settings] .automation-row>strong{font-size:14px}
+body[data-management-page=settings] .automation-controls{width:100%;justify-content:flex-start;gap:8px}
+body[data-management-page=settings] .automation-controls>span{min-width:0;text-align:left}
+body[data-management-page=settings] .automation-controls select{width:auto;min-width:0;flex:1}
+body[data-management-page=settings] .settings-security-card{padding-bottom:14px}
+body[data-management-page=settings] .settings-password{border:0;border-radius:10px;background:var(--management-canvas)}
+body[data-management-page=settings] .settings-password>summary{padding:0 14px}
+body[data-management-page=settings] .settings-password .settings-expander-body{padding:16px 14px;border:0}
+body[data-management-page=settings] .settings-about{display:flex;align-items:center;justify-content:space-between;padding:14px;color:var(--management-muted);font-size:13px}
+body[data-management-page=appearance] .appearance-theme-section{padding:0 0 30px}
+body[data-management-page=appearance] .appearance-theme-grid{display:grid;grid-template-columns:repeat(3,190px);justify-content:start;gap:14px}
+body[data-management-page=appearance] .appearance-theme-card{
+ position:relative;
+ width:190px;
+ min-height:0;
+ display:flex;
+ flex-direction:column;
+ gap:11px;
+ padding:9px 9px 12px;
+ border:1px solid var(--management-line);
+ border-radius:12px;
+ background:transparent;
+ color:var(--management-text);
+ text-align:left;
+ cursor:pointer;
+ transition:border-color .16s ease,background .16s ease,transform .16s ease;
+}
+body[data-management-page=appearance] .appearance-theme-card:hover{background:var(--management-hover);transform:translateY(-1px)}
+body[data-management-page=appearance] .appearance-theme-card.selected{border-color:var(--management-accent);background:color-mix(in srgb,var(--app-selected) 58%,transparent)}
+body[data-management-page=appearance] .appearance-theme-card.selected::after{content:"✓";position:absolute;top:15px;right:15px;display:grid;place-items:center;width:19px;height:19px;border-radius:50%;background:var(--management-accent);color:var(--management-on-accent);font-size:12px;font-weight:700}
+body[data-management-page=appearance] .appearance-theme-copy{display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:0 3px}
+body[data-management-page=appearance] .appearance-theme-copy strong{font-size:14px;font-weight:650}
+body[data-management-page=appearance] .appearance-theme-preview{position:relative;display:block;width:100%;height:92px;overflow:hidden;border:1px solid var(--app-line);border-radius:8px;background:var(--preview-main)}
+body[data-management-page=appearance] .appearance-theme-preview i{position:absolute;display:block;border-radius:3px;background:var(--preview-control)}
+body[data-management-page=appearance] .appearance-theme-preview .preview-sidebar{inset:0 auto 0 0;width:26%;border-radius:0;background:var(--preview-side)}
+body[data-management-page=appearance] .appearance-theme-preview .preview-search{top:12px;left:34%;width:42%;height:8px}
+body[data-management-page=appearance] .appearance-theme-preview .preview-content{top:30px;left:34%;width:53%;height:38px;background:repeating-linear-gradient(180deg,var(--preview-line) 0 4px,transparent 4px 11px)}
+body[data-management-page=appearance] .appearance-theme-preview .preview-player{right:7px;bottom:7px;left:31%;height:8px;background:linear-gradient(90deg,var(--preview-accent) 0 58%,var(--preview-control) 58%)}
+body[data-management-page=appearance] .preview-light{--preview-main:var(--preview-light-main);--preview-side:var(--preview-light-side);--preview-control:var(--preview-light-control);--preview-line:var(--preview-light-line);--preview-accent:var(--preview-light-accent)}
+body[data-management-page=appearance] .preview-warm{--preview-main:var(--preview-warm-main);--preview-side:var(--preview-warm-side);--preview-control:var(--preview-warm-control);--preview-line:var(--preview-warm-line);--preview-accent:var(--preview-warm-accent)}
+body[data-management-page=appearance] .preview-night{--preview-main:var(--preview-night-main);--preview-side:var(--preview-night-side);--preview-control:var(--preview-night-control);--preview-line:var(--preview-night-line);--preview-accent:var(--preview-night-accent)}
+body[data-management-page=settings] .settings-account-actions{display:flex;justify-content:flex-start;margin-top:18px;padding:0 0 18px}
+
+@media(max-width:700px){
+ body[data-management-page] .management-stage{padding:0 16px 36px}
+ body[data-management-page] .management-nav{gap:22px;min-height:56px}
+ body[data-management-page=external] .external-import-form{grid-template-columns:1fr}
+ body[data-management-page=mixes] .contextual-settings-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ body[data-management-page=mixes] .contextual-settings-grid .management-action{grid-column:1/-1}
+ body[data-management-page=library] .library-overview{grid-template-columns:1fr}
+ body[data-management-page=library] .library-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+ body[data-management-page=library] .library-metrics>div{border-bottom:1px solid var(--management-line)}
+ body[data-management-page=status] .health-grid{grid-template-columns:1fr}
+ body[data-management-page=status] .health-card{border-right:0;border-bottom:1px solid var(--management-line)}
+ body[data-management-page=status] .health-card:last-child{border-bottom:0}
+ body[data-management-page=status] .status-primary>.card:first-child{border-right:0}
+ body[data-management-page=settings] .automation-grid.automation-grid{grid-template-columns:1fr}
+ body[data-management-page=appearance] .appearance-theme-grid.appearance-theme-grid{grid-template-columns:repeat(2,190px)}
+}
+
+@media(max-width:460px){body[data-management-page=appearance] .appearance-theme-grid.appearance-theme-grid{grid-template-columns:190px}}
+

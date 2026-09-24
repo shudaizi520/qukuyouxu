@@ -361,6 +361,7 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
             'playlist-search.js', 'playlist-player.js', 'playlist-sections.js',
             'playlist-playback-mode.js', 'playlist-now-playing.js', 'playlist-now-playing.css',
             'external-workspace.css', 'theme-tokens.css', 'ui-components.css', 'design-system.css',
+            'management-shell.css', 'theme-background.css',
             'playlist-visualizer.js', 'management-shell.js',
         ):
             return Response(status_code=404)

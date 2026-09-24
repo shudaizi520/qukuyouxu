@@ -17,7 +17,7 @@ class ReleaseVersionTests(unittest.TestCase):
             with self.subTest(name=name):
                 html = (ROOT / "src/helper/static" / name).read_text(encoding="utf-8")
                 pages.append(html)
-                self.assertIn("?v=2.0.6", html)
+                self.assertIn("?v=app", html)
                 if name == "settings.html":
                     self.assertIn(">v2.0.6<", html)
                 else:

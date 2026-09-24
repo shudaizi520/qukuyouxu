@@ -58,7 +58,7 @@ def test_management_pages_share_one_shell_controller_and_identify_their_route():
         page.feed((STATIC / filename).read_text(encoding="utf-8"))
 
         assert page.body.get("data-management-page") == page_id, filename
-        assert page.scripts.count("/static/management-shell.js?v=2.0.7") == 1, filename
+        assert page.scripts.count("/static/management-shell.js?v=app") == 1, filename
         assert len(page.shells) == 1, filename
 
 
@@ -85,7 +85,8 @@ def test_management_navigation_is_one_shared_six_page_route_map_in_the_requested
 
 
 def test_management_shell_fills_only_the_existing_right_hand_workspace():
-    css = (STATIC / "design-system.css").read_text(encoding="utf-8")
+    css = (STATIC / "management-shell.css").read_text(encoding="utf-8")
+    foundation = (STATIC / "design-system.css").read_text(encoding="utf-8")
     shell = _rule(css, "body[data-management-page] [data-management-shell]")
     stage = _rule(css, ".management-stage")
     embedded_topbar = _rule(css, ".pch-embedded body[data-management-page] .topbar")
@@ -98,7 +99,7 @@ def test_management_shell_fills_only_the_existing_right_hand_workspace():
     assert stage.get("margin") == "0 auto 0 0"
     assert stage.get("padding") == "0 34px 48px"
     assert embedded_topbar.get("display") == "none"
-    assert "body[data-view=playlists] .playlist-hub{grid-template-columns:var(--app-rail-width) minmax(0,1fr)" in css
+    assert "body[data-view=playlists] .playlist-hub{grid-template-columns:var(--app-rail-width) minmax(0,1fr)" in foundation
 
 
 def test_management_controller_wraps_navigation_and_page_content_in_one_stage():
@@ -111,7 +112,7 @@ def test_management_controller_wraps_navigation_and_page_content_in_one_stage():
 
 
 def test_legacy_centered_page_shells_are_neutralized_for_embedded_management_pages():
-    css = (STATIC / "design-system.css").read_text(encoding="utf-8")
+    css = (STATIC / "management-shell.css").read_text(encoding="utf-8")
     selector = ".pch-embedded body[data-management-page] [data-management-shell][data-management-shell]"
     reset = _rule(css, selector)
 
@@ -122,7 +123,7 @@ def test_legacy_centered_page_shells_are_neutralized_for_embedded_management_pag
 
 
 def test_management_components_use_shared_theme_tokens_and_control_geometry():
-    css = (STATIC / "design-system.css").read_text(encoding="utf-8")
+    css = (STATIC / "management-shell.css").read_text(encoding="utf-8")
     root = _rule(css, "body[data-management-page]")
     action = _rule(css, "body[data-management-page] .management-action")
     danger = _rule(css, "body[data-management-page] .management-action.danger")
@@ -142,7 +143,7 @@ def test_management_components_use_shared_theme_tokens_and_control_geometry():
 
 
 def test_management_nav_is_horizontal_and_uses_the_theme_accent_for_active_state():
-    css = (STATIC / "design-system.css").read_text(encoding="utf-8")
+    css = (STATIC / "management-shell.css").read_text(encoding="utf-8")
     nav = _rule(css, ".management-nav")
     active = _rule(css, ".management-nav a[aria-current=page]::after")
 
@@ -294,7 +295,7 @@ def test_server_exposes_the_dedicated_appearance_route():
 
 
 def test_appearance_cards_are_compact_fixed_width_previews():
-    css = (STATIC / "design-system.css").read_text(encoding="utf-8")
+    css = (STATIC / "management-shell.css").read_text(encoding="utf-8")
     grid = _rule(css, "body[data-management-page=appearance] .appearance-theme-grid")
     card = _rule(css, "body[data-management-page=appearance] .appearance-theme-card")
     preview = _rule(css, "body[data-management-page=appearance] .appearance-theme-preview")
@@ -318,7 +319,7 @@ def test_each_management_page_uses_shared_content_primitives_not_only_the_outer_
         source = (STATIC / filename).read_text(encoding="utf-8")
         assert source.count("management-section") >= minimum, filename
 
-    css = (STATIC / "design-system.css").read_text(encoding="utf-8")
+    css = (STATIC / "management-shell.css").read_text(encoding="utf-8")
     section = _rule(css, "body[data-management-page] .management-section")
     row = _rule(css, "body[data-management-page] .management-row")
     summary = _rule(css, "body[data-management-page] .management-summary")
@@ -330,7 +331,7 @@ def test_each_management_page_uses_shared_content_primitives_not_only_the_outer_
 
 
 def test_page_specific_layouts_use_continuous_rows_instead_of_scattered_cards():
-    css = (STATIC / "design-system.css").read_text(encoding="utf-8")
+    css = (STATIC / "management-shell.css").read_text(encoding="utf-8")
     external = _rule(css, "body[data-management-page=external] .external-import-card")
     mix = _rule(css, "body[data-management-page=mixes] .mix-row")
     library = _rule(css, "body[data-management-page=library] .library-overview")

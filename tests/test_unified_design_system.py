@@ -60,15 +60,27 @@ class _Tree(HTMLParser):
         return next(node for node in self.all() if node.attrs.get("id") == value)
 
 
-def test_every_product_page_loads_the_canonical_design_system_last():
+def test_every_product_page_loads_the_shared_styles_in_canonical_order():
     pages = sorted(STATIC.glob("*.html"))
     themed = [page for page in pages if "product.css" in page.read_text(encoding="utf-8")]
     assert themed
+    order = ("product.css", "theme-tokens.css", "ui-components.css", "design-system.css")
     for page in themed:
         source = page.read_text(encoding="utf-8")
         stylesheets = re.findall(r'<link[^>]+href="([^"]+\.css[^\"]*)"', source)
         assert stylesheets, page.name
-        assert "design-system.css" in stylesheets[-1], page.name
+        names = [item.split("/")[-1].split("?")[0] for item in stylesheets]
+        assert [names.index(name) for name in order] == sorted(names.index(name) for name in order), page.name
+        if 'data-management-page=' in source:
+            assert names.index("management-shell.css") > names.index("design-system.css"), page.name
+
+
+def test_management_layout_has_one_owner():
+    foundation = _text("design-system.css")
+    shell = _text("management-shell.css")
+    for selector in (".management-stage", ".management-nav", "body[data-management-page]"):
+        assert selector in shell
+        assert selector not in foundation
 
 
 def test_palette_and_typography_have_one_canonical_owner():

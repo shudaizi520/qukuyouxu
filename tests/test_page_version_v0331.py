@@ -1,4 +1,5 @@
 import pathlib
+import re
 import sys
 import unittest
 
@@ -8,6 +9,14 @@ sys.path.insert(0, str(ROOT / "src"))
 
 
 class PageVersionV0331Tests(unittest.TestCase):
+    def test_source_pages_use_a_neutral_asset_version_marker(self):
+        static = ROOT / "src/helper/static"
+        for page in static.glob("*.html"):
+            source = page.read_text(encoding="utf-8")
+            versions = re.findall(r'/static/[\w.-]+\?v=([^"\']+)', source)
+            self.assertTrue(versions, page.name)
+            self.assertEqual({"app"}, set(versions), page.name)
+
     def test_library_first_frame_does_not_expose_a_stale_version(self):
         try:
             from helper.page_version import render_library_html
@@ -29,10 +38,10 @@ class PageVersionV0331Tests(unittest.TestCase):
             '<script defer src="/static/home.js?v=0.3.20"></script>'
             '<small id="version">v0.3.25</small>'
         )
-        rendered = render_versioned_html(source, "0.3.31")
+        rendered = render_versioned_html(source, "2.1.0")
 
-        self.assertIn('/static/product.css?v=0.3.31', rendered)
-        self.assertIn('/static/home.js?v=0.3.31', rendered)
+        self.assertIn('/static/product.css?v=2.1.0', rendered)
+        self.assertIn('/static/home.js?v=2.1.0', rendered)
         self.assertNotIn('?v=0.3.20', rendered)
 
 

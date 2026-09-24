@@ -43,7 +43,7 @@ def test_settings_uses_only_the_shared_top_navigation_without_a_second_heading_o
 
 def test_settings_has_four_clear_modules_and_no_separator_lattice():
     html = (STATIC / "settings.html").read_text(encoding="utf-8")
-    css = (STATIC / "design-system.css").read_text(encoding="utf-8")
+    css = (STATIC / "management-shell.css").read_text(encoding="utf-8")
 
     classes = re.findall(r'class="([^"]+)"', html)
     assert sum("settings-card" in value.split() for value in classes) == 4
@@ -66,7 +66,7 @@ def test_settings_has_four_clear_modules_and_no_separator_lattice():
 
 def test_automation_is_a_compact_three_card_grid_and_logout_finishes_on_the_left():
     html = (STATIC / "settings.html").read_text(encoding="utf-8")
-    css = (STATIC / "design-system.css").read_text(encoding="utf-8")
+    css = (STATIC / "management-shell.css").read_text(encoding="utf-8")
     grid = _rule(css, "body[data-management-page=settings] .automation-grid")
     row = _rule(css, "body[data-management-page=settings] .automation-row")
     logout = _rule(css, "body[data-management-page=settings] .settings-account-actions")
@@ -82,7 +82,7 @@ def test_automation_is_a_compact_three_card_grid_and_logout_finishes_on_the_left
 def test_settings_removes_static_explanations_but_keeps_operational_state():
     html = (STATIC / "settings.html").read_text(encoding="utf-8")
     script = (STATIC / "settings.js").read_text(encoding="utf-8")
-    css = (STATIC / "design-system.css").read_text(encoding="utf-8")
+    css = (STATIC / "management-shell.css").read_text(encoding="utf-8")
 
     for text in (
         "推荐、智能歌单和新增歌曲按这里的时间自动更新。",
