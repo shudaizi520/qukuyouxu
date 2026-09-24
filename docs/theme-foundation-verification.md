@@ -2,7 +2,7 @@
 
 ## Revision under test
 
-`cc2a030bf238641cabbe2e43c39951f6ba0f47b5`
+`eeb3bac9c5efb9cee48f9879891e0bec2bd206cd`
 
 The visual baseline was served from baseline checkpoint `ceb38eb` on an isolated
 temporary data root. The current branch was served separately from the revision
@@ -17,13 +17,13 @@ removed afterwards.
 | Command | Exit | Observed result |
 | --- | ---: | --- |
 | `PYTHONPATH=. .venv/bin/python tools/check_theme_contract.py` | 0 | `Theme contract passed: zero unregistered UI colors.` |
-| `PYTHONPATH=src:. .venv/bin/python -m pytest tests/test_theme_contract.py tests/test_icon_state_contract.py tests/test_theme_background_contract.py tests/test_management_workspace.py tests/test_unified_design_system.py tests/test_appearance_palette_v152.py tests/test_appearance_pages_v152.py tests/test_page_version_v0331.py tests/test_visual_capture_tool.py tests/test_playwright_runtime.py -q` | 0 | `50 passed in 0.22s` |
+| `PYTHONPATH=src:. .venv/bin/python -m pytest tests/test_theme_contract.py tests/test_icon_state_contract.py tests/test_theme_background_contract.py tests/test_management_workspace.py tests/test_unified_design_system.py tests/test_appearance_palette_v152.py tests/test_appearance_pages_v152.py tests/test_page_version_v0331.py tests/test_visual_capture_tool.py tests/test_playwright_runtime.py -q` | 0 | `51 passed in 0.20s` |
 | `node --test tests/*.test.js` | 127 | The shell had no `node` entry on `PATH`; no tests ran in this invocation. |
 | `.venv/lib/python3.14/site-packages/playwright/driver/node --test tests/*.test.js` | 0 | `8` test files passed, `0` failed. |
-| `PYTHONPATH=src .venv/bin/python -m pytest -q` | 0 | `1041 passed, 115 subtests passed in 16.02s` |
-| `PLAYWRIGHT_BROWSERS_PATH=.playwright PCH_VISUAL_BASE_URL=http://127.0.0.1:19511 .venv/bin/python tools/capture_theme_matrix.py --mode baseline` | 0 | `captured=37 mode=baseline` from checkpoint `ceb38eb`. |
-| `PLAYWRIGHT_BROWSERS_PATH=.playwright PCH_VISUAL_BASE_URL=http://127.0.0.1:19512 .venv/bin/python tools/capture_theme_matrix.py --mode current --compare baseline` | 0 | `captured=37 mode=current`; ratios recorded below. |
-| `PLAYWRIGHT_BROWSERS_PATH=.playwright PCH_VISUAL_BASE_URL=http://127.0.0.1:19512 .venv/bin/python tools/verify_theme_background.py` | 0 | Five background, pointer, motion, and embedding checks passed. |
+| `PYTHONPATH=src .venv/bin/python -m pytest -q` | 0 | `1042 passed, 115 subtests passed in 16.11s` |
+| `PLAYWRIGHT_BROWSERS_PATH=.playwright PCH_VISUAL_BASE_URL=http://127.0.0.1:29511 .venv/bin/python tools/capture_theme_matrix.py --mode baseline` | 0 | `captured=37 mode=baseline` from checkpoint `ceb38eb`. |
+| `PLAYWRIGHT_BROWSERS_PATH=.playwright PCH_VISUAL_BASE_URL=http://127.0.0.1:29512 .venv/bin/python tools/capture_theme_matrix.py --mode current --compare baseline` | 0 | `captured=37 mode=current`; ratios recorded below. |
+| `PLAYWRIGHT_BROWSERS_PATH=.playwright PCH_VISUAL_BASE_URL=http://127.0.0.1:29512 .venv/bin/python tools/verify_theme_background.py` | 0 | Five background, pointer, computed-motion, and embedding checks passed. |
 
 Visual matrix: 37/37 captured.
 
@@ -68,7 +68,7 @@ Every nonzero diff image was opened and inspected. The two zero-diff images were
 | 0.00105276 | `1920x1080/warm/appearance.png` | Same warm appearance normalization at the larger viewport. |
 | 0.00316179 | `1366x768/night/appearance.png` | Night navigation/card token normalization; selection remains clear. |
 | 0.00159963 | `1920x1080/night/appearance.png` | Same night appearance normalization at the larger viewport. |
-| 0.00685764 | `1920x1080/light/embedded-settings.png` | Embedded settings use shared component tokens; sidebar and player remain visible and unobscured. |
+| 0.00526042 | `1920x1080/light/embedded-settings.png` | Embedded settings use shared component tokens; iframe credentials are masked, and the sidebar/player remain visible and unobscured. |
 
 The ratios above `0.005` were not dismissed automatically. Inspection showed
 that the large smart-playlist and library differences are the intended removal
@@ -91,7 +91,10 @@ The current branch was exercised in Chromium with `reduced_motion="reduce"`:
 
 The background check injected a red synthetic background plus a green stacking
 probe. Pixel assertions confirmed the background remained visible behind normal
-content, and hit-testing confirmed that the background never captured input.
+content, and hit-testing confirmed that the background never captured input. It
+also injected inline animation/transition declarations and confirmed the layer
+plus both pseudo-elements computed to `animation-name:none` and `0s` transition
+duration under reduced motion.
 
 Observed interaction result: `interaction-states=PASS`.
 
