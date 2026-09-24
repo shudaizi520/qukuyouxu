@@ -22,3 +22,4 @@ music-cache*.json
 *.before-cache-import-*.bak
 .playwright/
 .artifacts/theme-foundation/
+.artifacts/management-redesign/
