@@ -27,7 +27,13 @@
    option.classList.toggle('selected',selected);
   }
  }
- function applyTheme(){document.documentElement.dataset.appearance=current;updateMenu();return current;}
+ function applyTheme(){
+  const theme=themeById(current);
+  document.documentElement.dataset.appearance=theme.id;
+  document.documentElement.dataset.backgroundKind=theme.background;
+  document.documentElement.dataset.backgroundMotion=theme.motion?'on':'off';
+  updateMenu();return current;
+ }
  function syncFrames(){
   for(const frame of document.querySelectorAll?.('iframe')||[]){
    try{frame.contentWindow?.PCHAppearance?.receiveTheme(current);}catch(_error){}
@@ -81,9 +87,15 @@
   }
   updateMenu();
  }
+ function mountBackground(){
+  if(embedded||document.querySelector?.('.app-theme-background'))return;
+  const layer=document.createElement('div');layer.className='app-theme-background';layer.setAttribute('aria-hidden','true');
+  (document.body||document.documentElement).append(layer);
+ }
  function mount(){
   renderAppearanceCards();
   mountAppearanceSettings();
+  mountBackground();
   if(embedded)return;
   const header=document.querySelector('.topbar');if(!header||header.querySelector?.('.appearance-picker'))return;
   const navigation=header.querySelector?.('nav');

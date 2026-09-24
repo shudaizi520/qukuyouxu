@@ -17,7 +17,7 @@ class Element {
 }
 
 function fixture(saved='',{blocked=false,embedded=false,parentWindow=null,frames=[],withActions=false,withSettingsPanel=false}={}){
- const header=new Element('header'),events={},storage={value:saved};
+ const header=new Element('header'),body=new Element('body'),events={},storage={value:saved};
  let navigation=null,logout=null,status=null,settings=null;
  const appearanceGrid=withSettingsPanel?new Element('div'):null;
  const appearanceChoices=appearanceGrid?appearanceGrid.children:[];
@@ -28,13 +28,13 @@ function fixture(saved='',{blocked=false,embedded=false,parentWindow=null,frames
  }
  storage.getItem=()=>{if(blocked)throw Error('storage blocked');return storage.value;};
  storage.setItem=(_key,value)=>{if(blocked)throw Error('storage blocked');storage.value=value;};
- const document={documentElement:{dataset:{}},querySelector:selector=>selector==='.topbar'?header:selector==='[data-appearance-grid]'?appearanceGrid:null,
+ const document={documentElement:{dataset:{}},body,querySelector:selector=>selector==='.topbar'?header:selector==='[data-appearance-grid]'?appearanceGrid:body.querySelector(selector),
   querySelectorAll:selector=>selector==='iframe'?frames:selector==='[data-appearance-choice]'?appearanceChoices:[],
   createElement:tag=>new Element(tag),addEventListener:(name,fn)=>{events[name]=fn;}};
  const window={location:{search:''},localStorage:storage,events:{},addEventListener(name,fn){this.events[name]=fn;}};
  window.self=window;window.top=embedded?{}:window;window.parent=parentWindow||window;
  new Function('window','document','URLSearchParams',source)(window,document,URLSearchParams);
- return {window,document,header,events,storage,navigation,logout,status,settings,appearanceChoices,mount:()=>events.DOMContentLoaded()};
+ return {window,document,header,body,events,storage,navigation,logout,status,settings,appearanceChoices,mount:()=>events.DOMContentLoaded()};
 }
 
 test('theme registry is defensive metadata and invalid ids fall back to light',()=>{
@@ -93,6 +93,15 @@ test('embedded tools inherit the theme without a duplicate clothing control',()=
  const setup=fixture('night',{embedded:true});setup.mount();
  assert.equal(setup.document.documentElement.dataset.appearance,'night');
  assert.equal(setup.header.children.length,0);
+ assert.equal(setup.body.querySelector('.app-theme-background'),null);
+});
+
+test('theme application exposes inert background metadata without animating controls',()=>{
+ const setup=fixture();setup.mount();
+ setup.window.PCHAppearance.setTheme('night');
+ assert.equal(setup.document.documentElement.dataset.backgroundKind,'solid');
+ assert.equal(setup.document.documentElement.dataset.backgroundMotion,'off');
+ assert.equal(setup.body.children.filter(child=>child.className==='app-theme-background').length,1);
 });
 
 test('the top-right menu control is the existing direct settings action without a popup',()=>{

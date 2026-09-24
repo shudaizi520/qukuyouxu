@@ -1,0 +1,21 @@
+/* Background themes are presentation-only and never participate in input. */
+.app-theme-background{
+ position:fixed;
+ inset:0;
+ z-index:-1;
+ pointer-events:none;
+ overflow:hidden;
+ background-color:var(--background-color);
+ background-image:linear-gradient(var(--background-overlay),var(--background-overlay)),var(--background-image);
+ background-position:center;
+ background-size:cover;
+ opacity:var(--background-opacity);
+}
+.pch-embedded .app-theme-background{display:none}
+
+@media(prefers-reduced-motion:reduce){
+ .app-theme-background,.app-theme-background::before,.app-theme-background::after{
+  animation:none!important;
+  transition:none!important;
+ }
+}
