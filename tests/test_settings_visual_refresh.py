@@ -41,7 +41,7 @@ def test_settings_uses_only_the_shared_top_navigation_without_a_second_heading_o
     assert "new URLSearchParams(location.search).get('panel')" in script
 
 
-def test_settings_has_four_clear_modules_and_no_separator_lattice():
+def test_settings_has_four_clear_modules_and_only_faint_group_separators():
     html = (STATIC / "settings.html").read_text(encoding="utf-8")
     css = (STATIC / "management-shell.css").read_text(encoding="utf-8")
 
@@ -55,13 +55,15 @@ def test_settings_has_four_clear_modules_and_no_separator_lattice():
     separator = _rule(css, "body[data-management-page=settings] .settings-section+.settings-section::before")
     panel_separator = _rule(css, "body[data-management-page=settings] .settings-panel+.settings-panel::before")
 
-    assert workspace["max-width"] == "760px"
+    assert workspace["max-width"] == "700px"
     assert workspace["margin"] == "0"
     assert card["background"] == "transparent"
     assert card["border"] == "0"
     assert card["border-radius"] == "0"
     assert separator["content"] == "none"
-    assert panel_separator["content"] == "none"
+    assert panel_separator["content"] == '""'
+    assert panel_separator["height"] == "1px"
+    assert panel_separator["background"] == "var(--management-line)"
 
 
 def test_automation_is_a_compact_aligned_list_and_logout_finishes_on_the_left():

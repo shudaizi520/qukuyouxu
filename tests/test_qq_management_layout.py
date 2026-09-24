@@ -85,9 +85,9 @@ def test_system_settings_use_a_capped_aligned_user_table():
 
     assert "settings-user-section" in people.split(">", 1)[0]
     assert 'id="openAddUser"' in heading
-    assert user_section["max-width"] == "760px"
-    assert header["grid-template-columns"] == "minmax(220px,1fr) repeat(3,92px) 92px"
-    assert row["grid-template-columns"] == "minmax(220px,1fr) repeat(3,92px) 92px"
+    assert user_section["max-width"] == "700px"
+    assert header["grid-template-columns"] == "minmax(220px,1fr) repeat(3,82px) 64px"
+    assert row["grid-template-columns"] == "minmax(220px,1fr) repeat(3,82px) 64px"
     assert row["background"] == "transparent"
     assert hover["background"] == "var(--management-hover)"
 
@@ -99,8 +99,25 @@ def test_system_settings_automation_uses_fixed_compact_columns():
 
     assert row["grid-template-columns"] == "144px minmax(0,1fr)"
     assert row["background"] == "transparent"
-    assert controls["grid-template-columns"] == "72px 72px 30px"
+    assert controls["grid-template-columns"] == "76px 88px 20px"
     assert controls["justify-content"] == "start"
+
+
+def test_management_checkboxes_are_small_qq_style_boxes():
+    css = _text("management-shell.css")
+    control = _rule(css, "body[data-management-page] input[type=checkbox]")
+    checked = _rule(css, "body[data-management-page] input[type=checkbox]:checked")
+    mark = _rule(css, "body[data-management-page] input[type=checkbox]:checked::after")
+
+    assert control["appearance"] == "none"
+    assert control["width"] == "16px"
+    assert control["height"] == "16px"
+    assert control["border"] == "1px solid var(--management-muted)"
+    assert control["border-radius"] == "1px"
+    assert control["background"] == "transparent"
+    assert checked["border-color"] == "var(--management-accent)"
+    assert checked["background"] == "transparent"
+    assert mark["background"] == "var(--management-accent)"
 
 
 def test_import_workspace_is_capped_and_missing_download_stays_with_count():
@@ -139,6 +156,7 @@ def test_smart_playlist_workspace_is_compact_and_rows_fill_only_on_hover():
     listing = _rule(css, "body[data-management-page=mixes] .mix-list")
     row = _rule(css, "body[data-management-page=mixes] .mix-row")
     hover = _rule(css, "body[data-management-page=mixes] .mix-row:hover")
+    icon = _rule(css, "body[data-management-page=mixes] .mix-icon")
 
     assert settings["max-width"] == "820px"
     assert settings["border"] == "0"
@@ -147,6 +165,7 @@ def test_smart_playlist_workspace_is_compact_and_rows_fill_only_on_hover():
     assert row["border"] == "0"
     assert row["background"] == "transparent"
     assert hover["background"] == "var(--management-hover)"
+    assert icon["color"] == "var(--management-text)"
 
 
 def test_library_and_status_summaries_are_capped_unboxed_groups():
@@ -156,17 +175,17 @@ def test_library_and_status_summaries_are_capped_unboxed_groups():
     status = _rule(css, "body[data-management-page=status] .status-primary")
     disclosure = _rule(css, "body[data-management-page=status] .page-disclosure")
 
-    assert library["max-width"] == "850px"
+    assert library["max-width"] == "760px"
     assert library["border"] == "0"
-    assert health["max-width"] == "680px"
+    assert health["max-width"] == "620px"
     assert health["border"] == "0"
-    assert health["gap"] == "30px"
+    assert health["gap"] == "18px"
     assert status["grid-template-columns"] == "1fr"
-    assert status["max-width"] == "680px"
+    assert status["max-width"] == "620px"
     assert disclosure["max-width"] == "620px"
 
 
-def test_appearance_tiles_are_borderless_with_a_soft_selected_state():
+def test_appearance_tiles_use_a_thin_selected_outline_without_a_green_badge():
     css = _text("management-shell.css")
     card = _rule(
         css, "body[data-management-page=appearance] .appearance-theme-card"
@@ -176,10 +195,10 @@ def test_appearance_tiles_are_borderless_with_a_soft_selected_state():
         "body[data-management-page=appearance] .appearance-theme-card.selected",
     )
 
-    assert card["border"] == "0"
+    assert card["border"] == "1px solid transparent"
     assert card["background"] == "transparent"
-    assert selected["border-color"] == "transparent"
-    assert selected["background"] == "var(--management-hover)"
+    assert selected["border-color"] == "var(--management-accent)"
+    assert selected["background"] == "transparent"
 
 
 def test_embedded_settings_and_empty_library_keep_the_same_readable_width():
@@ -189,15 +208,15 @@ def test_embedded_settings_and_empty_library_keep_the_same_readable_width():
         ".pch-embedded body[data-management-page=settings] .settings-workspace",
     )
     setup = _rule(css, "body[data-management-page=library] .setup-card")
-    assert embedded["max-width"] == "760px"
+    assert embedded["max-width"] == "700px"
     assert embedded["margin"] == "0"
-    assert setup["max-width"] == "850px"
+    assert setup["max-width"] == "760px"
     assert setup["border"] == "0"
     assert setup["background"] == "transparent"
     assert setup["text-align"] == "left"
 
 
-def test_lists_do_not_reintroduce_separator_lines_or_status_boxes():
+def test_lists_use_faint_row_separators_without_status_boxes():
     css = _text("management-shell.css")
     mix_sibling = _rule(
         css, "body[data-management-page=mixes] .mix-row+.mix-row"
@@ -211,11 +230,42 @@ def test_lists_do_not_reintroduce_separator_lines_or_status_boxes():
     status_card = _rule(
         css, "body[data-management-page=status] .status-primary>.card"
     )
-    assert mix_sibling["border-top"] == "0"
+    assert mix_sibling["border-top"] == "1px solid var(--management-line)"
     assert stat["border"] == "0"
     assert stat["background"] == "transparent"
-    assert status_row["border-top"] == "0"
+    assert status_row["border-top"] == "1px solid var(--management-line)"
     assert mix_head["min-height"] == "56px"
     assert mix_head["padding"] == "8px"
-    assert status_meta["border-top"] == "0"
+    assert status_meta["border-top"] == "1px solid var(--management-line)"
     assert status_card["box-shadow"] == "none"
+
+
+def test_status_values_stay_near_their_labels_and_chips_have_no_fill():
+    css = _text("management-shell.css")
+    status_row = _rule(css, "body[data-management-page=status] .status-list>div")
+    status_meta = _rule(css, "body[data-management-page=status] .status-meta")
+    chip = _rule(css, "body[data-management-page=status] .status-chip")
+    connection = _rule(css, "body[data-management-page=settings] .connection-state")
+
+    assert status_row["grid-template-columns"] == "140px minmax(0,1fr)"
+    assert status_meta["grid-template-columns"] == "140px minmax(0,1fr)"
+    assert chip["background"] == "transparent"
+    assert connection["background"] == "transparent"
+
+
+def test_management_actions_do_not_mix_red_green_or_add_underlines():
+    css = _text("management-shell.css")
+    components = _text("ui-components.css")
+    danger = _rule(components, "body[data-management-page] .management-action.danger")
+    hover = _rule(components, "body[data-management-page] .management-action:hover:not(:disabled)")
+    nav_mark = _rule(css, ".management-nav a[aria-current=page]::after")
+    library_action = _rule(css, "body[data-management-page=library] .managed-playlist-action")
+    library_hover = _rule(css, "body[data-management-page=library] .managed-playlist-action:hover:not(:disabled)")
+
+    assert danger["color"] == "var(--app-text)"
+    assert danger["background"] == "transparent"
+    assert hover["background"] == "var(--app-hover)"
+    assert hover["text-decoration"] == "none"
+    assert nav_mark["content"] == "none"
+    assert library_action["color"] == "var(--management-text)"
+    assert library_hover["text-decoration"] == "none"

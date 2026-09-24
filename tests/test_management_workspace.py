@@ -109,6 +109,7 @@ def test_management_controller_wraps_navigation_and_page_content_in_one_stage():
     assert "const content=[...shell.childNodes]" in script
     assert "stage.append(createNavigation(activePage),...content)" in script
     assert "shell.append(stage)" in script
+    assert "'a.button'" in script
 
 
 def test_legacy_centered_page_shells_are_neutralized_for_embedded_management_pages():
@@ -143,12 +144,12 @@ def test_management_components_use_shared_theme_tokens_and_control_geometry():
     assert action.get("height") == "30px"
     assert action.get("border-radius") == "4px"
     assert action_visual.get("background") == "transparent"
-    assert danger.get("color") == "var(--app-danger)"
+    assert danger.get("color") == "var(--app-text)"
     assert field.get("min-height") == "32px"
     assert field.get("border-radius") == "5px"
 
 
-def test_management_nav_is_horizontal_and_uses_the_theme_accent_for_active_state():
+def test_management_nav_is_horizontal_without_an_active_underline():
     css = (STATIC / "management-shell.css").read_text(encoding="utf-8")
     nav = _rule(css, ".management-nav")
     active = _rule(css, ".management-nav a[aria-current=page]::after")
@@ -156,7 +157,7 @@ def test_management_nav_is_horizontal_and_uses_the_theme_accent_for_active_state
     assert nav.get("display") == "flex"
     assert nav.get("min-height") == "64px"
     assert nav.get("overflow-x") == "auto"
-    assert active.get("background") == "var(--management-accent)"
+    assert active.get("content") == "none"
 
 
 def test_management_navigation_replaces_all_duplicate_page_title_regions():
@@ -309,7 +310,7 @@ def test_appearance_cards_are_compact_fixed_width_previews():
     assert grid.get("grid-template-columns") == "repeat(3,190px)"
     assert grid.get("justify-content") == "start"
     assert card.get("width") == "190px"
-    assert card.get("border") == "0"
+    assert card.get("border") == "1px solid transparent"
     assert card.get("min-height") == "0"
     assert preview.get("height") == "92px"
 
@@ -351,6 +352,6 @@ def test_page_specific_layouts_use_continuous_rows_instead_of_scattered_cards():
     assert mix.get("background") == "transparent"
     assert library.get("display") == "flex"
     assert library.get("border") == "0"
-    assert status.get("gap") == "30px"
+    assert status.get("gap") == "18px"
     assert status.get("border") == "0"
-    assert settings.get("max-width") == "760px"
+    assert settings.get("max-width") == "700px"

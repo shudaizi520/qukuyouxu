@@ -64,14 +64,7 @@ body[data-management-page] [data-management-shell]{
 .management-nav a:hover{color:var(--management-text)}
 .management-nav a[aria-current=page]{color:var(--management-text);font-weight:600}
 .management-nav a[aria-current=page]::after{
- content:"";
- position:absolute;
- right:0;
- bottom:0;
- left:0;
- height:3px;
- border-radius:3px 3px 0 0;
- background:var(--management-accent);
+ content:none;
 }
 body[data-management-page] .management-action{
  display:inline-flex;
@@ -90,6 +83,36 @@ body[data-management-page] .management-action{
  white-space:nowrap;
  cursor:pointer;
 }
+body[data-management-page] input[type=checkbox]{
+ appearance:none;
+ position:relative;
+ display:inline-grid;
+ place-items:center;
+ width:16px;
+ height:16px;
+ min-width:16px;
+ min-height:16px;
+ margin:0;
+ border:1px solid var(--management-muted);
+ border-radius:1px;
+ background:transparent;
+ box-shadow:none;
+ cursor:pointer;
+}
+body[data-management-page] input[type=checkbox]::before{content:none}
+body[data-management-page] input[type=checkbox]::after{
+ content:"";
+ width:9px;
+ height:7px;
+ background:transparent;
+ clip-path:polygon(0 43%,18% 25%,42% 55%,82% 0,100% 18%,43% 100%);
+}
+body[data-management-page] input[type=checkbox]:checked{
+ border-color:var(--management-accent);
+ background:transparent;
+}
+body[data-management-page] input[type=checkbox]:checked::after{background:var(--management-accent)}
+body[data-management-page] input[type=checkbox]:disabled{opacity:.42;cursor:not-allowed}
 body[data-management-page] input:not([type=checkbox]):not([type=radio]):not([type=range]),
 body[data-management-page] select,
 body[data-management-page] textarea{
@@ -220,9 +243,9 @@ body[data-management-page=mixes] .mix-row{
  box-shadow:none;
 }
 body[data-management-page=mixes] .mix-row:hover{background:var(--management-hover)}
-body[data-management-page=mixes] .mix-row+.mix-row{border-top:0}
+body[data-management-page=mixes] .mix-row+.mix-row{border-top:1px solid var(--management-line)}
 body[data-management-page=mixes] .mix-row-head{min-height:56px;gap:24px;padding:8px}
-body[data-management-page=mixes] .mix-icon{background:var(--management-control);color:var(--management-accent)}
+body[data-management-page=mixes] .mix-icon{background:var(--management-control);color:var(--management-text)}
 body[data-management-page=mixes] .mix-state{color:var(--management-muted)}
 body[data-management-page=mixes] .mix-actions{gap:8px}
 body[data-management-page=mixes] .custom-mix{
@@ -241,7 +264,7 @@ body[data-management-page=library] .library-overview{
  flex-wrap:wrap;
  gap:24px;
  width:100%;
- max-width:850px;
+ max-width:760px;
  margin:22px 0 0;
  padding:0;
  border:0;
@@ -265,7 +288,7 @@ body[data-management-page=library] .library-auth{padding:8px 0}
 body[data-management-page=library] .setup-card,
 body[data-management-page=library] .library-share-panel{
  width:100%;
- max-width:850px;
+ max-width:760px;
  margin:22px 0 0;
  padding:18px 0;
  border:0;
@@ -276,7 +299,7 @@ body[data-management-page=library] .library-share-panel{
 }
 body[data-management-page=library] .library-automation-line{
  width:100%;
- max-width:850px;
+ max-width:760px;
  min-height:50px;
  margin:0;
  padding:9px 0;
@@ -284,7 +307,7 @@ body[data-management-page=library] .library-automation-line{
 }
 body[data-management-page=library] :is(.managed-playlists-card,.library-result,.metadata-review-card,.unclassified-card){
  width:100%;
- max-width:850px;
+ max-width:760px;
  margin:0;
  padding:22px 0;
  border:0;
@@ -292,7 +315,21 @@ body[data-management-page=library] :is(.managed-playlists-card,.library-result,.
  background:transparent;
 }
 body[data-management-page=library] .managed-playlist-row{border:0;background:transparent}
+body[data-management-page=library] .managed-playlist-row+.managed-playlist-row{border-top:1px solid var(--management-line)}
 body[data-management-page=library] .managed-playlist-row:hover{background:var(--management-hover)}
+body[data-management-page=library] .managed-playlist-action{
+ border:0;
+ background:transparent;
+ color:var(--management-text);
+ text-decoration:none;
+}
+body[data-management-page=library] .managed-playlist-action.danger-text{color:var(--management-text)}
+body[data-management-page=library] .managed-playlist-action:hover:not(:disabled),
+body[data-management-page=library] .managed-playlist-action:focus-visible{
+ background:var(--management-hover);
+ color:var(--management-text);
+ text-decoration:none;
+}
 body[data-management-page=library] .page-footer{border-color:var(--management-line);color:var(--management-muted)}
 
 /* Status: the first strip reads as one summary, not three floating cards. */
@@ -300,9 +337,9 @@ body[data-management-page=status] .health-grid{
  display:flex;
  align-items:stretch;
  flex-wrap:wrap;
- gap:30px;
+ gap:18px;
  width:100%;
- max-width:680px;
+ max-width:620px;
  margin:22px 0;
  border:0;
  border-radius:0;
@@ -318,8 +355,8 @@ body[data-management-page=status] .health-card{
  background:transparent;
 }
 body[data-management-page=status] .health-card:last-child{border-right:0}
-body[data-management-page=status] .health-icon{background:var(--management-control);color:var(--management-accent)}
-body[data-management-page=status] .status-primary{display:grid;grid-template-columns:1fr;gap:30px;width:100%;max-width:680px;margin:0;border:0}
+body[data-management-page=status] .health-icon{background:var(--management-control);color:var(--management-text)}
+body[data-management-page=status] .status-primary{display:grid;grid-template-columns:1fr;gap:30px;width:100%;max-width:620px;margin:0;border:0}
 body[data-management-page=status] .status-primary>.card{
  padding:0;
  border:0;
@@ -329,9 +366,25 @@ body[data-management-page=status] .status-primary>.card{
 }
 body[data-management-page=status] .status-primary>.card:first-child{border-right:0}
 body[data-management-page=status] .stat{padding:8px 0;border:0;border-radius:0;background:transparent}
-body[data-management-page=status] .status-list>div,
-body[data-management-page=status] .event-row{border-top:0}
-body[data-management-page=status] .status-meta{border-top:0}
+body[data-management-page=status] .status-list>div{
+ display:grid;
+ grid-template-columns:140px minmax(0,1fr);
+ align-items:center;
+ gap:18px;
+ border-top:1px solid var(--management-line);
+}
+body[data-management-page=status] .status-list>div:first-child{border-top:0}
+body[data-management-page=status] .status-list>div strong{text-align:left}
+body[data-management-page=status] .event-row{border-top:1px solid var(--management-line)}
+body[data-management-page=status] .status-meta{
+ display:grid;
+ grid-template-columns:140px minmax(0,1fr);
+ align-items:center;
+ gap:18px;
+ border-top:1px solid var(--management-line);
+}
+body[data-management-page=status] .status-meta strong{text-align:left}
+body[data-management-page=status] .status-chip{padding:0;border:0;background:transparent;color:var(--management-muted)}
 body[data-management-page=status] .page-disclosure{
  width:100%;
  max-width:620px;
@@ -341,16 +394,25 @@ body[data-management-page=status] .page-disclosure{
  background:transparent;
 }
 
-/* Settings groups use soft surfaces and spacing instead of separator lines. */
+/* Settings groups use QQ-style spacing with only faint structural separators. */
 body[data-management-page=settings] .settings-workspace{
  width:100%;
- max-width:760px;
+ max-width:700px;
  margin:0;
 }
-.pch-embedded body[data-management-page=settings] .settings-workspace{width:100%;max-width:760px;margin:0}
+.pch-embedded body[data-management-page=settings] .settings-workspace{width:100%;max-width:700px;margin:0}
 body[data-management-page=settings] .settings-panel{width:100%;max-width:none;margin:0 0 18px;padding:0}
 body[data-management-page=settings] .settings-panel+.settings-panel{margin-top:0;padding-top:0}
-body[data-management-page=settings] .settings-panel+.settings-panel::before{content:none}
+body[data-management-page=settings] .settings-panel+.settings-panel::before{
+ content:"";
+ position:static;
+ display:block;
+ width:100%;
+ height:1px;
+ margin:0 0 30px;
+ background:var(--management-line);
+ opacity:.62;
+}
 body[data-management-page=settings] .settings-card{
  margin:0 0 30px;
  padding:0;
@@ -361,16 +423,14 @@ body[data-management-page=settings] .settings-card{
  overflow:visible;
 }
 body[data-management-page=settings] .settings-section+.settings-section{margin-top:0;padding-top:0}
-body[data-management-page=settings] .settings-section+.settings-section::before{
- content:none;
-}
+body[data-management-page=settings] .settings-section+.settings-section::before{content:none}
 body[data-management-page=settings] .settings-section-title{margin:0 0 16px;padding:0;border:0}
 body[data-management-page=settings] .settings-card-heading>div{display:grid;gap:4px}
-body[data-management-page=settings] .settings-user-section{width:100%;max-width:760px}
+body[data-management-page=settings] .settings-user-section{width:100%;max-width:700px}
 body[data-management-page=settings] .settings-user-header,
 body[data-management-page=settings] #managedUserList .settings-user-row{
  display:grid;
- grid-template-columns:minmax(220px,1fr) repeat(3,92px) 92px;
+ grid-template-columns:minmax(220px,1fr) repeat(3,82px) 64px;
  align-items:center;
  gap:10px;
  border:0;
@@ -378,7 +438,8 @@ body[data-management-page=settings] #managedUserList .settings-user-row{
 }
 body[data-management-page=settings] .settings-user-header{min-height:32px;padding:0 8px;color:var(--management-muted);font-size:12px;font-weight:500}
 body[data-management-page=settings] .settings-user-header span:not(:first-child){text-align:center}
-body[data-management-page=settings] #managedUserList .settings-user-row{min-height:40px;padding:5px 8px;border-radius:5px}
+body[data-management-page=settings] #managedUserList .settings-user-row{min-height:46px;padding:7px 8px;border-radius:0}
+body[data-management-page=settings] #managedUserList .settings-user-row+.settings-user-row{border-top:1px solid var(--management-line)}
 body[data-management-page=settings] #managedUserList .settings-user-row:hover{background:var(--management-hover)}
 body[data-management-page=settings] #managedUserList .profile-actions{width:auto;max-width:none;justify-content:flex-end}
 body[data-management-page=settings] .connection-summary{border:0;border-radius:10px;background:var(--management-canvas);padding:12px 14px}
@@ -401,17 +462,20 @@ body[data-management-page=settings] .automation-row{
  border-radius:0;
  background:transparent;
 }
-body[data-management-page=settings] .automation-row+.automation-row{border:0}
+body[data-management-page=settings] .automation-row+.automation-row{border-top:1px solid var(--management-line)}
 body[data-management-page=settings] .automation-row+.automation-row::before{content:none}
 body[data-management-page=settings] .automation-row>strong{font-size:14px}
-body[data-management-page=settings] .automation-controls{width:auto;display:grid;grid-template-columns:72px 72px 30px;align-items:center;justify-content:start;gap:8px}
+body[data-management-page=settings] .automation-controls{width:auto;display:grid;grid-template-columns:76px 88px 20px;align-items:center;justify-content:start;gap:8px}
 body[data-management-page=settings] .automation-controls>span{min-width:0;text-align:left}
-body[data-management-page=settings] .automation-controls select{width:72px;min-width:0;flex:none}
+body[data-management-page=settings] .automation-controls select{width:88px;min-width:0;flex:none}
+body[data-management-page=settings] .automation-controls select:first-child:not(.automation-hour){width:76px}
+body[data-management-page=settings] .connection-state{padding:0;border:0;background:transparent}
 body[data-management-page=settings] .settings-security-card{padding-bottom:14px}
-body[data-management-page=settings] .settings-password{border:0;border-radius:10px;background:var(--management-canvas)}
-body[data-management-page=settings] .settings-password>summary{padding:0 14px}
+body[data-management-page=settings] .settings-security-card{max-width:520px}
+body[data-management-page=settings] .settings-password{max-width:520px;border:0;border-radius:0;background:transparent}
+body[data-management-page=settings] .settings-password>summary{display:grid;grid-template-columns:140px minmax(0,1fr);justify-content:start;padding:0}
 body[data-management-page=settings] .settings-password .settings-expander-body{padding:16px 14px;border:0}
-body[data-management-page=settings] .settings-about{display:flex;align-items:center;justify-content:space-between;padding:14px;color:var(--management-muted);font-size:13px}
+body[data-management-page=settings] .settings-about{display:grid;grid-template-columns:140px minmax(0,1fr);align-items:center;justify-content:start;padding:14px 0;color:var(--management-muted);font-size:13px}
 body[data-management-page=appearance] .appearance-theme-section{padding:0 0 30px}
 body[data-management-page=appearance] .appearance-theme-grid{display:grid;grid-template-columns:repeat(3,190px);justify-content:start;gap:14px}
 body[data-management-page=appearance] .appearance-theme-card{
@@ -422,7 +486,7 @@ body[data-management-page=appearance] .appearance-theme-card{
  flex-direction:column;
  gap:11px;
  padding:9px 9px 12px;
- border:0;
+ border:1px solid transparent;
  border-radius:12px;
  background:transparent;
  color:var(--management-text);
@@ -431,8 +495,12 @@ body[data-management-page=appearance] .appearance-theme-card{
  transition:border-color .16s ease,background .16s ease,transform .16s ease;
 }
 body[data-management-page=appearance] .appearance-theme-card:hover{background:var(--management-hover);transform:translateY(-1px)}
-body[data-management-page=appearance] .appearance-theme-card.selected{border-color:transparent;background:var(--management-hover)}
-body[data-management-page=appearance] .appearance-theme-card.selected::after{content:"✓";position:absolute;top:15px;right:15px;display:grid;place-items:center;width:19px;height:19px;border-radius:50%;background:var(--management-accent);color:var(--management-on-accent);font-size:12px;font-weight:700}
+body[data-management-page=appearance] .appearance-theme-card.selected{border-color:var(--management-accent);background:transparent}
+body[data-management-page=appearance] .appearance-theme-card.selected::after{content:"✓";position:absolute;top:15px;right:15px;display:grid;place-items:center;width:19px;height:19px;border-radius:0;background:transparent;color:var(--management-accent);font-size:14px;font-weight:700}
+body[data-management-page=external] :is(.external-file-action,.external-text-action,.external-paging .secondary){color:var(--management-text);text-decoration:none}
+body[data-management-page=external] :is(.external-file-action,.external-text-action,.external-paging .secondary):hover{background:var(--management-hover);color:var(--management-text);text-decoration:none}
+body[data-management-page=external] .external-count-tab,
+body[data-management-page=external] .external-count-tab.active{border-bottom:0;color:var(--management-text)}
 body[data-management-page=appearance] .appearance-theme-copy{display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:0 3px}
 body[data-management-page=appearance] .appearance-theme-copy strong{font-size:14px;font-weight:650}
 body[data-management-page=appearance] .appearance-theme-preview{position:relative;display:block;width:100%;height:92px;overflow:hidden;border:1px solid var(--app-line);border-radius:8px;background:var(--preview-main)}

@@ -11,7 +11,7 @@
  ];
  const actionSelector=[
   'button.primary','button.secondary','button.danger','button.button',
-  'a.primary.link','a.secondary.link','.external-file-action','.external-text-action',
+  'a.button','a.primary.link','a.secondary.link','.external-file-action','.external-text-action',
  ].join(',');
 
  function decorateActions(root){
