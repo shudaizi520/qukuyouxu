@@ -281,9 +281,9 @@ def test_appearance_is_a_dedicated_page_and_not_embedded_in_system_settings():
     assert 'id="settings-appearance"' not in settings
     assert "data-appearance-choice" not in settings
     assert "appearance:'settings-appearance'" not in settings_script
-    assert appearance.count("data-appearance-choice=") == 3
+    assert appearance.count("data-appearance-grid") == 1
+    assert "data-appearance-choice=" not in appearance
     assert 'class="appearance-theme-grid"' in appearance
-    assert appearance.count('class="appearance-theme-card"') == 3
 
 
 def test_server_exposes_the_dedicated_appearance_route():

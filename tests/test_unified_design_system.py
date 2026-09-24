@@ -158,14 +158,15 @@ def test_section_title_is_the_only_settings_action_and_has_no_extra_button():
     assert not any(node.attrs.get("id") == "playlistSectionSettings" for node in tree.all())
 
 
-def test_all_appearance_choices_live_only_on_the_dedicated_appearance_page():
+def test_generated_appearance_grid_lives_only_on_the_dedicated_appearance_page():
     tree = _Tree()
     tree.feed(_text("appearance.html"))
     choices = [node for node in tree.all() if "data-appearance-choice" in node.attrs]
+    grids = [node for node in tree.all() if "data-appearance-grid" in node.attrs]
 
     assert "data-appearance-choice" not in _text("settings.html")
-    assert {node.attrs["data-appearance-choice"] for node in choices} == {"light", "warm", "night"}
-    assert all(node.tag == "button" for node in choices)
+    assert choices == []
+    assert len(grids) == 1
 
 
 def test_direct_menu_button_is_neutral_instead_of_using_a_saturated_accent_fill():

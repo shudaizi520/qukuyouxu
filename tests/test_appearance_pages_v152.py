@@ -12,3 +12,12 @@ def test_appearance_initializes_before_shared_css_on_every_page():
     for page in themed:
         source = page.read_text(encoding="utf-8")
         assert source.index("appearance.js") < source.index("product.css"), page.name
+
+
+def test_appearance_page_has_one_generated_theme_grid_without_handwritten_cards():
+    source = (STATIC / "appearance.html").read_text(encoding="utf-8")
+
+    assert "data-appearance-grid" in source
+    assert 'data-appearance-choice="light"' not in source
+    assert 'data-appearance-choice="warm"' not in source
+    assert 'data-appearance-choice="night"' not in source

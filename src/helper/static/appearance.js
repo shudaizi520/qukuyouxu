@@ -1,10 +1,15 @@
 (()=>{
  'use strict';
  const KEY='pch-appearance-theme';
- const choices=[['light','清爽浅色'],['warm','暖色纸感'],['night','深色夜间']];
- const valid=id=>choices.some(([value])=>value===id);
+ const THEMES=Object.freeze([
+  Object.freeze({id:'light',label:'清爽浅色',scheme:'light',background:'solid',motion:false}),
+  Object.freeze({id:'warm',label:'暖色纸感',scheme:'light',background:'solid',motion:false}),
+  Object.freeze({id:'night',label:'深色夜间',scheme:'dark',background:'solid',motion:false}),
+ ]);
+ const valid=id=>THEMES.some(theme=>theme.id===id);
+ const themeById=id=>THEMES.find(theme=>theme.id===id)||THEMES[0];
  let current='light',trigger=null,menu=null,options=[],settingsOptions=[],navigationItems=[],logoutItem=null;
- try{const saved=window.localStorage.getItem(KEY);if(valid(saved))current=saved;}catch(_error){}
+ try{const saved=window.localStorage.getItem(KEY);if(valid(saved))current=saved;else if(saved)window.localStorage.setItem(KEY,current);}catch(_error){}
  const embedded=window.self!==window.top||new URLSearchParams(window.location.search).get('embedded')==='1';
  if(embedded){
   try{const inherited=window.parent?.PCHAppearance?.getTheme();if(valid(inherited))current=inherited;}catch(_error){}
@@ -55,6 +60,19 @@
   }
   setTheme(id);
  }
+ function renderAppearanceCards(){
+  const grid=document.querySelector?.('[data-appearance-grid]');if(!grid)return;
+  const cards=THEMES.map(theme=>{
+   const card=document.createElement('button');card.type='button';card.className='appearance-theme-card';
+   card.dataset.appearanceChoice=theme.id;card.setAttribute('aria-pressed','false');
+   const preview=document.createElement('span');preview.className='appearance-theme-preview preview-'+theme.id;preview.setAttribute('aria-hidden','true');
+   for(const className of ['preview-sidebar','preview-search','preview-content','preview-player']){const part=document.createElement('i');part.className=className;preview.append(part);}
+   const copy=document.createElement('span');copy.className='appearance-theme-copy';
+   const name=document.createElement('strong');name.textContent=theme.label;copy.append(name);
+   card.append(preview,copy);return card;
+  });
+  grid.replaceChildren(...cards);
+ }
  function mountAppearanceSettings(){
   settingsOptions=Array.from(document.querySelectorAll?.('[data-appearance-choice]')||[]);
   for(const option of settingsOptions){
@@ -64,6 +82,7 @@
   updateMenu();
  }
  function mount(){
+  renderAppearanceCards();
   mountAppearanceSettings();
   if(embedded)return;
   const header=document.querySelector('.topbar');if(!header||header.querySelector?.('.appearance-picker'))return;
@@ -90,7 +109,8 @@
   trigger.innerHTML=unified?'<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 6h16M4 12h16M4 18h16"/></svg><span>菜单</span>':'<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m8 3 4 2 4-2 5 4-2.5 4-1.5-.7V21H7V10.3l-1.5.7L3 7l5-4Z"/><path d="M9.5 4.2c.4 1.4 1.2 2.1 2.5 2.1s2.1-.7 2.5-2.1"/></svg>';
   menu=document.createElement('div');menu.className='appearance-menu';menu.hidden=true;
   menu.setAttribute('role','menu');menu.setAttribute('aria-label',unified?'应用菜单':'选择界面主题');
-  options=choices.map(([id,label])=>{
+  options=THEMES.map(theme=>{
+   const {id,label}=theme;
    const option=document.createElement('button');option.type='button';option.className='appearance-option';
    option.dataset.theme=id;option.setAttribute('role','menuitemradio');option.setAttribute('aria-checked',String(id===current));
    const swatch=document.createElement('span');swatch.className='appearance-swatch appearance-swatch-'+id;
@@ -116,7 +136,7 @@
   updateMenu();
  }
  applyTheme();
- window.PCHAppearance={setTheme,getTheme:()=>current,applyTheme,receiveTheme};
+ window.PCHAppearance={setTheme,getTheme:()=>current,applyTheme,receiveTheme,themes:()=>THEMES.map(theme=>({...theme}))};
  window.addEventListener('storage',event=>{
   if(event.key!==KEY)return;
   current=valid(event.newValue)?event.newValue:'light';applyTheme();syncFrames();

@@ -7,6 +7,7 @@ const source=readFileSync(new URL('../src/helper/static/appearance.js',import.me
 class Element {
  constructor(tag='div'){this.tagName=tag;this.children=[];this.events={};this.attributes={};this.dataset={};this.className='';this.classList={toggle(){}};this.hidden=false;this.focused=false;this.textContent='';}
  append(...nodes){for(const node of nodes){if(node.parentNode)node.parentNode.children=node.parentNode.children.filter(child=>child!==node);this.children.push(node);node.parentNode=this;}}
+ replaceChildren(...nodes){this.children.length=0;this.append(...nodes);}
  setAttribute(key,value){this.attributes[key]=String(value);}
  getAttribute(key){return this.attributes[key]||null;}
  addEventListener(key,fn){this.events[key]=fn;}
@@ -18,18 +19,16 @@ class Element {
 function fixture(saved='',{blocked=false,embedded=false,parentWindow=null,frames=[],withActions=false,withSettingsPanel=false}={}){
  const header=new Element('header'),events={},storage={value:saved};
  let navigation=null,logout=null,status=null,settings=null;
- const appearanceChoices=[];
+ const appearanceGrid=withSettingsPanel?new Element('div'):null;
+ const appearanceChoices=appearanceGrid?appearanceGrid.children:[];
  if(withActions){
   navigation=new Element('nav');status=new Element('a');settings=new Element('button');
   logout=new Element('button');logout.className='logout';
   navigation.append(status,settings);header.append(navigation,logout);
  }
- if(withSettingsPanel){
-  for(const theme of ['light','warm','night']){const choice=new Element('button');choice.dataset.theme=theme;appearanceChoices.push(choice);}
- }
  storage.getItem=()=>{if(blocked)throw Error('storage blocked');return storage.value;};
  storage.setItem=(_key,value)=>{if(blocked)throw Error('storage blocked');storage.value=value;};
- const document={documentElement:{dataset:{}},querySelector:selector=>selector==='.topbar'?header:null,
+ const document={documentElement:{dataset:{}},querySelector:selector=>selector==='.topbar'?header:selector==='[data-appearance-grid]'?appearanceGrid:null,
   querySelectorAll:selector=>selector==='iframe'?frames:selector==='[data-appearance-choice]'?appearanceChoices:[],
   createElement:tag=>new Element(tag),addEventListener:(name,fn)=>{events[name]=fn;}};
  const window={location:{search:''},localStorage:storage,events:{},addEventListener(name,fn){this.events[name]=fn;}};
@@ -37,6 +36,25 @@ function fixture(saved='',{blocked=false,embedded=false,parentWindow=null,frames
  new Function('window','document','URLSearchParams',source)(window,document,URLSearchParams);
  return {window,document,header,events,storage,navigation,logout,status,settings,appearanceChoices,mount:()=>events.DOMContentLoaded()};
 }
+
+test('theme registry is defensive metadata and invalid ids fall back to light',()=>{
+ const setup=fixture('missing');setup.mount();
+ const themes=setup.window.PCHAppearance.themes();
+ assert.deepEqual(themes.map(theme=>theme.id),['light','warm','night']);
+ assert.deepEqual(themes.map(theme=>theme.background),['solid','solid','solid']);
+ assert.deepEqual(themes.map(theme=>theme.motion),[false,false,false]);
+ themes[0].id='changed';
+ assert.equal(setup.window.PCHAppearance.themes()[0].id,'light');
+ assert.equal(setup.window.PCHAppearance.getTheme(),'light');
+ assert.equal(setup.storage.value,'light');
+});
+
+test('appearance page cards are generated from the registry',()=>{
+ const setup=fixture('',{withSettingsPanel:true});setup.mount();
+ assert.equal(setup.appearanceChoices.length,3);
+ assert.deepEqual(setup.appearanceChoices.map(choice=>choice.dataset.appearanceChoice),['light','warm','night']);
+ assert.deepEqual(setup.appearanceChoices.map(choice=>choice.children[1].children[0].textContent),['清爽浅色','暖色纸感','深色夜间']);
+});
 
 test('invalid or blocked storage falls back to the readable light theme',()=>{
  for(const setup of [fixture('invalid'),fixture('',{blocked:true})]){
