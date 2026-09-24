@@ -344,12 +344,12 @@ def test_page_specific_layouts_use_continuous_rows_instead_of_scattered_cards():
     status = _rule(css, "body[data-management-page=status] .health-grid")
     settings = _rule(css, "body[data-management-page=settings] .settings-workspace")
 
-    assert external.get("max-width") == "none"
-    assert external.get("border-bottom") == "1px solid var(--management-line)"
-    assert mix.get("border-bottom") == "1px solid var(--management-line)"
+    assert external.get("max-width") == "680px"
+    assert external.get("border-bottom") == "0"
+    assert mix.get("border") == "0"
     assert mix.get("background") == "transparent"
     assert library.get("display") == "grid"
     assert library.get("border") == "1px solid var(--management-line)"
     assert status.get("gap") == "0"
     assert status.get("border") == "1px solid var(--management-line)"
-    assert settings.get("max-width") == "1040px"
+    assert settings.get("max-width") == "760px"

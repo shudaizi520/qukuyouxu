@@ -3,10 +3,10 @@ body[data-view=external]{font-family:"Segoe UI Variable Text","Microsoft YaHei U
 body[data-view=external] .external-shell,.pch-embedded body[data-view=external] .external-shell{width:100%;max-width:none;margin:0;padding:30px clamp(24px,4vw,72px) 56px}
 body[data-view=external] .external-page-title{margin:0 0 24px!important}
 body[data-view=external] .external-page-title h1{font-size:30px;font-weight:650;letter-spacing:-.02em}
-body[data-view=external] .external-import-card,body[data-view=external] .external-workspace{width:100%;max-width:none;margin:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}
+body[data-view=external] .external-import-card,body[data-view=external] .external-workspace{width:100%;margin:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}
 body[data-view=external] .external-import-card{margin-bottom:22px}
-body[data-view=external] .external-import-form{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:18px;padding:2px 0}
-body[data-view=external] .external-url-field{display:grid;grid-template-columns:116px minmax(0,1fr);align-items:center;gap:18px}
+body[data-view=external] .external-import-form{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:14px;max-width:680px;padding:2px 0}
+body[data-view=external] .external-url-field{display:grid;grid-template-columns:92px minmax(0,1fr);align-items:center;gap:14px}
 body[data-view=external] .external-url-field>span{font-size:14px;font-weight:600}
 body[data-view=external] .external-url-field input{height:42px;padding:8px 14px;border:0;border-radius:8px;background:var(--theme-soft);box-shadow:none;color:var(--theme-text)}
 body[data-view=external] .external-url-field input:focus{outline:2px solid color-mix(in srgb,var(--theme-accent) 32%,transparent);outline-offset:1px}
@@ -15,16 +15,18 @@ body[data-view=external] .external-file-action,body[data-view=external] .externa
 body[data-view=external] .external-file-action:hover,body[data-view=external] .external-text-action:hover{text-decoration:underline;text-underline-offset:4px}
 body[data-view=external] .external-file-name{margin:8px 0 0;padding-left:134px;color:var(--theme-muted);font-size:12px}
 body[data-view=external] .external-settings{margin-bottom:20px}
-body[data-view=external] .external-command-bar{position:relative;display:grid;grid-template-columns:116px minmax(0,1fr) auto;align-items:center;gap:18px;min-height:62px;width:100%;max-width:none;margin:0;padding:10px 0;border:0;background:transparent}
-body[data-view=external] .external-command-bar+.external-command-bar::before{content:"";position:absolute;top:0;right:0;left:134px;height:1px;background:var(--theme-line);opacity:.68}
-body[data-view=external] .external-command-bar>label:first-child,body[data-view=external] #replenishmentCard>strong{font-size:14px;font-weight:600}
+body[data-view=external] .external-command-bar{position:relative;display:grid;grid-template-columns:92px minmax(0,1fr) auto;align-items:center;gap:14px;min-height:50px;width:100%;max-width:680px;margin:0;padding:7px 0;border:0;background:transparent}
+body[data-view=external] .external-command-bar+.external-command-bar::before{content:none}
+body[data-view=external] .external-command-bar>label:first-child{font-size:14px;font-weight:600}
 body[data-view=external] .external-command-main{display:flex;align-items:center;gap:12px;min-width:0}
-body[data-view=external] .external-command-bar :is(select,input:not([type=checkbox])){width:100%;max-width:720px;height:40px;padding:7px 2px;border:0;border-bottom:1px solid var(--theme-line);border-radius:0;background:transparent;box-shadow:none;color:var(--theme-text)}
+body[data-view=external] .external-command-bar :is(select,input:not([type=checkbox])){width:100%;height:32px;padding:5px 8px;border:1px solid var(--theme-line);border-radius:5px;background:transparent;box-shadow:none;color:var(--theme-text)}
 body[data-view=external] .external-state{margin:0;padding:4px 8px;white-space:nowrap}
 body[data-view=external] .external-follow-label{display:flex;align-items:center;gap:7px;white-space:nowrap;font-size:13px}
 body[data-view=external] .external-follow-label input{width:17px;height:17px}
-body[data-view=external] .external-detail-card{margin:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}
-body[data-view=external] .external-counts{display:flex;align-items:center;gap:30px;margin:0 0 8px}
+body[data-view=external] .external-detail-card{max-width:940px;margin:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}
+body[data-view=external] .external-counts{display:flex;align-items:center;gap:24px;margin:0 0 8px}
+body[data-view=external] .external-missing-download{display:inline-flex;align-items:center;gap:14px;background:transparent}
+body[data-view=external] .external-missing-download[hidden]{display:none}
 body[data-view=external] .external-count-tab,body[data-view=external] .external-count-tab:hover:not(:disabled),body[data-view=external] .external-count-tab:focus-visible{display:flex;align-items:baseline;gap:7px;min-width:0;padding:8px 1px 11px;border:0;border-bottom:3px solid transparent;border-radius:0;background:transparent;box-shadow:none;color:var(--theme-muted)}
 body[data-view=external] .external-count-tab strong{font-size:15px;font-weight:650;color:inherit}
 body[data-view=external] .external-count-tab.active{border-bottom-color:var(--theme-accent);color:var(--theme-accent)}

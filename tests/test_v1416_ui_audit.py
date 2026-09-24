@@ -63,13 +63,13 @@ def test_typing_import_url_clears_stale_selected_file_label():
     assert "$('selectedFile').hidden=true" in script
 
 
-def test_import_export_row_does_not_repeat_missing_tab_label_and_count():
+def test_import_export_actions_live_beside_the_missing_tab_without_repeating_its_count():
     page = (STATIC / "external.html").read_text()
     tab = page.split('data-match-status="missing"', 1)[1].split("</button>", 1)[0]
-    export_row = page.split('id="replenishmentCard"', 1)[1].split("</section>", 1)[0]
+    export_row = page.split('id="replenishmentCard"', 1)[1].split('id="reviewToolbar"', 1)[0]
     assert "缺失歌曲" in tab
-    assert "补歌清单" in export_row
-    assert "缺失歌曲" not in export_row
+    assert "下载缺失歌曲" in export_row
+    assert "missingCount" not in export_row
     assert "missingSummary" not in export_row
 
 

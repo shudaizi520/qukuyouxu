@@ -142,58 +142,62 @@ body[data-management-page] .management-summary{
 /* Import: one continuous source-and-result workspace. */
 body[data-management-page=external] .external-import-card{
  width:100%;
- max-width:none;
+ max-width:680px;
  margin:0;
  padding:22px 0;
  border:0;
- border-bottom:1px solid var(--management-line);
+ border-bottom:0;
  border-radius:0;
  background:transparent;
  box-shadow:none;
 }
 body[data-management-page=external] .external-import-form{
  width:100%;
- max-width:none;
+ max-width:680px;
  grid-template-columns:minmax(0,1fr) auto;
- gap:16px;
+ gap:14px;
 }
-body[data-management-page=external] .external-url-field{grid-template-columns:104px minmax(0,1fr)}
+body[data-management-page=external] .external-url-field{grid-template-columns:92px minmax(0,1fr)}
 body[data-management-page=external] .external-url-field input,
 body[data-management-page=external] .external-command-bar input:not([type=checkbox]),
 body[data-management-page=external] .external-command-bar select{
- height:40px;
- min-height:40px;
- padding:0 12px;
- border:1px solid transparent;
- border-radius:9px;
- background:var(--management-control);
+ height:32px;
+ min-height:32px;
+ padding:0 9px;
+ border:1px solid var(--management-line);
+ border-radius:5px;
+ background:transparent;
  color:var(--management-text);
 }
 body[data-management-page=external] .external-workspace{border:0}
 body[data-management-page=external] .external-command-bar{
  width:100%;
- max-width:none;
- min-height:68px;
+ max-width:680px;
+ min-height:50px;
  margin:0;
- padding:13px 0;
- border-bottom:1px solid var(--management-line);
+ padding:7px 0;
+ border-bottom:0;
 }
 body[data-management-page=external] .external-detail-card{
  margin:22px 0 0;
+ max-width:940px;
  padding:0;
  border:0;
  border-radius:0;
 }
 body[data-management-page=external] .external-counts{margin:0 0 12px}
+body[data-management-page=external] .external-missing-download{display:inline-flex;align-items:center;gap:14px;border:0;background:transparent}
+body[data-management-page=external] .external-missing-download[hidden]{display:none}
 body[data-management-page=external] .external-track-list{border-color:var(--management-line)}
 body[data-management-page=external] .external-paging{min-height:58px;margin:0}
 
 /* Smart playlists: policies and playlists form one full-width ruled list. */
 body[data-management-page=mixes] .contextual-settings-card{
+ width:100%;
+ max-width:820px;
  margin:0;
  padding:22px 0;
  border:0;
- border-bottom:1px solid var(--management-line);
  border-radius:0;
  background:transparent;
 }
@@ -201,29 +205,30 @@ body[data-management-page=mixes] .contextual-settings-grid{
  grid-template-columns:repeat(4,minmax(120px,1fr)) auto;
  gap:12px;
 }
-body[data-management-page=mixes] .mix-list{margin:0;border:0}
+body[data-management-page=mixes] .mix-list{width:100%;max-width:820px;margin:0;border:0}
 body[data-management-page=mixes] .mix-automation-row{
- min-height:68px;
- padding:13px 0;
- border-bottom:1px solid var(--management-line);
+ min-height:50px;
+ padding:9px 0;
+ border:0;
 }
 body[data-management-page=mixes] .mix-row{
  margin:0;
- padding:18px 0;
+ padding:12px 8px;
  border:0;
- border-bottom:1px solid var(--management-line);
- border-radius:0;
+ border-radius:5px;
  background:transparent;
  box-shadow:none;
 }
+body[data-management-page=mixes] .mix-row:hover{background:var(--management-hover)}
 body[data-management-page=mixes] .mix-row-head{gap:24px}
 body[data-management-page=mixes] .mix-icon{background:var(--management-control);color:var(--management-accent)}
 body[data-management-page=mixes] .mix-state{color:var(--management-muted)}
 body[data-management-page=mixes] .mix-actions{gap:8px}
 body[data-management-page=mixes] .custom-mix{
+ width:100%;
+ max-width:820px;
  margin:0;
  border:0;
- border-bottom:1px solid var(--management-line);
  border-radius:0;
  background:transparent;
 }

@@ -47,11 +47,11 @@ def test_library_organizer_has_no_duplicate_heading_and_keeps_primary_action_in_
 
 def test_import_controls_are_grouped_in_one_inset_column():
     html = (STATIC / "external.html").read_text()
-    assert html.count('class="external-command-actions"') == 4
-    assert html.count('class="external-command-bar"') == 3
+    assert html.count('class="external-command-actions"') == 3
+    assert html.count('class="external-command-bar"') == 2
     css = (STATIC / "external-workspace.css").read_text()
-    assert "max-width:none" in css
-    assert "body[data-view=external] .external-command-bar{position:relative;display:grid;grid-template-columns:116px minmax(0,1fr) auto" in css
+    assert "body[data-view=external] .external-command-bar{position:relative;display:grid;grid-template-columns:92px minmax(0,1fr) auto" in css
+    assert "max-width:680px" in css
 
 
 def test_import_mobile_actions_override_old_full_width_file_control():

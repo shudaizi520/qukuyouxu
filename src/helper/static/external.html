@@ -42,16 +42,16 @@
     <label for="plexPlaylistTitle">Plex 歌单</label><div class="external-command-main"><input id="plexPlaylistTitle" maxlength="80" aria-label="Plex 歌单名称"><span id="sourceState" class="external-state"></span></div>
     <div class="external-command-actions"><label id="followUpdatesRow" class="external-follow-label"><input id="followUpdates" type="checkbox">自动刷新</label><button id="publishSource" class="primary" type="button">更新歌单</button></div>
    </section>
-   <section id="replenishmentCard" class="external-command-bar" aria-label="补歌清单" hidden>
-    <strong>补歌清单</strong>
-    <div class="external-command-actions"><button id="copyMissing" class="external-text-action" type="button">复制清单</button><details id="downloadMenu" class="external-more"><summary class="external-text-action">下载</summary><div><a id="downloadText" class="link" href="#">TXT</a><a id="downloadCsv" class="link" href="#">CSV</a><button id="downloadImage" class="external-text-action" type="button">长图</button></div></details></div>
-   </section>
    </div>
    <section id="detailCard" class="external-detail-card management-section">
      <div class="external-counts" aria-label="匹配结果">
       <button class="external-count-tab active" type="button" data-match-status="matched"><span>已匹配</span><strong id="matchedCount">0</strong></button>
       <button class="external-count-tab" type="button" data-match-status="review"><span>待确认</span><strong id="reviewCount">0</strong></button>
       <button class="external-count-tab" type="button" data-match-status="missing"><span>缺失歌曲</span><strong id="missingCount">0</strong></button>
+      <span id="replenishmentCard" class="external-missing-download" hidden>
+       <button id="copyMissing" class="external-text-action" type="button">复制清单</button>
+       <details id="downloadMenu" class="external-more"><summary class="external-text-action">下载缺失歌曲</summary><div><a id="downloadText" class="link" href="#">TXT</a><a id="downloadCsv" class="link" href="#">CSV</a><button id="downloadImage" class="external-text-action" type="button">长图</button></div></details>
+      </span>
      </div>
      <div id="reviewToolbar" class="external-review-toolbar" hidden><label><input id="reviewSelectAll" type="checkbox">全选本页</label><span id="reviewSelectedCount">已选 0 首</span><button id="confirmSelected" class="primary" type="button" disabled>确认所选</button></div>
      <div id="trackColumnHead" class="external-track-column-head"><span aria-hidden="true"></span><span>歌曲</span><span>歌手</span><span>专辑</span><span>时长</span><span id="trackReviewHeading" hidden>匹配</span></div>

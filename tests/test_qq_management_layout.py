@@ -101,3 +101,49 @@ def test_system_settings_automation_uses_fixed_compact_columns():
     assert row["background"] == "transparent"
     assert controls["grid-template-columns"] == "72px 72px 30px"
     assert controls["justify-content"] == "start"
+
+
+def test_import_workspace_is_capped_and_missing_download_stays_with_count():
+    html = _text("external.html")
+    css = _text("management-shell.css")
+    import_form = _rule(
+        css, "body[data-management-page=external] .external-import-form"
+    )
+    source_row = _rule(
+        css, "body[data-management-page=external] .external-command-bar"
+    )
+    results = _rule(
+        css, "body[data-management-page=external] .external-detail-card"
+    )
+    missing_download = _rule(
+        css, "body[data-management-page=external] .external-missing-download"
+    )
+
+    counts_start = html.index('class="external-counts"')
+    results_start = html.index('id="reviewToolbar"')
+    replenishment = html.index('id="replenishmentCard"')
+    download_menu = html.index('id="downloadMenu"')
+
+    assert import_form["max-width"] == "680px"
+    assert source_row["max-width"] == "680px"
+    assert results["max-width"] == "940px"
+    assert counts_start < replenishment < download_menu < results_start
+    assert missing_download["background"] == "transparent"
+
+
+def test_smart_playlist_workspace_is_compact_and_rows_fill_only_on_hover():
+    css = _text("management-shell.css")
+    settings = _rule(
+        css, "body[data-management-page=mixes] .contextual-settings-card"
+    )
+    listing = _rule(css, "body[data-management-page=mixes] .mix-list")
+    row = _rule(css, "body[data-management-page=mixes] .mix-row")
+    hover = _rule(css, "body[data-management-page=mixes] .mix-row:hover")
+
+    assert settings["max-width"] == "820px"
+    assert settings["border"] == "0"
+    assert listing["max-width"] == "820px"
+    assert listing["border"] == "0"
+    assert row["border"] == "0"
+    assert row["background"] == "transparent"
+    assert hover["background"] == "var(--management-hover)"
