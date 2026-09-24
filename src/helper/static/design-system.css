@@ -1,87 +1,16 @@
 /*
  * Unified 2026 design foundation.
  *
- * Theme files define meaning, not individual pages. Components consume the
- * semantic tokens below so changing appearance never introduces a new page
- * strip, player color, or one-off patch surface.
+ * Components consume theme-tokens.css so changing appearance never introduces
+ * a new page strip, player color, or one-off patch surface.
  */
 html{
  --app-rail-width:248px;
  --app-player-height:68px;
- --app-rail:#f2f4f3;
- --app-main:#ffffff;
- --app-control:#f2f4f3;
- --app-hover:#eaeeec;
- --app-selected:#dff5ec;
- --app-overlay:#ffffff;
- --app-text:#202528;
- --app-muted:#71797d;
- --app-line:rgba(32,37,40,.10);
- --app-accent:#19c783;
- --app-accent-strong:#11ae72;
- --app-on-accent:#ffffff;
- --app-danger:#d94f5c;
- --app-danger-soft:#fdecef;
- --app-warning:#a96c21;
  --app-font:"Microsoft YaHei UI","Microsoft YaHei","PingFang SC","Noto Sans CJK SC","Segoe UI",Arial,sans-serif;
- --theme-canvas:var(--app-main);
- --theme-surface:var(--app-main);
- --theme-soft:var(--app-control);
- --theme-text:var(--app-text);
- --theme-muted:var(--app-muted);
- --theme-line:var(--app-line);
- --theme-accent:var(--app-accent);
- --theme-accent-strong:var(--app-accent-strong);
- --theme-on-accent:var(--app-on-accent);
- --theme-danger:var(--app-danger);
- --theme-danger-soft:var(--app-danger-soft);
- --theme-warning:var(--app-warning);
- --ink:var(--app-text);
- --muted:var(--app-muted);
- --brand:var(--app-accent);
- --line:var(--app-line);
- color-scheme:light;
  font-family:var(--app-font);
  color:var(--app-text);
  background:var(--app-main);
-}
-
-html[data-appearance="warm"]{
- --app-rail:#eee8dc;
- --app-main:#fbf8f1;
- --app-control:#f0eadf;
- --app-hover:#e7dfd1;
- --app-selected:#eadccd;
- --app-overlay:#fbf8f1;
- --app-text:#292724;
- --app-muted:#746d64;
- --app-line:rgba(71,61,49,.12);
- --app-accent:#9b603b;
- --app-accent-strong:#814b2d;
- --app-on-accent:#ffffff;
- --app-danger:#a84f48;
- --app-danger-soft:#f7e5e1;
- --app-warning:#9b6a2e;
- color-scheme:light;
-}
-
-html[data-appearance="night"]{
- --app-rail:#171717;
- --app-main:#202020;
- --app-control:#292929;
- --app-hover:#303030;
- --app-selected:#263a32;
- --app-overlay:#292929;
- --app-text:#ededed;
- --app-muted:#969696;
- --app-line:rgba(255,255,255,.09);
- --app-accent:#22c983;
- --app-accent-strong:#37d796;
- --app-on-accent:#0d2a20;
- --app-danger:#f07882;
- --app-danger-soft:#3b2529;
- --app-warning:#deb36d;
- color-scheme:dark;
 }
 
 *,*::before,*::after{box-sizing:border-box}
@@ -116,8 +45,7 @@ h1{font-weight:600}h2,h3,h4{font-weight:600}
 .appearance-option{color:var(--app-text)}
 .appearance-option:hover,.appearance-option.selected{background:var(--app-hover);color:var(--app-accent)}
 .appearance-menu-heading{border-color:var(--app-line);color:var(--app-muted)}
-html[data-appearance="night"] select{color-scheme:dark}
-html[data-appearance="night"] :is(select option,select optgroup){background:var(--app-overlay);color:var(--app-text)}
+:is(select option,select optgroup){background:var(--app-overlay);color:var(--app-text)}
 
 /* Settings use whitespace and short, indented separators instead of cards. */
 body[data-view=settings]{background:var(--app-main);color:var(--app-text)}
@@ -679,15 +607,15 @@ body[data-management-page=appearance] .appearance-theme-card.selected{border-col
 body[data-management-page=appearance] .appearance-theme-card.selected::after{content:"✓";position:absolute;top:15px;right:15px;display:grid;place-items:center;width:19px;height:19px;border-radius:50%;background:var(--management-accent);color:var(--management-on-accent);font-size:12px;font-weight:700}
 body[data-management-page=appearance] .appearance-theme-copy{display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:0 3px}
 body[data-management-page=appearance] .appearance-theme-copy strong{font-size:14px;font-weight:650}
-body[data-management-page=appearance] .appearance-theme-preview{position:relative;display:block;width:100%;height:92px;overflow:hidden;border:1px solid rgba(127,127,127,.2);border-radius:8px;background:var(--preview-main)}
+body[data-management-page=appearance] .appearance-theme-preview{position:relative;display:block;width:100%;height:92px;overflow:hidden;border:1px solid var(--app-line);border-radius:8px;background:var(--preview-main)}
 body[data-management-page=appearance] .appearance-theme-preview i{position:absolute;display:block;border-radius:3px;background:var(--preview-control)}
 body[data-management-page=appearance] .appearance-theme-preview .preview-sidebar{inset:0 auto 0 0;width:26%;border-radius:0;background:var(--preview-side)}
 body[data-management-page=appearance] .appearance-theme-preview .preview-search{top:12px;left:34%;width:42%;height:8px}
 body[data-management-page=appearance] .appearance-theme-preview .preview-content{top:30px;left:34%;width:53%;height:38px;background:repeating-linear-gradient(180deg,var(--preview-line) 0 4px,transparent 4px 11px)}
 body[data-management-page=appearance] .appearance-theme-preview .preview-player{right:7px;bottom:7px;left:31%;height:8px;background:linear-gradient(90deg,var(--preview-accent) 0 58%,var(--preview-control) 58%)}
-body[data-management-page=appearance] .preview-light{--preview-main:#fff;--preview-side:#f0f2f1;--preview-control:#e4e8e6;--preview-line:#cbd2cf;--preview-accent:#19c989}
-body[data-management-page=appearance] .preview-warm{--preview-main:#fbf8f1;--preview-side:#efe8dc;--preview-control:#e5dacb;--preview-line:#cabca9;--preview-accent:#bb7951}
-body[data-management-page=appearance] .preview-night{--preview-main:#171b1d;--preview-side:#202628;--preview-control:#30383a;--preview-line:#4a5558;--preview-accent:#38cfaa}
+body[data-management-page=appearance] .preview-light{--preview-main:var(--preview-light-main);--preview-side:var(--preview-light-side);--preview-control:var(--preview-light-control);--preview-line:var(--preview-light-line);--preview-accent:var(--preview-light-accent)}
+body[data-management-page=appearance] .preview-warm{--preview-main:var(--preview-warm-main);--preview-side:var(--preview-warm-side);--preview-control:var(--preview-warm-control);--preview-line:var(--preview-warm-line);--preview-accent:var(--preview-warm-accent)}
+body[data-management-page=appearance] .preview-night{--preview-main:var(--preview-night-main);--preview-side:var(--preview-night-side);--preview-control:var(--preview-night-control);--preview-line:var(--preview-night-line);--preview-accent:var(--preview-night-accent)}
 body[data-management-page=settings] .settings-account-actions{display:flex;justify-content:flex-start;margin-top:18px;padding:0 0 18px}
 
 @media(max-width:700px){
@@ -710,9 +638,8 @@ body[data-management-page=settings] .settings-account-actions{display:flex;justi
 @media(max-width:460px){body[data-management-page=appearance] .appearance-theme-grid.appearance-theme-grid{grid-template-columns:190px}}
 
 /* Immersive player is one intentional mode, never a fourth application theme. */
-body[data-view=playlists].now-playing-open{--immersive-bg:#07191f;--immersive-text:#f6fbfa;--immersive-muted:rgba(237,247,246,.66);--immersive-accent:#45d9ad;--immersive-line:rgba(255,255,255,.14)}
-body[data-view=playlists].now-playing-open .playlist-player{padding-left:22px;background:transparent;color:var(--immersive-text,#f6fbfa)}
-body[data-view=playlists].now-playing-open .playlist-progress-rail{--progress-played-color:var(--immersive-accent,#45d9ad);--progress-rest-color:var(--immersive-line,rgba(255,255,255,.14));left:22px;right:22px}
+body[data-view=playlists].now-playing-open .playlist-player{padding-left:22px;background:transparent;color:var(--immersive-text)}
+body[data-view=playlists].now-playing-open .playlist-progress-rail{--progress-played-color:var(--immersive-accent);--progress-rest-color:var(--immersive-line);left:22px;right:22px}
 
 @media(max-width:700px){
  html{--app-rail-width:0px;--app-player-height:104px}

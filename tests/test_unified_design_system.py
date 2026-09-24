@@ -72,14 +72,18 @@ def test_every_product_page_loads_the_canonical_design_system_last():
 
 
 def test_palette_and_typography_have_one_canonical_owner():
+    tokens = _text("theme-tokens.css")
     foundation = _text("design-system.css")
     product = _text("product.css")
 
-    assert '--app-rail:' in foundation
-    assert '--app-main:' in foundation
-    assert '--app-control:' in foundation
-    assert 'html[data-appearance="warm"]' in foundation
-    assert 'html[data-appearance="night"]' in foundation
+    assert '--app-rail:' in tokens
+    assert '--app-main:' in tokens
+    assert '--app-control:' in tokens
+    assert 'html[data-appearance="warm"]' in tokens
+    assert 'html[data-appearance="night"]' in tokens
+    assert '--app-rail:' not in foundation
+    assert 'html[data-appearance="warm"]' not in foundation
+    assert 'html[data-appearance="night"]' not in foundation
     assert '"Microsoft YaHei UI"' in foundation
     assert "Appearance palettes" not in product
     assert "--playlist-player-bg" not in product + foundation

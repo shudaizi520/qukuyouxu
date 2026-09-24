@@ -52,12 +52,13 @@ def test_import_entry_is_an_icon_action_beside_playlist_controls():
 
 def test_playlist_shell_uses_tonal_layers_instead_of_divider_lines():
     css = (STATIC / "design-system.css").read_text(encoding="utf-8")
+    tokens = (STATIC / "theme-tokens.css").read_text(encoding="utf-8")
 
     sidebar = _rule(css, "body[data-view=playlists] .playlist-sidebar")
 
-    assert "--app-rail:#f2f4f3" in css and "--app-main:#ffffff" in css
-    assert "--app-rail:#eee8dc" in css and "--app-main:#fbf8f1" in css
-    assert "--app-rail:#171717" in css and "--app-main:#202020" in css
+    assert "--app-rail:#f2f4f3" in tokens and "--app-main:#ffffff" in tokens
+    assert "--app-rail:#eee8dc" in tokens and "--app-main:#fbf8f1" in tokens
+    assert "--app-rail:#171717" in tokens and "--app-main:#202020" in tokens
     assert sidebar["background"] == "var(--app-rail)"
     assert sidebar["border"] == "0"
     assert css.count("background:linear-gradient(to right,var(--app-rail)") == 2

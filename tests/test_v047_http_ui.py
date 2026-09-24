@@ -86,7 +86,7 @@ class HttpAndUiV047Tests(unittest.TestCase):
         self.assertIn("verification_needed:'待验证'", status_script)
         self.assertIn("settings-control-cell", script)
         self.assertNotIn("not_connected:'学习中'", script)
-        self.assertIn("a.primary.link{color:#fff", styles)
+        self.assertIn("a.primary.link{color:var(--app-on-accent)", styles)
 
 
 if __name__ == "__main__":

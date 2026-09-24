@@ -3,7 +3,9 @@ import re
 from pathlib import Path
 
 
-CSS = Path(__file__).resolve().parents[1] / "src/helper/static/design-system.css"
+STATIC = Path(__file__).resolve().parents[1] / "src/helper/static"
+TOKENS = STATIC / "theme-tokens.css"
+DESIGN = STATIC / "design-system.css"
 
 
 def _luminance(value):
@@ -25,7 +27,7 @@ def _palette(css, name):
 
 
 def test_warm_and_night_palettes_keep_normal_and_muted_text_legible():
-    css = CSS.read_text(encoding="utf-8")
+    css = TOKENS.read_text(encoding="utf-8")
     for name in ("warm", "night"):
         palette = _palette(css, name)
         assert _contrast(palette["--app-text"], palette["--app-main"]) >= 7
@@ -35,7 +37,7 @@ def test_warm_and_night_palettes_keep_normal_and_muted_text_legible():
 
 
 def test_theme_rules_cover_player_forms_focus_and_typography_once():
-    css = CSS.read_text(encoding="utf-8")
+    css = DESIGN.read_text(encoding="utf-8")
     assert "body[data-view=playlists] .playlist-player" in css
     assert "input:not([type=checkbox]):not([type=radio]):not([type=range])" in css
     assert ":focus-visible" in css
@@ -44,18 +46,21 @@ def test_theme_rules_cover_player_forms_focus_and_typography_once():
 
 
 def test_night_palette_covers_navigation_dropdowns_and_secondary_surfaces():
-    css = CSS.read_text(encoding="utf-8")
+    css = DESIGN.read_text(encoding="utf-8")
+    tokens = TOKENS.read_text(encoding="utf-8")
     for selector in (
         ".topbar nav", ".topbar .logout", ".appearance-menu",
         "select option", ".card", ".notice", ".settings-section",
     ):
         assert selector in css
-    assert 'html[data-appearance="night"] select{color-scheme:dark}' in css
+    assert ':is(select option,select optgroup){background:var(--app-overlay);color:var(--app-text)}' in css
+    assert 'html[data-appearance="night"]' in tokens
+    assert 'color-scheme:dark' in tokens
     assert "background:var(--app-overlay);color:var(--app-text)" in css
 
 
 def test_warning_error_and_status_tokens_remain_readable_at_night():
-    css = CSS.read_text(encoding="utf-8")
+    css = TOKENS.read_text(encoding="utf-8")
     palette = _palette(css, "night")
     assert _contrast(palette["--app-danger"], palette["--app-main"]) >= 4.5
     assert _contrast(palette["--app-warning"], palette["--app-main"]) >= 4.5
@@ -64,7 +69,7 @@ def test_warning_error_and_status_tokens_remain_readable_at_night():
 
 
 def test_mobile_sidebar_artwork_and_grid_are_reduced_together():
-    product = CSS.with_name("product.css").read_text(encoding="utf-8")
+    product = (STATIC / "product.css").read_text(encoding="utf-8")
     mobile_css = product.rsplit("@media(max-width:700px){#customPlaylistList button", 1)[1]
     assert "grid-template-columns:30px minmax(0,1fr)" in mobile_css
     assert ".playlist-cover-sidebar{width:28px;height:28px}" in mobile_css

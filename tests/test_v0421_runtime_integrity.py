@@ -60,13 +60,22 @@ def _luminance(color):
     return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
 
 
+def _resolve_default_theme_color(value):
+    css = (ROOT / "src/helper/static/theme-tokens.css").read_text(encoding="utf-8")
+    default = re.search(r"html\{([^}]*)\}", css, re.S).group(1)
+    tokens = dict(re.findall(r"(--[\w-]+)\s*:\s*([^;]+)", default))
+    while value.startswith("var("):
+        value = tokens[value[4:-1].strip()].strip()
+    return value
+
+
 class RuntimeIntegrityV0421Tests(unittest.TestCase):
     def test_logout_hover_keeps_accessible_text_contrast(self):
         css = (ROOT / "src/helper/static/product.css").read_text(encoding="utf-8")
         colors = _logout_hover_colors(css)
 
-        foreground = _luminance(colors["color"])
-        background = _luminance(colors["background"])
+        foreground = _luminance(_resolve_default_theme_color(colors["color"]))
+        background = _luminance(_resolve_default_theme_color(colors["background"]))
         contrast = (max(foreground, background) + 0.05) / (min(foreground, background) + 0.05)
 
         self.assertGreaterEqual(contrast, 4.5, colors)
