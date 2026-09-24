@@ -97,7 +97,7 @@ def test_system_settings_automation_uses_fixed_compact_columns():
     row = _rule(css, "body[data-management-page=settings] .automation-row")
     controls = _rule(css, "body[data-management-page=settings] .automation-controls")
 
-    assert row["grid-template-columns"] == "120px minmax(0,1fr)"
+    assert row["grid-template-columns"] == "144px minmax(0,1fr)"
     assert row["background"] == "transparent"
     assert controls["grid-template-columns"] == "72px 72px 30px"
     assert controls["justify-content"] == "start"
@@ -180,3 +180,38 @@ def test_appearance_tiles_are_borderless_with_a_soft_selected_state():
     assert card["background"] == "transparent"
     assert selected["border-color"] == "transparent"
     assert selected["background"] == "var(--management-hover)"
+
+
+def test_embedded_settings_and_empty_library_keep_the_same_readable_width():
+    css = _text("management-shell.css")
+    embedded = _rule(
+        css,
+        ".pch-embedded body[data-management-page=settings] .settings-workspace",
+    )
+    setup = _rule(css, "body[data-management-page=library] .setup-card")
+    assert embedded["max-width"] == "760px"
+    assert embedded["margin"] == "0"
+    assert setup["max-width"] == "850px"
+    assert setup["border"] == "0"
+    assert setup["background"] == "transparent"
+    assert setup["text-align"] == "left"
+
+
+def test_lists_do_not_reintroduce_separator_lines_or_status_boxes():
+    css = _text("management-shell.css")
+    mix_sibling = _rule(
+        css, "body[data-management-page=mixes] .mix-row+.mix-row"
+    )
+    stat = _rule(css, "body[data-management-page=status] .stat")
+    status_row = _rule(
+        css, "body[data-management-page=status] .status-list>div"
+    )
+    mix_head = _rule(css, "body[data-management-page=mixes] .mix-row-head")
+    status_meta = _rule(css, "body[data-management-page=status] .status-meta")
+    assert mix_sibling["border-top"] == "0"
+    assert stat["border"] == "0"
+    assert stat["background"] == "transparent"
+    assert status_row["border-top"] == "0"
+    assert mix_head["min-height"] == "56px"
+    assert mix_head["padding"] == "8px"
+    assert status_meta["border-top"] == "0"

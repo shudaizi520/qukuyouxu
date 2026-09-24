@@ -74,7 +74,7 @@ def test_automation_is_a_compact_aligned_list_and_logout_finishes_on_the_left():
     assert grid["grid-template-columns"] == "1fr"
     assert grid["max-width"] == "520px"
     assert row["display"] == "grid"
-    assert row["grid-template-columns"] == "120px minmax(0,1fr)"
+    assert row["grid-template-columns"] == "144px minmax(0,1fr)"
     assert row["border"] == "0"
     assert row["border-radius"] == "0"
     assert logout["justify-content"] == "flex-start"

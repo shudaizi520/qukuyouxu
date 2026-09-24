@@ -220,7 +220,8 @@ body[data-management-page=mixes] .mix-row{
  box-shadow:none;
 }
 body[data-management-page=mixes] .mix-row:hover{background:var(--management-hover)}
-body[data-management-page=mixes] .mix-row-head{gap:24px}
+body[data-management-page=mixes] .mix-row+.mix-row{border-top:0}
+body[data-management-page=mixes] .mix-row-head{min-height:56px;gap:24px;padding:8px}
 body[data-management-page=mixes] .mix-icon{background:var(--management-control);color:var(--management-accent)}
 body[data-management-page=mixes] .mix-state{color:var(--management-muted)}
 body[data-management-page=mixes] .mix-actions{gap:8px}
@@ -261,6 +262,18 @@ body[data-management-page=library] .library-metrics>div{
  border:0;
 }
 body[data-management-page=library] .library-auth{padding:8px 0}
+body[data-management-page=library] .setup-card,
+body[data-management-page=library] .library-share-panel{
+ width:100%;
+ max-width:850px;
+ margin:22px 0 0;
+ padding:18px 0;
+ border:0;
+ border-radius:0;
+ background:transparent;
+ box-shadow:none;
+ text-align:left;
+}
 body[data-management-page=library] .library-automation-line{
  width:100%;
  max-width:850px;
@@ -314,6 +327,10 @@ body[data-management-page=status] .status-primary>.card{
  background:transparent;
 }
 body[data-management-page=status] .status-primary>.card:first-child{border-right:0}
+body[data-management-page=status] .stat{padding:8px 0;border:0;border-radius:0;background:transparent}
+body[data-management-page=status] .status-list>div,
+body[data-management-page=status] .event-row{border-top:0}
+body[data-management-page=status] .status-meta{border-top:0}
 body[data-management-page=status] .page-disclosure{
  width:100%;
  max-width:620px;
@@ -329,6 +346,7 @@ body[data-management-page=settings] .settings-workspace{
  max-width:760px;
  margin:0;
 }
+.pch-embedded body[data-management-page=settings] .settings-workspace{width:100%;max-width:760px;margin:0}
 body[data-management-page=settings] .settings-panel{width:100%;max-width:none;margin:0 0 18px;padding:0}
 body[data-management-page=settings] .settings-panel+.settings-panel{margin-top:0;padding-top:0}
 body[data-management-page=settings] .settings-panel+.settings-panel::before{content:none}
@@ -374,7 +392,7 @@ body[data-management-page=settings] .automation-row{
  min-width:0;
  min-height:44px;
  display:grid;
- grid-template-columns:120px minmax(0,1fr);
+ grid-template-columns:144px minmax(0,1fr);
  align-items:center;
  gap:14px;
  padding:7px 0;
