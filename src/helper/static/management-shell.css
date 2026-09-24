@@ -325,6 +325,7 @@ body[data-management-page=status] .status-primary>.card{
  border:0;
  border-radius:0;
  background:transparent;
+ box-shadow:none;
 }
 body[data-management-page=status] .status-primary>.card:first-child{border-right:0}
 body[data-management-page=status] .stat{padding:8px 0;border:0;border-radius:0;background:transparent}

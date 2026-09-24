@@ -208,6 +208,9 @@ def test_lists_do_not_reintroduce_separator_lines_or_status_boxes():
     )
     mix_head = _rule(css, "body[data-management-page=mixes] .mix-row-head")
     status_meta = _rule(css, "body[data-management-page=status] .status-meta")
+    status_card = _rule(
+        css, "body[data-management-page=status] .status-primary>.card"
+    )
     assert mix_sibling["border-top"] == "0"
     assert stat["border"] == "0"
     assert stat["background"] == "transparent"
@@ -215,3 +218,4 @@ def test_lists_do_not_reintroduce_separator_lines_or_status_boxes():
     assert mix_head["min-height"] == "56px"
     assert mix_head["padding"] == "8px"
     assert status_meta["border-top"] == "0"
+    assert status_card["box-shadow"] == "none"
