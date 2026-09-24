@@ -76,7 +76,8 @@ def test_import_export_actions_live_beside_the_missing_tab_without_repeating_its
 def test_library_task_heading_names_the_stage_not_its_action():
     page = (STATIC / "home.html").read_text()
     script = (STATIC / "home.js").read_text()
-    assert 'id="taskTitle">整理任务' in page
+    assert '<div class="management-preference-label"><h2>整理任务</h2></div>' in page
+    assert 'id="taskTitle" class="library-task-title">整理任务' in page
     assert "$('taskTitle').textContent='整理任务'" in script
     assert 'id="analyzeLibrary">分析曲库' in page
 

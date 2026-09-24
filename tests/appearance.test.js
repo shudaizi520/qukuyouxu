@@ -31,7 +31,8 @@ function fixture(saved='',{blocked=false,embedded=false,parentWindow=null,frames
  const document={documentElement:{dataset:{}},body,querySelector:selector=>selector==='.topbar'?header:selector==='[data-appearance-grid]'?appearanceGrid:body.querySelector(selector),
   querySelectorAll:selector=>selector==='iframe'?frames:selector==='[data-appearance-choice]'?appearanceChoices:[],
   createElement:tag=>new Element(tag),addEventListener:(name,fn)=>{events[name]=fn;}};
- const window={location:{search:''},localStorage:storage,events:{},addEventListener(name,fn){this.events[name]=fn;}};
+ const window={location:{search:'',origin:'https://example.test'},localStorage:storage,events:{},addEventListener(name,fn){this.events[name]=fn;}};
+ window.postMessage=data=>window.events.message?.({origin:window.location.origin,data,source:window});
  window.self=window;window.top=embedded?{}:window;window.parent=parentWindow||window;
  new Function('window','document','URLSearchParams',source)(window,document,URLSearchParams);
  return {window,document,header,body,events,storage,navigation,logout,status,settings,appearanceChoices,mount:()=>events.DOMContentLoaded()};
@@ -124,6 +125,16 @@ test('appearance choices live in settings and update the parent workspace immedi
  assert.equal(parent.window.PCHAppearance.getTheme(),'warm');
  assert.equal(child.document.documentElement.dataset.appearance,'warm');
  assert.equal(child.appearanceChoices[1].getAttribute('aria-pressed'),'true');
+});
+
+test('embedded choices still update the shell when direct parent access is unavailable',()=>{
+ const parent=fixture();parent.mount();
+ const child=fixture('',{embedded:true,parentWindow:parent.window,withSettingsPanel:true});child.mount();
+ parent.window.PCHAppearance=undefined;
+ child.appearanceChoices[2].events.click();
+ assert.equal(parent.document.documentElement.dataset.appearance,'night');
+ assert.equal(child.document.documentElement.dataset.appearance,'night');
+ assert.equal(child.storage.value,'night');
 });
 
 test('blocked storage still synchronizes a parent theme with embedded tools',()=>{

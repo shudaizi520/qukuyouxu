@@ -1,6 +1,6 @@
 /* Theme palettes are the only source of literal application colors. */
 html{
- --app-rail:#f2f4f3;
+ --app-rail:#edf1ef;
  --app-main:#ffffff;
  --app-surface:var(--app-main);
  --app-control:#f2f4f3;
@@ -82,7 +82,7 @@ html{
 }
 
 html[data-appearance="warm"]{
- --app-rail:#eee8dc;
+ --app-rail:#e9dfd1;
  --app-main:#fbf8f1;
  --app-control:#f0eadf;
  --app-hover:#e7dfd1;
@@ -101,8 +101,8 @@ html[data-appearance="warm"]{
 }
 
 html[data-appearance="night"]{
- --app-rail:#171717;
- --app-main:#202020;
+ --app-rail:#151819;
+ --app-main:#232829;
  --app-control:#292929;
  --app-hover:#303030;
  --app-selected:#263a32;

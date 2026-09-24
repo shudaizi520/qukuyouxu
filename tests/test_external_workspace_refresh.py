@@ -56,9 +56,9 @@ def test_playlist_shell_uses_tonal_layers_instead_of_divider_lines():
 
     sidebar = _rule(css, "body[data-view=playlists] .playlist-sidebar")
 
-    assert "--app-rail:#f2f4f3" in tokens and "--app-main:#ffffff" in tokens
-    assert "--app-rail:#eee8dc" in tokens and "--app-main:#fbf8f1" in tokens
-    assert "--app-rail:#171717" in tokens and "--app-main:#202020" in tokens
+    assert "--app-rail:#edf1ef" in tokens and "--app-main:#ffffff" in tokens
+    assert "--app-rail:#e9dfd1" in tokens and "--app-main:#fbf8f1" in tokens
+    assert "--app-rail:#151819" in tokens and "--app-main:#232829" in tokens
     assert sidebar["background"] == "var(--app-rail)"
     assert sidebar["border"] == "0"
     assert css.count("background:linear-gradient(to right,var(--app-rail)") == 2

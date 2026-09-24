@@ -46,6 +46,10 @@
   syncFrames();
   return current;
  }
+ function broadcastTheme(id){
+  if(!embedded)return;
+  try{window.parent?.postMessage({type:'pch-appearance-change',theme:id},window.location.origin);}catch(_error){}
+ }
  function closeMenu(restoreFocus=false){
   if(!menu)return;
   menu.hidden=true;trigger.setAttribute('aria-expanded','false');
@@ -58,13 +62,14 @@
   if(first)first.focus();
  }
  function chooseTheme(id){
+  setTheme(id);
   if(embedded){
    try{
     const parentAppearance=window.parent?.PCHAppearance;
-    if(parentAppearance&&parentAppearance!==window.PCHAppearance){parentAppearance.setTheme(id);return;}
+    if(parentAppearance&&parentAppearance!==window.PCHAppearance)parentAppearance.setTheme(id);
    }catch(_error){}
+   broadcastTheme(id);
   }
-  setTheme(id);
  }
  function renderAppearanceCards(){
   const grid=document.querySelector?.('[data-appearance-grid]');if(!grid)return;
@@ -152,6 +157,11 @@
  window.addEventListener('storage',event=>{
   if(event.key!==KEY)return;
   current=valid(event.newValue)?event.newValue:'light';applyTheme();syncFrames();
+ });
+ window.addEventListener('message',event=>{
+  if(event.origin!==window.location.origin)return;
+  if(event.data?.type!=='pch-appearance-change'||!valid(event.data.theme))return;
+  setTheme(event.data.theme);
  });
  if(document.readyState==='loading'||!document.readyState)document.addEventListener('DOMContentLoaded',mount);
  else mount();
