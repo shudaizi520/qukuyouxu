@@ -33,10 +33,10 @@ body[data-management-page] [data-management-shell]{
  padding:0;
 }
 .management-stage{
- width:min(100%,1280px);
+ width:100%;
  min-width:0;
  margin:0 auto 0 0;
- padding:0 34px 48px;
+ padding:0 30px 48px;
 }
 .management-nav{
  display:flex;
@@ -77,14 +77,14 @@ body[data-management-page] .management-action{
  display:inline-flex;
  align-items:center;
  justify-content:center;
- min-width:96px;
- height:40px;
- min-height:40px;
- padding:0 14px;
+ min-width:0;
+ height:30px;
+ min-height:30px;
+ padding:0 10px;
  border-width:1px;
  border-style:solid;
- border-radius:9px;
- font-weight:600;
+ border-radius:4px;
+ font-weight:500;
  line-height:1;
  text-decoration:none;
  white-space:nowrap;
@@ -93,10 +93,10 @@ body[data-management-page] .management-action{
 body[data-management-page] input:not([type=checkbox]):not([type=radio]):not([type=range]),
 body[data-management-page] select,
 body[data-management-page] textarea{
- min-height:40px;
- border:1px solid transparent;
- border-radius:9px;
- background:var(--management-control);
+ min-height:32px;
+ border:1px solid var(--management-line);
+ border-radius:5px;
+ background:transparent;
  color:var(--management-text);
  box-shadow:none;
 }

@@ -31,7 +31,7 @@ body[data-management-page] .management-action{
  box-shadow:none;
 }
 body[data-management-page] .management-action:hover:not(:disabled){
- border-color:color-mix(in srgb,var(--app-accent) 54%,var(--app-line));
+ border-color:var(--app-line);
  background:var(--app-hover);
  color:var(--app-text);
  box-shadow:none;
@@ -39,14 +39,14 @@ body[data-management-page] .management-action:hover:not(:disabled){
  transform:none;
 }
 body[data-management-page] .management-action.primary{
- border-color:var(--app-accent);
- background:var(--app-accent);
- color:var(--app-on-accent);
+ border-color:var(--app-line);
+ background:transparent;
+ color:var(--app-text);
 }
 body[data-management-page] .management-action.primary:hover:not(:disabled){
- border-color:var(--app-accent-strong);
- background:var(--app-accent-strong);
- color:var(--app-on-accent);
+ border-color:var(--app-line);
+ background:var(--app-hover);
+ color:var(--app-text);
 }
 body[data-management-page] .management-action.danger,
 body[data-management-page] .management-action.danger-text{

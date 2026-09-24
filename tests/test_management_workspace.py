@@ -95,9 +95,9 @@ def test_management_shell_fills_only_the_existing_right_hand_workspace():
     assert shell.get("max-width") == "none"
     assert shell.get("margin") == "0"
     assert shell.get("padding") == "0"
-    assert stage.get("width") == "min(100%,1280px)"
+    assert stage.get("width") == "100%"
     assert stage.get("margin") == "0 auto 0 0"
-    assert stage.get("padding") == "0 34px 48px"
+    assert stage.get("padding") == "0 30px 48px"
     assert embedded_topbar.get("display") == "none"
     assert "body[data-view=playlists] .playlist-hub{grid-template-columns:var(--app-rail-width) minmax(0,1fr)" in foundation
 
@@ -139,13 +139,13 @@ def test_management_components_use_shared_theme_tokens_and_control_geometry():
     assert root.get("--management-control") == "var(--app-control)"
     assert root.get("--management-accent") == "var(--app-accent)"
     assert root.get("--management-line") == "var(--app-line)"
-    assert action.get("min-width") == "96px"
-    assert action.get("height") == "40px"
-    assert action.get("border-radius") == "9px"
+    assert action.get("min-width") == "0"
+    assert action.get("height") == "30px"
+    assert action.get("border-radius") == "4px"
     assert action_visual.get("background") == "transparent"
     assert danger.get("color") == "var(--app-danger)"
-    assert field.get("min-height") == "40px"
-    assert field.get("border-radius") == "9px"
+    assert field.get("min-height") == "32px"
+    assert field.get("border-radius") == "5px"
 
 
 def test_management_nav_is_horizontal_and_uses_the_theme_accent_for_active_state():
