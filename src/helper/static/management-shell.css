@@ -235,78 +235,90 @@ body[data-management-page=mixes] .custom-mix{
 
 /* Library: summary strip, schedule and managed playlists share the same grid. */
 body[data-management-page=library] .library-overview{
- display:grid;
- grid-template-columns:minmax(0,1fr) auto;
- align-items:stretch;
+ display:flex;
+ align-items:center;
+ flex-wrap:wrap;
+ gap:24px;
  width:100%;
+ max-width:850px;
  margin:22px 0 0;
  padding:0;
- border:1px solid var(--management-line);
- border-radius:9px;
- background:var(--management-surface);
+ border:0;
+ border-radius:0;
+ background:transparent;
 }
 body[data-management-page=library] .library-metrics{
- display:grid;
- grid-template-columns:repeat(5,minmax(104px,1fr));
+ display:flex;
+ align-items:center;
+ flex-wrap:wrap;
+ gap:24px;
+ flex:1 1 auto;
  min-width:0;
 }
 body[data-management-page=library] .library-metrics>div{
  min-width:0;
- padding:16px 18px;
- border-right:1px solid var(--management-line);
+ padding:8px 0;
+ border:0;
 }
-body[data-management-page=library] .library-auth{padding:12px 18px}
+body[data-management-page=library] .library-auth{padding:8px 0}
 body[data-management-page=library] .library-automation-line{
- min-height:68px;
+ width:100%;
+ max-width:850px;
+ min-height:50px;
  margin:0;
- padding:13px 0;
- border-bottom:1px solid var(--management-line);
+ padding:9px 0;
+ border:0;
 }
 body[data-management-page=library] :is(.managed-playlists-card,.library-result,.metadata-review-card,.unclassified-card){
+ width:100%;
+ max-width:850px;
  margin:0;
  padding:22px 0;
  border:0;
- border-bottom:1px solid var(--management-line);
  border-radius:0;
  background:transparent;
 }
-body[data-management-page=library] .managed-playlist-row{border-color:var(--management-line)}
+body[data-management-page=library] .managed-playlist-row{border:0;background:transparent}
+body[data-management-page=library] .managed-playlist-row:hover{background:var(--management-hover)}
 body[data-management-page=library] .page-footer{border-color:var(--management-line);color:var(--management-muted)}
 
 /* Status: the first strip reads as one summary, not three floating cards. */
 body[data-management-page=status] .health-grid{
- display:grid;
- grid-template-columns:repeat(3,minmax(0,1fr));
- gap:0;
+ display:flex;
+ align-items:stretch;
+ flex-wrap:wrap;
+ gap:30px;
+ width:100%;
+ max-width:680px;
  margin:22px 0;
- border:1px solid var(--management-line);
- border-radius:9px;
- overflow:hidden;
+ border:0;
+ border-radius:0;
+ overflow:visible;
 }
 body[data-management-page=status] .health-card{
+ flex:1 1 170px;
  min-height:84px;
  margin:0;
- padding:16px 20px;
+ padding:12px 0;
  border:0;
- border-right:1px solid var(--management-line);
  border-radius:0;
  background:transparent;
 }
 body[data-management-page=status] .health-card:last-child{border-right:0}
 body[data-management-page=status] .health-icon{background:var(--management-control);color:var(--management-accent)}
-body[data-management-page=status] .status-primary{gap:0;margin:0;border-top:1px solid var(--management-line)}
+body[data-management-page=status] .status-primary{display:grid;grid-template-columns:1fr;gap:30px;width:100%;max-width:680px;margin:0;border:0}
 body[data-management-page=status] .status-primary>.card{
- padding:22px 20px;
+ padding:0;
  border:0;
- border-bottom:1px solid var(--management-line);
  border-radius:0;
  background:transparent;
 }
-body[data-management-page=status] .status-primary>.card:first-child{border-right:1px solid var(--management-line)}
+body[data-management-page=status] .status-primary>.card:first-child{border-right:0}
 body[data-management-page=status] .page-disclosure{
- margin:0;
+ width:100%;
+ max-width:620px;
+ margin:24px 0 0;
  border:0;
- border-bottom:1px solid var(--management-line);
  border-radius:0;
  background:transparent;
 }
@@ -391,7 +403,7 @@ body[data-management-page=appearance] .appearance-theme-card{
  flex-direction:column;
  gap:11px;
  padding:9px 9px 12px;
- border:1px solid var(--management-line);
+ border:0;
  border-radius:12px;
  background:transparent;
  color:var(--management-text);
@@ -400,7 +412,7 @@ body[data-management-page=appearance] .appearance-theme-card{
  transition:border-color .16s ease,background .16s ease,transform .16s ease;
 }
 body[data-management-page=appearance] .appearance-theme-card:hover{background:var(--management-hover);transform:translateY(-1px)}
-body[data-management-page=appearance] .appearance-theme-card.selected{border-color:var(--management-accent);background:color-mix(in srgb,var(--app-selected) 58%,transparent)}
+body[data-management-page=appearance] .appearance-theme-card.selected{border-color:transparent;background:var(--management-hover)}
 body[data-management-page=appearance] .appearance-theme-card.selected::after{content:"✓";position:absolute;top:15px;right:15px;display:grid;place-items:center;width:19px;height:19px;border-radius:50%;background:var(--management-accent);color:var(--management-on-accent);font-size:12px;font-weight:700}
 body[data-management-page=appearance] .appearance-theme-copy{display:flex;align-items:baseline;justify-content:space-between;gap:8px;padding:0 3px}
 body[data-management-page=appearance] .appearance-theme-copy strong{font-size:14px;font-weight:650}
@@ -421,11 +433,10 @@ body[data-management-page=settings] .settings-account-actions{display:flex;justi
  body[data-management-page=external] .external-import-form{grid-template-columns:1fr}
  body[data-management-page=mixes] .contextual-settings-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
  body[data-management-page=mixes] .contextual-settings-grid .management-action{grid-column:1/-1}
- body[data-management-page=library] .library-overview{grid-template-columns:1fr}
- body[data-management-page=library] .library-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
- body[data-management-page=library] .library-metrics>div{border-bottom:1px solid var(--management-line)}
- body[data-management-page=status] .health-grid{grid-template-columns:1fr}
- body[data-management-page=status] .health-card{border-right:0;border-bottom:1px solid var(--management-line)}
+ body[data-management-page=library] .library-overview{align-items:flex-start;flex-direction:column}
+ body[data-management-page=library] .library-metrics{gap:14px 22px}
+ body[data-management-page=library] .library-metrics>div{border:0}
+ body[data-management-page=status] .health-card{border:0}
  body[data-management-page=status] .health-card:last-child{border-bottom:0}
  body[data-management-page=status] .status-primary>.card:first-child{border-right:0}
  body[data-management-page=settings] .automation-grid.automation-grid{grid-template-columns:1fr}

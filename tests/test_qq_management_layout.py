@@ -147,3 +147,36 @@ def test_smart_playlist_workspace_is_compact_and_rows_fill_only_on_hover():
     assert row["border"] == "0"
     assert row["background"] == "transparent"
     assert hover["background"] == "var(--management-hover)"
+
+
+def test_library_and_status_summaries_are_capped_unboxed_groups():
+    css = _text("management-shell.css")
+    library = _rule(css, "body[data-management-page=library] .library-overview")
+    health = _rule(css, "body[data-management-page=status] .health-grid")
+    status = _rule(css, "body[data-management-page=status] .status-primary")
+    disclosure = _rule(css, "body[data-management-page=status] .page-disclosure")
+
+    assert library["max-width"] == "850px"
+    assert library["border"] == "0"
+    assert health["max-width"] == "680px"
+    assert health["border"] == "0"
+    assert health["gap"] == "30px"
+    assert status["grid-template-columns"] == "1fr"
+    assert status["max-width"] == "680px"
+    assert disclosure["max-width"] == "620px"
+
+
+def test_appearance_tiles_are_borderless_with_a_soft_selected_state():
+    css = _text("management-shell.css")
+    card = _rule(
+        css, "body[data-management-page=appearance] .appearance-theme-card"
+    )
+    selected = _rule(
+        css,
+        "body[data-management-page=appearance] .appearance-theme-card.selected",
+    )
+
+    assert card["border"] == "0"
+    assert card["background"] == "transparent"
+    assert selected["border-color"] == "transparent"
+    assert selected["background"] == "var(--management-hover)"
