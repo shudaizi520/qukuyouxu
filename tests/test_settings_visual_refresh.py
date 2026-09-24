@@ -55,25 +55,28 @@ def test_settings_has_four_clear_modules_and_no_separator_lattice():
     separator = _rule(css, "body[data-management-page=settings] .settings-section+.settings-section::before")
     panel_separator = _rule(css, "body[data-management-page=settings] .settings-panel+.settings-panel::before")
 
-    assert workspace["max-width"] == "1040px"
+    assert workspace["max-width"] == "760px"
     assert workspace["margin"] == "0"
-    assert card["background"] == "var(--management-control)"
+    assert card["background"] == "transparent"
     assert card["border"] == "0"
-    assert card["border-radius"] == "14px"
+    assert card["border-radius"] == "0"
     assert separator["content"] == "none"
     assert panel_separator["content"] == "none"
 
 
-def test_automation_is_a_compact_three_card_grid_and_logout_finishes_on_the_left():
+def test_automation_is_a_compact_aligned_list_and_logout_finishes_on_the_left():
     html = (STATIC / "settings.html").read_text(encoding="utf-8")
     css = (STATIC / "management-shell.css").read_text(encoding="utf-8")
     grid = _rule(css, "body[data-management-page=settings] .automation-grid")
     row = _rule(css, "body[data-management-page=settings] .automation-row")
     logout = _rule(css, "body[data-management-page=settings] .settings-account-actions")
 
-    assert grid["grid-template-columns"] == "repeat(3,minmax(0,1fr))"
+    assert grid["grid-template-columns"] == "1fr"
+    assert grid["max-width"] == "520px"
+    assert row["display"] == "grid"
+    assert row["grid-template-columns"] == "120px minmax(0,1fr)"
     assert row["border"] == "0"
-    assert row["border-radius"] == "11px"
+    assert row["border-radius"] == "0"
     assert logout["justify-content"] == "flex-start"
     assert logout["margin-top"] == "18px"
     assert html.rindex("settings-account-actions") > html.index('id="settings-system"')

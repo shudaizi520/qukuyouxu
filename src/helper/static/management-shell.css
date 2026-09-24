@@ -309,56 +309,68 @@ body[data-management-page=status] .page-disclosure{
 /* Settings groups use soft surfaces and spacing instead of separator lines. */
 body[data-management-page=settings] .settings-workspace{
  width:100%;
- max-width:1040px;
+ max-width:760px;
  margin:0;
 }
 body[data-management-page=settings] .settings-panel{width:100%;max-width:none;margin:0 0 18px;padding:0}
 body[data-management-page=settings] .settings-panel+.settings-panel{margin-top:0;padding-top:0}
 body[data-management-page=settings] .settings-panel+.settings-panel::before{content:none}
 body[data-management-page=settings] .settings-card{
- margin:0 0 18px;
- padding:22px;
+ margin:0 0 30px;
+ padding:0;
  border:0;
- border-radius:14px;
- background:var(--management-control);
+ border-radius:0;
+ background:transparent;
  box-shadow:none;
  overflow:visible;
 }
-body[data-management-page=settings] .settings-section+.settings-section{margin-top:0;padding-top:22px}
+body[data-management-page=settings] .settings-section+.settings-section{margin-top:0;padding-top:0}
 body[data-management-page=settings] .settings-section+.settings-section::before{
  content:none;
 }
 body[data-management-page=settings] .settings-section-title{margin:0 0 16px;padding:0;border:0}
 body[data-management-page=settings] .settings-card-heading>div{display:grid;gap:4px}
+body[data-management-page=settings] .settings-user-section{width:100%;max-width:760px}
 body[data-management-page=settings] .settings-user-header,
-body[data-management-page=settings] #managedUserList .settings-user-row{border:0}
-body[data-management-page=settings] #managedUserList .settings-user-row{padding-inline:10px}
+body[data-management-page=settings] #managedUserList .settings-user-row{
+ display:grid;
+ grid-template-columns:minmax(220px,1fr) repeat(3,92px) 92px;
+ align-items:center;
+ gap:10px;
+ border:0;
+ background:transparent;
+}
+body[data-management-page=settings] .settings-user-header{min-height:32px;padding:0 8px;color:var(--management-muted);font-size:12px;font-weight:500}
+body[data-management-page=settings] .settings-user-header span:not(:first-child){text-align:center}
+body[data-management-page=settings] #managedUserList .settings-user-row{min-height:40px;padding:5px 8px;border-radius:5px}
+body[data-management-page=settings] #managedUserList .settings-user-row:hover{background:var(--management-hover)}
+body[data-management-page=settings] #managedUserList .profile-actions{width:auto;max-width:none;justify-content:flex-end}
 body[data-management-page=settings] .connection-summary{border:0;border-radius:10px;background:var(--management-canvas);padding:12px 14px}
 body[data-management-page=settings] .profile-webhook-tools{margin-top:18px;padding:16px;border:0;border-radius:11px;background:var(--management-canvas)}
 body[data-management-page=settings] .profile-webhook-tools::before{content:none}
 body[data-management-page=settings] .profile-webhook-tools .webhook-setup-action{padding:0}
 body[data-management-page=settings] .profile-webhook-tools .webhook-setup-action code{padding:9px 11px;border:0;border-radius:8px;background:var(--management-control)}
-body[data-management-page=settings] .automation-list{padding:22px}
-body[data-management-page=settings] .automation-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+body[data-management-page=settings] .settings-automation-section{width:100%;max-width:520px}
+body[data-management-page=settings] .automation-list{padding:0}
+body[data-management-page=settings] .automation-grid{display:grid;grid-template-columns:1fr;max-width:520px;gap:4px}
 body[data-management-page=settings] .automation-row{
  min-width:0;
- min-height:132px;
- display:flex;
- flex-direction:column;
- align-items:stretch;
- justify-content:space-between;
- gap:18px;
- padding:16px;
+ min-height:44px;
+ display:grid;
+ grid-template-columns:120px minmax(0,1fr);
+ align-items:center;
+ gap:14px;
+ padding:7px 0;
  border:0;
- border-radius:11px;
- background:var(--management-canvas);
+ border-radius:0;
+ background:transparent;
 }
 body[data-management-page=settings] .automation-row+.automation-row{border:0}
 body[data-management-page=settings] .automation-row+.automation-row::before{content:none}
 body[data-management-page=settings] .automation-row>strong{font-size:14px}
-body[data-management-page=settings] .automation-controls{width:100%;justify-content:flex-start;gap:8px}
+body[data-management-page=settings] .automation-controls{width:auto;display:grid;grid-template-columns:72px 72px 30px;align-items:center;justify-content:start;gap:8px}
 body[data-management-page=settings] .automation-controls>span{min-width:0;text-align:left}
-body[data-management-page=settings] .automation-controls select{width:auto;min-width:0;flex:1}
+body[data-management-page=settings] .automation-controls select{width:72px;min-width:0;flex:none}
 body[data-management-page=settings] .settings-security-card{padding-bottom:14px}
 body[data-management-page=settings] .settings-password{border:0;border-radius:10px;background:var(--management-canvas)}
 body[data-management-page=settings] .settings-password>summary{padding:0 14px}

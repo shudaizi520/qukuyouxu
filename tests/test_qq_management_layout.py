@@ -59,3 +59,45 @@ def test_management_fields_are_compact_and_stage_stays_left_aligned():
     assert stage["width"] == "100%"
     assert stage["margin"] == "0 auto 0 0"
     assert stage["padding"] == "0 30px 48px"
+
+
+def test_system_settings_use_a_capped_aligned_user_table():
+    html = _text("settings.html")
+    css = _text("management-shell.css")
+    people = html.split('<section id="people"', 1)[1].split("</section>", 1)[0]
+    heading = people.split('<div class="settings-section-title"', 1)[1].split(
+        "</div>", 1
+    )[0]
+    user_section = _rule(
+        css, "body[data-management-page=settings] .settings-user-section"
+    )
+    header = _rule(
+        css, "body[data-management-page=settings] .settings-user-header"
+    )
+    row = _rule(
+        css,
+        "body[data-management-page=settings] #managedUserList .settings-user-row",
+    )
+    hover = _rule(
+        css,
+        "body[data-management-page=settings] #managedUserList .settings-user-row:hover",
+    )
+
+    assert "settings-user-section" in people.split(">", 1)[0]
+    assert 'id="openAddUser"' in heading
+    assert user_section["max-width"] == "760px"
+    assert header["grid-template-columns"] == "minmax(220px,1fr) repeat(3,92px) 92px"
+    assert row["grid-template-columns"] == "minmax(220px,1fr) repeat(3,92px) 92px"
+    assert row["background"] == "transparent"
+    assert hover["background"] == "var(--management-hover)"
+
+
+def test_system_settings_automation_uses_fixed_compact_columns():
+    css = _text("management-shell.css")
+    row = _rule(css, "body[data-management-page=settings] .automation-row")
+    controls = _rule(css, "body[data-management-page=settings] .automation-controls")
+
+    assert row["grid-template-columns"] == "120px minmax(0,1fr)"
+    assert row["background"] == "transparent"
+    assert controls["grid-template-columns"] == "72px 72px 30px"
+    assert controls["justify-content"] == "start"
