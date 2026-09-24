@@ -4,8 +4,8 @@ Verified on 2026-09-24 from the isolated `qq-management-redesign` worktree.
 
 ## Automated checks
 
-- Python: `1052 passed, 115 subtests passed in 16.16s`
-- JavaScript: `8 passed, 0 failed in 12.07s`
+- Python: `1052 passed, 115 subtests passed in 15.94s`
+- JavaScript: `8 passed, 0 failed in 12.06s`
 - Focused layout and behavior suites: green
 - Whitespace validation: green
 
