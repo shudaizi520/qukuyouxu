@@ -295,10 +295,16 @@ def test_appearance_is_a_dedicated_page_and_not_embedded_in_system_settings():
 
 
 def test_server_exposes_the_dedicated_appearance_route():
-    source = (STATIC.parent / "web.py").read_text(encoding="utf-8")
+    from fastapi import FastAPI
+    from helper.web_surface import attach_web_surface
 
-    assert "@app.get('/appearance')" in source
-    assert "STATIC / 'appearance.html'" in source
+    app = FastAPI()
+    attach_web_surface(app, STATIC, "test")
+    routes = {route.path: route for route in app.routes}
+    response = routes["/appearance"].endpoint()
+
+    assert response.status_code == 200
+    assert b'data-management-page="appearance"' in response.body
 
 
 def test_appearance_cards_are_compact_fixed_width_previews():

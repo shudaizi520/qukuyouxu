@@ -66,10 +66,16 @@ class ExternalPlaylistUiV130Tests(unittest.TestCase):
         self.assertIn("overflow-wrap:anywhere", styles)
 
     def test_page_route_and_versioned_asset_are_served(self):
-        source = (ROOT / "src/helper/web.py").read_text(encoding="utf-8")
-        self.assertIn("@app.get('/external')", source)
-        self.assertIn("render_versioned_html((STATIC / 'external.html')", source)
-        self.assertIn("'external.js'", source)
+        from fastapi import FastAPI
+        from helper.web_surface import STATIC_ASSETS, attach_web_surface
+
+        app = FastAPI()
+        attach_web_surface(app, STATIC, "test")
+        routes = {route.path: route for route in app.routes}
+        response = routes["/external"].endpoint()
+        self.assertEqual(200, response.status_code)
+        self.assertIn("external.js", STATIC_ASSETS)
+        self.assertIn(b'/static/external.js?v=test', response.body)
         page = (STATIC / "external.html").read_text(encoding="utf-8")
         self.assertNotIn('id="version"', page)
         self.assertIn('/static/external.js?v=app', page)

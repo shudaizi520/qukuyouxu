@@ -49,8 +49,9 @@ class PlaylistSectionUiTests(unittest.TestCase):
         self.assertIn(".playlist-dialog-head button:focus-visible", styles)
 
     def test_new_module_is_served_by_the_static_allowlist(self):
-        web = (ROOT / "src/helper/web.py").read_text(encoding="utf-8")
-        self.assertIn("'playlist-sections.js'", web)
+        from helper.web_surface import STATIC_ASSETS
+
+        self.assertIn("playlist-sections.js", STATIC_ASSETS)
 
     def test_ui_has_one_binary_heart_and_no_rating_selector(self):
         page = (STATIC / "playlists.html").read_text(encoding="utf-8")

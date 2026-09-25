@@ -827,7 +827,7 @@ class PlaylistHubPageTests(unittest.TestCase):
         script = (STATIC / "playlists.js").read_text(encoding="utf-8")
         workspace = (STATIC / "playlist-workspace.js").read_text(encoding="utf-8")
         search = (STATIC / "playlist-search.js").read_text(encoding="utf-8")
-        web = (ROOT / "src/helper/web.py").read_text(encoding="utf-8")
+        from helper.web_surface import STATIC_ASSETS
 
         topbar = page.split('<header class="topbar">', 1)[1].split("</header>", 1)[0]
         self.assertIn('id="librarySearchInput"', topbar)
@@ -848,8 +848,8 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn("let requestGeneration=0", search)
         self.assertIn("requestId!==requestGeneration", search)
         self.assertIn("profileId!==getProfileId()", search)
-        self.assertIn("'playlist-workspace.js'", web)
-        self.assertIn("'playlist-search.js'", web)
+        self.assertIn("playlist-workspace.js", STATIC_ASSETS)
+        self.assertIn("playlist-search.js", STATIC_ASSETS)
         self.assertIn("function openSearchWorkspace(query)", script)
         open_search = script.split("function openSearchWorkspace", 1)[1].split(
             "const librarySearch", 1
@@ -916,10 +916,16 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertEqual(1, playlist_home.count('id="workspaceHome"'))
 
     def test_server_serves_playlist_home_and_moves_daily_workflow_to_daily_route(self):
-        source = (ROOT / "src/helper/web.py").read_text(encoding="utf-8")
-        self.assertIn("@app.get('/daily')", source)
-        self.assertIn("STATIC / 'playlists.html'", source)
-        self.assertIn("'playlists.js'", source)
+        from fastapi import FastAPI
+        from helper.web_surface import STATIC_ASSETS, attach_web_surface
+
+        app = FastAPI()
+        attach_web_surface(app, STATIC, "test")
+        routes = {route.path: route for route in app.routes}
+        self.assertIn("/daily", routes)
+        self.assertIn("/", routes)
+        self.assertIn(b'data-view="playlists"', routes["/"].endpoint().body)
+        self.assertIn("playlists.js", STATIC_ASSETS)
         hub = (ROOT / "src/helper/playlist_hub.py").read_text(encoding="utf-8")
         self.assertIn('@app.get("/api/playlists")', hub)
         self.assertIn('@app.get("/api/playlists/{kind}/{key}")', hub)
@@ -1052,7 +1058,7 @@ class PlaylistHubPageTests(unittest.TestCase):
         page = (STATIC / "playlists.html").read_text(encoding="utf-8")
         script = (STATIC / "playlists.js").read_text(encoding="utf-8")
         player_script = (STATIC / "playlist-player.js").read_text(encoding="utf-8")
-        web = (ROOT / "src/helper/web.py").read_text(encoding="utf-8")
+        from helper.web_surface import STATIC_ASSETS
         styles = (STATIC / "product.css").read_text(encoding="utf-8")
         player = page.split('<footer id="playlistPlayer"', 1)[1].split("</footer>", 1)[0]
         self.assertIn('id="playerFeedback"', player)
@@ -1074,7 +1080,7 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn("retryNow", retry_handler)
         self.assertNotIn("handleFailure", retry_handler)
         self.assertIn("playerVolume", player_script)
-        self.assertIn("'playlist-player.js'", web)
+        self.assertIn("playlist-player.js", STATIC_ASSETS)
         player_styles = styles.split(".playlist-player{", 1)[1].split(".playlist-search-dialog", 1)[0]
         self.assertNotIn("min-height:88px", player_styles)
         self.assertIn("height:72px", player_styles)

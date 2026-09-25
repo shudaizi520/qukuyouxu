@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager, nullcontext
 from pathlib import Path
 from urllib.parse import urlsplit
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse, FileResponse, Response, RedirectResponse
+from fastapi.responses import JSONResponse, Response
 from . import __version__
 from .store import Store, DEFAULT_SETTINGS
 from .engine import Engine, SafetyError, safe_error, digest
@@ -21,7 +21,7 @@ from .match import CONVERSION_AVAILABLE, normalize
 from .extra_web import attach_routes, extensions_status
 from .single_web import attach_single_routes
 from .auth import AuthManager, COOKIE_NAME, SESSION_SECONDS
-from .page_version import render_library_html, render_versioned_html
+from .web_surface import attach_web_surface
 from .profiles import ProfileRegistry
 from .profile_web import attach_profile_routes
 from .scoped_store import ActiveProfileStore
@@ -32,7 +32,6 @@ from .automation import attach_automation_routes
 from .external_web import attach_external_routes
 from .playlist_hub import attach_playlist_hub_routes
 from .web_playback import attach_web_playback_route
-STATIC = Path(__file__).with_name('static')
 
 _ARTWORK_CACHE_PATH = re.compile(
     r'^/api/playlists/(?:library/tracks/\d+/artwork|[^/]+/[^/]+/tracks/\d+/artwork)$'
@@ -309,63 +308,7 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
         store.log('管理员密码已修改，旧登录会话已撤销')
         return _set_session_cookie(JSONResponse({'message': '密码已更新', 'username': username}), token, req)
 
-    @app.get('/')
-    def index():
-        return HTMLResponse(render_versioned_html((STATIC / 'playlists.html').read_text(encoding='utf-8'), __version__))
-
-    @app.get('/daily')
-    def daily_page():
-        return HTMLResponse(render_versioned_html((STATIC / 'daily.html').read_text(encoding='utf-8'), __version__))
-
-    @app.get('/library')
-    def library_home():
-        return HTMLResponse(render_library_html((STATIC / 'home.html').read_text(encoding='utf-8'), __version__))
-
-    @app.get('/status')
-    def status_page():
-        return HTMLResponse(render_versioned_html((STATIC / 'status.html').read_text(encoding='utf-8'), __version__))
-
-    @app.get('/mixes')
-    def mixes_page():
-        return HTMLResponse(render_versioned_html((STATIC / 'mixes.html').read_text(encoding='utf-8'), __version__))
-
-    @app.get('/external')
-    def external_page():
-        return HTMLResponse(render_versioned_html((STATIC / 'external.html').read_text(encoding='utf-8'), __version__))
-
-    @app.get('/settings')
-    def settings_page():
-        return HTMLResponse(render_versioned_html((STATIC / 'settings.html').read_text(encoding='utf-8'), __version__))
-
-    @app.get('/appearance')
-    def appearance_page():
-        return HTMLResponse(render_versioned_html((STATIC / 'appearance.html').read_text(encoding='utf-8'), __version__))
-
-    @app.get('/advanced')
-    def advanced():
-        # The old expert console mixed unrelated and obsolete maintenance tools.
-        # Keep old bookmarks safe, but send users to the page that owns runtime
-        # health and history instead of exposing that console again.
-        return RedirectResponse(url='/status', status_code=307)
-
-    @app.get('/healthz')
-    def health():
-        return {'ok': True, 'version': __version__}
-
-    @app.get('/static/{name}')
-    def static(name):
-        if name not in (
-            'home.js', 'theme_home.js', 'product.css', 'daily.js',
-            'refined.js', 'status.js', 'settings.js', 'contextual-settings.js', 'auth.js', 'mixes.js',
-            'appearance.js', 'external.js', 'playlists.js', 'playlist-artwork.js', 'playlist-workspace.js',
-            'playlist-search.js', 'playlist-player.js', 'playlist-sections.js',
-            'playlist-playback-mode.js', 'playlist-now-playing.js', 'playlist-now-playing.css',
-            'external-workspace.css', 'theme-tokens.css', 'ui-components.css', 'design-system.css',
-            'management-shell.css', 'theme-background.css',
-            'playlist-visualizer.js', 'management-shell.js',
-        ):
-            return Response(status_code=404)
-        return FileResponse(STATIC / name, media_type='text/javascript' if name.endswith('.js') else 'text/css')
+    attach_web_surface(app, Path(__file__).with_name('static'), __version__)
 
     @app.get('/api/status')
     def status():

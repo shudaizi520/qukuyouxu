@@ -60,10 +60,16 @@ class LibraryMaintenanceV0415Tests(unittest.TestCase):
             page = (STATIC / name).read_text(encoding="utf-8")
             self.assertNotIn('href="/advanced', page, name)
 
-        web = (ROOT / "src" / "helper" / "web.py").read_text(encoding="utf-8")
-        self.assertIn("return RedirectResponse(url='/status', status_code=307)", web)
-        self.assertNotIn("render_versioned_html((STATIC / 'index.html')", web)
-        self.assertNotIn("'advanced.js'", web)
+        from fastapi import FastAPI
+        from helper.web_surface import STATIC_ASSETS, attach_web_surface
+
+        app = FastAPI()
+        attach_web_surface(app, STATIC, "test")
+        routes = {route.path: route for route in app.routes}
+        response = routes["/advanced"].endpoint()
+        self.assertEqual(307, response.status_code)
+        self.assertEqual("/status", response.headers["location"])
+        self.assertNotIn("advanced.js", STATIC_ASSETS)
 
     def test_review_only_metadata_excludes_confirmed_and_advisory_rows(self):
         from helper.metadata import metadata_audit_rows

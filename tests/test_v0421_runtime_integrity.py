@@ -81,14 +81,9 @@ class RuntimeIntegrityV0421Tests(unittest.TestCase):
         self.assertGreaterEqual(contrast, 4.5, colors)
 
     def test_served_pages_do_not_reference_blocked_static_assets(self):
-        web = ast.parse((ROOT / "src/helper/web.py").read_text(encoding="utf-8"))
-        allowed = None
-        for node in ast.walk(web):
-            if isinstance(node, ast.FunctionDef) and node.name == "static":
-                comparison = next(item for item in ast.walk(node) if isinstance(item, ast.Compare))
-                allowed = set(ast.literal_eval(comparison.comparators[0]))
-                break
-        self.assertIsNotNone(allowed)
+        from helper.web_surface import STATIC_ASSETS
+
+        allowed = set(STATIC_ASSETS)
 
         referenced = set()
         static = ROOT / "src/helper/static"
