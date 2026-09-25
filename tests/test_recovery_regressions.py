@@ -46,6 +46,18 @@ class _Plex:
 
 
 class RecoveryRegressionTests(unittest.TestCase):
+    def test_stable_lifecycle_module_exports_public_operations(self):
+        from helper import daily_mix_v036, plex_lifecycle
+
+        for name in (
+            "remove_managed_playlist",
+            "reconcile_managed_playlist",
+            "managed_playlist_rows",
+            "attach_v036_routes",
+        ):
+            self.assertTrue(callable(getattr(plex_lifecycle, name)))
+            self.assertIs(getattr(plex_lifecycle, name), getattr(daily_mix_v036, name))
+
     def managed_engine(self, root, current_ids=("1", "3")):
         from helper.engine import Engine, fingerprint
         from helper.store import Store

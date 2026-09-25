@@ -875,7 +875,7 @@ def remove_playlist(engine, kind, key, confirm_title, hidden_playlist_ids=()):
         from .smart_mix_web import remove_smart_mix
         return remove_smart_mix(engine, key, confirm_title)
     if kind == "category":
-        from .daily_mix_v036 import remove_managed_playlist
+        from .plex_lifecycle import remove_managed_playlist
         return remove_managed_playlist(engine, key, confirm_title)
     if kind == "external":
         with engine.exclusive():

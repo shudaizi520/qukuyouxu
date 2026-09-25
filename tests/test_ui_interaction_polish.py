@@ -46,7 +46,7 @@ def test_unclassified_tracks_have_a_clear_count_and_read_only_view():
 
 def test_managed_playlist_has_a_reversible_maintenance_control():
     script = (STATIC / "theme_home.js").read_text(encoding="utf-8")
-    api = (ROOT / "src/helper/daily_mix_v036.py").read_text(encoding="utf-8")
+    api = (ROOT / "src/helper/plex_lifecycle.py").read_text(encoding="utf-8")
     assert "恢复维护" in script
     assert "/api/managed/enable" in script
     assert '@app.post("/api/managed/enable")' in api

@@ -384,5 +384,5 @@ def attach_routes(app, store, engine, body, ensure_idle):
         return Response(json.dumps(data, ensure_ascii=False, indent=2), media_type='application/json', headers={'Content-Disposition': 'attachment; filename="daily-recommendation-report.json"'})
     from .daily_mix_v035 import attach_policy_routes
     attach_policy_routes(app, store, engine, body, ensure_idle)
-    from .daily_mix_v036 import attach_v036_routes
+    from .plex_lifecycle import attach_v036_routes
     attach_v036_routes(app, store, engine, body, ensure_idle)
