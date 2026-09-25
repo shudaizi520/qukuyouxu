@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from ui_css import page_css
+
 
 ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "src/helper/static"
@@ -54,7 +56,7 @@ def test_managed_playlist_has_a_reversible_maintenance_control():
 
 def test_external_result_tabs_do_not_use_global_pending_button_animation():
     script = (STATIC / "external.js").read_text()
-    css = (STATIC / "product.css").read_text()
+    css = page_css("external")
     assert "switchMatchStatus" in script
     assert "button.onclick=()=>action(async()=>{activeStatus" not in script
     assert ".external-count-tab:hover" in css

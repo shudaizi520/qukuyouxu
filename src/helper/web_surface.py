@@ -15,6 +15,7 @@ STATIC_ASSETS = frozenset({
     "playlist-workspace.js", "playlist-search.js", "playlist-player.js",
     "playlist-sections.js", "playlist-playback-mode.js", "playlist-now-playing.js",
     "playlist-now-playing.css", "external-workspace.css", "theme-tokens.css",
+    "settings-page.css", "daily-page.css", "mixes-page.css", "external-page.css",
     "ui-components.css", "design-system.css", "management-shell.css",
     "theme-background.css", "playlist-visualizer.js", "management-shell.js",
 })

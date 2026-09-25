@@ -2,6 +2,8 @@ import unittest
 from html.parser import HTMLParser
 from pathlib import Path
 
+from ui_css import page_css
+
 
 ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "src" / "helper" / "static"
@@ -68,10 +70,12 @@ class UIHierarchyV0414Tests(unittest.TestCase):
         self.assertNotIn('data-settings-target="learning"', settings)
 
     def test_smart_mix_cards_override_adjacent_card_margin_and_space_actions(self):
-        css = (STATIC / "product.css").read_text(encoding="utf-8")
+        css = page_css("mixes")
         self.assertIn(".mix-grid>.card{margin-top:0!important}", css)
-        self.assertIn(".mix-card .button-row{display:flex", css)
-        self.assertIn("gap:8px", css[css.index(".mix-card .button-row"):])
+        start = css.index(".mix-card .button-row{")
+        rule = css[start:css.index("}", start)]
+        self.assertIn("display:flex", rule)
+        self.assertIn("gap:8px", rule)
 
 
 if __name__ == "__main__":

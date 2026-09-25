@@ -1,6 +1,8 @@
 """Regression checks for the user-visible playlist workspace layout."""
 
 from pathlib import Path
+
+from ui_css import page_css
 import re
 
 
@@ -55,7 +57,7 @@ def test_import_controls_are_grouped_in_one_inset_column():
 
 
 def test_import_mobile_actions_override_old_full_width_file_control():
-    css = (STATIC / "product.css").read_text()
+    css = page_css("external")
     assert "body[data-view=external] .external-command-actions .external-file-action{width:auto}" in css
     assert "body[data-view=external] .external-import-form>.external-command-actions{flex-wrap:wrap;justify-content:flex-start;padding-left:0}" in css
 

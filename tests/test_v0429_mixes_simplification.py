@@ -2,6 +2,8 @@ import unittest
 from html.parser import HTMLParser
 from pathlib import Path
 
+from ui_css import page_css
+
 
 ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "src/helper/static"
@@ -79,7 +81,7 @@ class SmartMixSimplificationV0429Tests(unittest.TestCase):
             self.assertEqual("刷新预览", buttons[0].attrs.get("aria-label"))
 
     def test_pending_refresh_rotates_its_only_icon_without_adding_a_spinner(self):
-        styles = (STATIC / "product.css").read_text(encoding="utf-8")
+        styles = page_css("mixes")
         refresh_buttons = [
             node
             for node in self.tree.root.descendants()

@@ -2,6 +2,8 @@ from pathlib import Path
 import re
 import unittest
 
+from ui_css import page_css
+
 
 STATIC = Path(__file__).resolve().parents[1] / "src/helper/static"
 
@@ -79,7 +81,7 @@ class WorkspaceLayoutTests(unittest.TestCase):
     def test_external_import_has_compact_results(self):
         js = (STATIC / "external.js").read_text()
         self.assertIn("const PAGE_SIZE=25", js)
-        css = (STATIC / "product.css").read_text()
+        css = page_css("external")
         self.assertIn(".external-track-list{max-height:", css)
 
     def test_smart_and_library_settings_own_their_schedules(self):

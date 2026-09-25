@@ -1,50 +1,48 @@
 
 /* 2026 visual system: calm typography, flat settings groups, and only useful separators. */
-body[data-view=settings],body[data-view=playlists]{font-family:"Segoe UI Variable Text","Microsoft YaHei UI","Microsoft YaHei","PingFang SC","Noto Sans CJK SC",system-ui,sans-serif;font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased}
-body[data-view=settings]{background:var(--theme-canvas);font-weight:400}
-body[data-view=settings] .topbar{border-bottom:0;box-shadow:none}
-body[data-view=settings] .settings-shell,
-.pch-embedded body[data-view=settings] .settings-shell{width:100%;max-width:1120px;margin:0 auto;padding:34px 36px 64px;display:grid;grid-template-columns:minmax(0,1fr);gap:0;align-items:start}
-body[data-view=settings] .settings-shell>#notice{grid-column:1;margin-bottom:20px}
-body[data-view=settings] .settings-workspace{width:100%;max-width:none;min-width:0}
-body[data-view=settings] .settings-panel{position:relative;scroll-margin-top:24px}
-body[data-view=settings] .settings-panel+.settings-panel{margin-top:30px;padding-top:31px}
-body[data-view=settings] .settings-panel+.settings-panel::before{content:"";position:absolute;top:0;right:0;width:calc(100% - 140px);height:1px;background:var(--theme-line);opacity:.72}
-body[data-view=settings] .settings-section{position:relative;margin:0 0 30px;padding:0;background:transparent;border:0;border-radius:0;overflow:visible;box-shadow:none;scroll-margin-top:24px}
-body[data-view=settings] .settings-section+.settings-section{padding-top:31px}
-body[data-view=settings] .settings-section+.settings-section::before{content:"";display:block;width:calc(100% - 140px);height:1px;margin:-31px 0 30px;margin-left:140px;background:var(--theme-line);opacity:.72}
-body[data-view=settings] .settings-page-head{min-height:0;margin:0 0 22px}
-body[data-view=settings] .settings-page-head h2{font-size:20px;font-weight:600;letter-spacing:0}
-body[data-view=settings] .settings-section-title{min-height:0;margin:0 0 13px;padding:0;display:flex;align-items:center;justify-content:space-between;gap:16px;border-bottom:0}
-body[data-view=settings] .settings-section-title h3{margin:0;font-size:18px;font-weight:400;letter-spacing:-.01em}
-body[data-view=settings] .compact-button{min-height:34px;padding:6px 12px;border-radius:8px;font-weight:600}
-body[data-view=settings] .settings-row{min-height:64px;padding:12px 0;gap:20px;background:transparent}
-body[data-view=settings] .settings-row+.settings-row{border-top:0}
-body[data-view=settings] .settings-user-header{color:var(--theme-muted);font-size:12px;font-weight:500}
-body[data-view=settings] #managedUserList .settings-person strong{font-size:14px;font-weight:600}
-body[data-view=settings] #managedUserList .settings-library-name{font-size:12px;font-weight:400}
-body[data-view=settings] .settings-avatar{width:34px;height:34px;font-weight:600}
-body[data-view=settings] .profile-webhook-tools{margin-top:27px;padding-top:29px;border:0;background:transparent;position:relative}
-body[data-view=settings] .profile-webhook-tools::before{content:"";position:absolute;top:0;right:0;width:calc(100% - 140px);height:1px;background:var(--theme-line);opacity:.72}
-body[data-view=settings] .profile-webhook-tools .settings-section-title{min-height:0;margin-bottom:12px}
-body[data-view=settings] .profile-webhook-tools .webhook-setup-action{margin:0;padding:8px 0;border:0;background:transparent}
-body[data-view=settings] .profile-webhook-tools .webhook-setup-action code{padding:9px 0;border:0;border-bottom:1px solid var(--theme-line);border-radius:0;background:transparent}
-body[data-view=settings] .profile-webhook-tools .settings-status-line{margin:7px 0 0}
-body[data-view=settings] .automation-list{margin-bottom:0;overflow:visible}
-body[data-view=settings] .automation-row>strong{font-size:14px;font-weight:600}
-body[data-view=settings] .automation-controls>span{font-weight:400}
-body[data-view=settings] .connection-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;margin:5px 0 9px;padding:11px 0;border:0;background:transparent}
-body[data-view=settings] .connection-summary>span,body[data-view=settings] .connection-summary>span:last-child{padding:0;border:0;font-size:13px;font-weight:400}
-body[data-view=settings] .account-library-row{margin:0;padding-inline:0;border:0;background:transparent}
-body[data-view=settings] .connection-tools-inline{border:0;background:transparent}
-body[data-view=settings] .connection-tools-inline>summary{padding:9px 0}
-body[data-view=settings] .settings-expander>summary{min-height:58px;padding:0;gap:18px;font-weight:600}
-body[data-view=settings] .settings-expander-body{padding:18px 0 0;border:0}
-body[data-view=settings] .settings-expander>summary:after{font-size:19px;font-weight:400}
-body[data-view=settings] .webhook-setup-action{border:0;border-radius:0;background:transparent}
-body[data-view=settings] :is(input:not([type=checkbox]):not([type=radio]),select,textarea){border-radius:7px;box-shadow:none}
-body[data-view=settings] :is(.primary,.secondary,.danger,.button){border-radius:8px;font-weight:600;box-shadow:none}
-body[data-view=settings] :is(h1,h2,h3,strong){font-synthesis:none}
+body[data-view=playlists]{font-family:"Segoe UI Variable Text","Microsoft YaHei UI","Microsoft YaHei","PingFang SC","Noto Sans CJK SC",system-ui,sans-serif;font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 /* Playlist chrome follows the same flat visual language. */
 body[data-view=playlists] .topbar{border-bottom:0;box-shadow:none}
@@ -58,16 +56,6 @@ body[data-view=playlists] :is(.playlist-track-title,.playlist-now strong,.playli
 body[data-view=playlists] .playlist-side-heading-actions button{border:0;border-radius:0;background:transparent;box-shadow:none}
 body[data-view=playlists] .playlist-side-heading-actions button:hover:not(:disabled),body[data-view=playlists] .playlist-side-heading-actions button:focus-visible{background:transparent;color:var(--playlist-accent);box-shadow:none}
 body[data-view=playlists] .playlist-side-heading-actions button:focus-visible{outline:2px solid color-mix(in srgb,var(--playlist-accent) 42%,transparent);outline-offset:2px}
-
-@media(max-width:700px){
- body[data-view=settings] .settings-shell,.pch-embedded body[data-view=settings] .settings-shell{padding:22px 16px 42px}
- body[data-view=settings] .settings-panel+.settings-panel::before,body[data-view=settings] .profile-webhook-tools::before,body[data-view=settings] .automation-row+.automation-row::before{width:100%;margin-left:0}
- body[data-view=settings] main.settings-shell .settings-section+.settings-section::before{width:100%;margin-left:0}
- body[data-view=settings] .settings-section-title{align-items:flex-start}
- body[data-view=settings] .connection-summary{grid-template-columns:1fr;gap:5px}
- body[data-view=settings] #managedUserList .settings-user-row{padding:14px 0}
- body[data-view=settings] .automation-row{align-items:flex-start;padding:14px 0}
-}
 
 /* Compact transport: the seek target floats over the content edge instead of
    reserving a second horizontal band inside the player. */

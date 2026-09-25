@@ -1,0 +1,109 @@
+/* Page-owned styles for mixes. Shared tokens remain in the shared bundle. */
+.mix-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-bottom:14px}
+.mix-card{display:flex;flex-direction:column}
+.mix-card>p{min-height:42px}
+.mix-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:10px 0 14px}
+.mix-options.custom{grid-template-columns:repeat(3,minmax(0,1fr))}
+.mix-options label{display:grid;gap:5px;color:var(--muted);font-size:12px}
+.mix-options input{width:100%;min-width:0}
+.mix-options select{width:100%;min-width:0}
+.mix-card .button-row{margin-top:auto;display:flex;align-items:center;gap:8px;margin-top:auto;flex-wrap:wrap}
+.mix-result{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
+.mix-result:empty{display:none}
+.mix-summary{font-weight:700;margin:0 0 8px}
+.mix-warning{margin:6px 0;color:var(--app-warning);font-size:12px}
+.mix-preview{margin:8px 0;padding-left:22px;color:var(--muted);font-size:12px;line-height:1.7}
+@media(max-width:900px){.mix-grid{grid-template-columns:1fr}}
+@media(max-width:600px){.mix-options{grid-template-columns:1fr}}
+@media(max-width:600px){.mix-options.custom{grid-template-columns:1fr}}
+.mix-grid>.card{margin-top:0!important}
+.mix-card .managed-note{min-height:0;margin:8px 0 0;font-size:12px}
+.mix-schedule{margin-top:12px;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--app-surface)}
+.mix-schedule .switch-row span{display:grid;gap:2px}
+.mix-schedule small{display:block;color:var(--muted);font-weight:400;font-size:11px}
+.mix-schedule>p{margin:7px 0 0;font-size:11px}
+@media(max-width:600px){.mix-card .button-row>button{flex:1}}
+@media(max-width:600px){.mix-schedule{padding:11px}}
+body[data-view=mixes]{background:var(--app-main)}
+body[data-view=mixes] .mixes-shell{max-width:1120px;padding-top:34px}
+body[data-view=mixes] .mixes-head{display:flex;align-items:center;justify-content:space-between;gap:28px;margin-bottom:20px}
+body[data-view=mixes] .mixes-head h1{margin:0 0 4px;font-size:28px}
+body[data-view=mixes] .mixes-head p{margin:0;color:var(--app-muted)}
+body[data-view=mixes] input.toggle{appearance:none;width:42px;height:24px;border:0;border-radius:99px;background:var(--app-line);position:relative;cursor:pointer}
+body[data-view=mixes] input.toggle:before{content:"";position:absolute;width:18px;height:18px;left:3px;top:3px;border-radius:50%;background:var(--app-main);box-shadow:var(--app-shadow);transition:transform .16s}
+body[data-view=mixes] input.toggle:checked{background:var(--app-accent)}
+body[data-view=mixes] input.toggle:checked:before{transform:translateX(18px)}
+body[data-view=mixes] .mix-list{overflow:hidden;border:1px solid var(--app-line);border-radius:15px;background:var(--app-main);box-shadow:var(--app-shadow)}
+body[data-view=mixes] .mix-row{display:grid;grid-template-columns:minmax(240px,1fr) auto auto;align-items:center;gap:18px;padding:20px 22px;display:block;padding:0}
+body[data-view=mixes] .mix-row+.mix-row{border-top:1px solid var(--app-line)}
+body[data-view=mixes] .mix-identity{display:flex;align-items:center;gap:14px;min-width:0}
+body[data-view=mixes] .mix-identity h2{margin:0;font-size:17px}
+body[data-view=mixes] .mix-identity p{margin:3px 0 0;color:var(--app-muted);font-size:13px}
+body[data-view=mixes] .mix-icon{width:38px;height:38px;display:grid;place-items:center;border-radius:10px;background:var(--app-hover);color:var(--app-accent);font-size:20px;font-weight:700}
+body[data-view=mixes] .mix-state{padding:4px 9px;border-radius:99px;background:var(--app-hover);color:var(--app-accent-strong);font-size:12px;white-space:nowrap;min-width:104px;text-align:center}
+body[data-view=mixes] .mix-actions{display:flex;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap;flex-wrap:nowrap}
+body[data-view=mixes] .mix-actions button{min-height:36px;padding:7px 12px;white-space:nowrap}
+body[data-view=mixes] .mix-adjust{grid-column:1/-1}
+body[data-view=mixes] .mix-result{grid-column:1/-1}
+body[data-view=mixes] .mix-adjust>summary{display:none}
+body[data-view=mixes] .mix-adjust:not([open])>*:not(summary){display:none}
+body[data-view=mixes] .mix-adjust[open]{padding-top:18px;border-top:1px solid var(--app-line)}
+body[data-view=mixes] .mix-options{display:grid;grid-template-columns:repeat(2,minmax(0,220px));gap:12px}
+body[data-view=mixes] .mix-options.custom{grid-template-columns:repeat(3,minmax(0,1fr))}
+body[data-view=mixes] .mix-options label{display:grid;gap:6px;color:var(--app-text);font-size:12px}
+body[data-view=mixes] .mix-result:not(:empty){margin-top:16px;padding:16px 0 0;border-top:1px solid var(--app-line);margin:0;padding:0;border:0}
+body[data-view=mixes] .mix-preview-head{font-weight:700}
+body[data-view=mixes] .mix-preview{columns:2;margin:12px 0 0;padding-left:22px;color:var(--app-text)}
+body[data-view=mixes] .mix-preview li{break-inside:avoid;margin:5px 0}
+body[data-view=mixes] .mix-more{margin:10px 0 0;color:var(--app-muted);font-size:12px;margin:0 0 9px;text-align:right}
+body[data-view=mixes] .custom-mix{margin-top:18px;border:1px solid var(--app-line);border-radius:14px;background:var(--app-main)}
+body[data-view=mixes] .custom-mix>summary{min-height:68px;padding:0 22px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;list-style:none}
+body[data-view=mixes] .custom-mix>summary span:first-child{display:grid}
+body[data-view=mixes] .custom-mix>summary small{margin-top:3px;color:var(--app-muted);font-weight:400}
+body[data-view=mixes] .custom-mix-body{padding:0 22px 22px}
+body[data-view=mixes] .custom-mix-body>.mix-state{display:inline-block;margin:12px 0}
+@media(max-width:760px){body[data-view=mixes] .mixes-head{align-items:stretch;flex-direction:column}}
+@media(max-width:760px){body[data-view=mixes] .mix-row{grid-template-columns:1fr auto}}
+@media(max-width:760px){body[data-view=mixes] .mix-actions{grid-column:1/-1;justify-content:flex-start}}
+@media(max-width:760px){body[data-view=mixes] .mix-options{grid-template-columns:1fr}}
+@media(max-width:760px){body[data-view=mixes] .mix-options.custom{grid-template-columns:1fr}}
+@media(max-width:760px){body[data-view=mixes] .mix-preview{columns:1}}
+body[data-view=mixes] .mix-row-head{min-height:88px;display:grid;grid-template-columns:minmax(260px,1fr) auto;align-items:center;gap:24px;padding:18px 22px}
+body[data-view=mixes] .mix-controls{display:flex;align-items:center;justify-content:flex-end;gap:18px}
+body[data-view=mixes] .mix-drawer{padding:18px 22px 22px;border-top:1px solid var(--app-line);background:var(--app-surface)}
+body[data-view=mixes] .mix-panel-head{min-height:38px;display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:14px}
+body[data-view=mixes] .mix-panel-head>div{display:flex;align-items:center;gap:10px}
+body[data-view=mixes] .mix-panel-head>div:last-child{justify-content:flex-end}
+body[data-view=mixes] .mix-panel-head strong{font-size:14px}
+body[data-view=mixes] .mix-refresh{width:34px;height:34px;display:grid;place-items:center;padding:0;border:1px solid var(--app-line);border-radius:9px;background:var(--app-main);color:var(--app-accent);font-size:20px;line-height:1;box-shadow:none}
+body[data-view=mixes] .mix-refresh:hover:not(:disabled){border-color:var(--app-line);background:var(--app-hover);box-shadow:none}
+body[data-view=mixes] .mix-refresh svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+body[data-view=mixes] .mix-refresh.pch-pending:before{content:none}
+body[data-view=mixes] .mix-refresh.pch-pending svg{animation:pch-spin .7s linear infinite}
+body[data-view=mixes] .mix-preview-summary{color:var(--app-muted);font-size:12px}
+body[data-view=mixes] section.mix-adjust:not([open])>.mix-panel-head{display:flex}
+body[data-view=mixes] section.mix-adjust:not([open])>.mix-options{display:grid}
+body[data-view=mixes] section.mix-adjust .mix-options{margin:0}
+body[data-view=mixes] .mix-preview-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:28px}
+body[data-view=mixes] .mix-preview-item{min-width:0;display:grid;grid-template-columns:24px minmax(0,1fr) minmax(100px,150px);align-items:center;gap:9px;padding:9px 0;border-top:1px solid var(--app-line)}
+body[data-view=mixes] .mix-preview-item:nth-child(-n+2){border-top:0}
+body[data-view=mixes] .mix-track-number{color:var(--app-muted);font-size:11px;font-variant-numeric:tabular-nums}
+body[data-view=mixes] .mix-preview-item strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:600;color:var(--app-text)}
+body[data-view=mixes] .mix-track-artist{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right;color:var(--app-muted);font-size:12px}
+body[data-view=mixes] .custom-mix .mix-drawer{margin-top:18px;padding-inline:0;padding-bottom:0;background:var(--app-main)}
+@media(max-width:880px){body[data-view=mixes] .mix-row-head{grid-template-columns:1fr;gap:14px}}
+@media(max-width:880px){body[data-view=mixes] .mix-controls{justify-content:space-between}}
+@media(max-width:880px){body[data-view=mixes] .mix-actions{flex-wrap:wrap}}
+@media(max-width:680px){body[data-view=mixes] .mix-controls{align-items:flex-start;flex-direction:column;gap:10px}}
+@media(max-width:680px){body[data-view=mixes] .mix-state{min-width:0}}
+@media(max-width:680px){body[data-view=mixes] .mix-preview-list{grid-template-columns:1fr}}
+@media(max-width:680px){body[data-view=mixes] .mix-preview-item:nth-child(2){border-top:1px solid var(--app-line)}}
+@media(max-width:680px){body[data-view=mixes] .mix-preview-item{grid-template-columns:24px minmax(0,1fr)}}
+@media(max-width:680px){body[data-view=mixes] .mix-track-artist{grid-column:2;text-align:left}}
+@media(max-width:680px){body[data-view=mixes] .mix-panel-head{align-items:flex-start;flex-direction:column}}
+@media(max-width:680px){body[data-view=mixes] .mix-panel-head>div:last-child{width:100%;justify-content:flex-start}}
+.mix-automation-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 22px;border:1px solid var(--line);border-radius:12px;background:var(--app-main)}
+.mix-automation-row>strong{font-size:15px}
+.mix-automation-row .contextual-automation{margin:0}
+body[data-view=mixes] .contextual-settings-card>.contextual-automation{margin:0 0 14px}
+@media(max-width:720px){.mix-automation-row{align-items:flex-start;flex-direction:column}}

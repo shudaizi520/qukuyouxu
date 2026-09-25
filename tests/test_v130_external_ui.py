@@ -2,6 +2,8 @@ import re
 import unittest
 from pathlib import Path
 
+from ui_css import page_css
+
 
 ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "src/helper/static"
@@ -61,7 +63,7 @@ class ExternalPlaylistUiV130Tests(unittest.TestCase):
         page = (STATIC / "external.html").read_text(encoding="utf-8")
         ids = re.findall(r'\bid="([^"]+)"', page)
         self.assertEqual(len(ids), len(set(ids)))
-        styles = (STATIC / "product.css").read_text(encoding="utf-8")
+        styles = page_css("external")
         self.assertIn(".external-shell{min-width:0", styles)
         self.assertIn("overflow-wrap:anywhere", styles)
 
