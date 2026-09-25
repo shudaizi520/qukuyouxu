@@ -6,6 +6,7 @@ import re
 from playwright.sync_api import sync_playwright
 
 from tools.playwright_runtime import prepare_playwright_environment
+from ui_css import product_css
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -361,7 +362,7 @@ def test_playlist_headers_stay_aligned_when_scrollbar_reserves_width():
 
 
 def test_playlist_and_player_chrome_stay_lightweight():
-    product = (STATIC / "product.css").read_text(encoding="utf-8")
+    product = product_css()
     details = (STATIC / "playlist-now-playing.css").read_text(encoding="utf-8")
     foundation = (STATIC / "design-system.css").read_text(encoding="utf-8")
 

@@ -64,13 +64,17 @@ def test_every_product_page_loads_the_shared_styles_in_canonical_order():
     pages = sorted(STATIC.glob("*.html"))
     themed = [page for page in pages if "product.css" in page.read_text(encoding="utf-8")]
     assert themed
-    order = ("product.css", "theme-tokens.css", "ui-components.css", "design-system.css")
+    order = (
+        "product.css", "product-refinements.css", "theme-tokens.css",
+        "ui-components.css", "design-system.css",
+    )
     for page in themed:
         source = page.read_text(encoding="utf-8")
         stylesheets = re.findall(r'<link[^>]+href="([^"]+\.css[^\"]*)"', source)
         assert stylesheets, page.name
         names = [item.split("/")[-1].split("?")[0] for item in stylesheets]
         assert [names.index(name) for name in order] == sorted(names.index(name) for name in order), page.name
+        assert names.index("product-refinements.css") == names.index("product.css") + 1, page.name
         if 'data-management-page=' in source:
             assert names.index("management-shell.css") > names.index("design-system.css"), page.name
 

@@ -9,7 +9,7 @@ from .page_version import render_library_html, render_versioned_html
 
 
 STATIC_ASSETS = frozenset({
-    "home.js", "theme_home.js", "product.css", "daily.js", "refined.js",
+    "home.js", "theme_home.js", "product.css", "product-refinements.css", "daily.js", "refined.js",
     "status.js", "settings.js", "contextual-settings.js", "auth.js", "mixes.js",
     "appearance.js", "external.js", "playlists.js", "playlist-artwork.js",
     "playlist-workspace.js", "playlist-search.js", "playlist-player.js",

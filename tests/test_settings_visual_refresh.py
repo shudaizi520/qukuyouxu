@@ -2,6 +2,8 @@ from html.parser import HTMLParser
 from pathlib import Path
 import re
 
+from ui_css import product_css
+
 
 STATIC = Path(__file__).resolve().parents[1] / "src/helper/static"
 
@@ -107,7 +109,7 @@ def test_settings_removes_static_explanations_but_keeps_operational_state():
 
 
 def test_settings_typography_uses_windows_chinese_ui_fonts_and_consistent_weights():
-    css = (STATIC / "product.css").read_text(encoding="utf-8")
+    css = product_css()
 
     body = _rule(css, "body[data-view=settings]")
     title = _rule(css, "body[data-view=settings] .settings-section-title h3")

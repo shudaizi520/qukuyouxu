@@ -11,6 +11,7 @@ RAW_COLOR = re.compile(r"#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)|hsla?\([^)]*\)")
 ALLOW_MARKER = "theme-contract-allow: asset-fallback"
 PROTECTED = (
     Path("src/helper/static/product.css"),
+    Path("src/helper/static/product-refinements.css"),
     Path("src/helper/static/design-system.css"),
     Path("src/helper/static/external-workspace.css"),
     Path("src/helper/static/playlist-now-playing.css"),
