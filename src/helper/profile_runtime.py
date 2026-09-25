@@ -111,6 +111,12 @@ class ProfileRuntime:
             automation_settings,
             ensure_profile_schedule,
         )
+        from .engine import safe_error
+        from .scheduler_retry import (
+            classify_scheduled_failure,
+            clear_retry,
+            schedule_retry,
+        )
 
         now = time.time() if now is None else float(now)
         if self.job_gate.locked():
@@ -163,14 +169,31 @@ class ProfileRuntime:
                     continue
                 kind = "smart_mixes" if task == "smart" else task
                 result = None
+                failure = None
+                public_result = None
                 smart_normal_due = task == "smart" and float(scheduled.get("slot") or 0) <= now
                 try:
                     operation = self._scheduled_operation(engine, task, scheduled, settings, now)
                     result = self._run_job(engine, kind, operation, now)
                     results.append({"profile_id": profile["id"], "kind": kind, "result": result})
                 except Exception as exc:
-                    engine.store.log(str(exc)[:300], "error")
-                    results.append({"profile_id": profile["id"], "kind": kind, "error": type(exc).__name__})
+                    failure = exc
+                    error = safe_error(exc)
+                    try:
+                        engine.store.log(error, "error")
+                    except Exception:
+                        pass
+                    public_result = {
+                        "profile_id": profile["id"],
+                        "kind": kind,
+                        "status": (
+                            "transient_error"
+                            if classify_scheduled_failure(exc) == "transient"
+                            else "safety_error"
+                        ),
+                        "error": type(exc).__name__,
+                    }
+                    results.append(public_result)
                 finally:
                     if task == "smart":
                         retry = self._smart_retry(engine, result)
@@ -187,9 +210,22 @@ class ProfileRuntime:
                             scheduled.pop("retry_slot", None)
                         candidates = [float(scheduled.get("slot") or 0), float(scheduled.get("retry_at") or 0)]
                         scheduled["next_at"] = min(value for value in candidates if value > 0)
+                    elif failure is not None:
+                        transient = classify_scheduled_failure(failure) == "transient"
+                        if transient and schedule_retry(scheduled, now):
+                            public_result["retry_at"] = scheduled["retry_at"]
+                        else:
+                            clear_retry(scheduled)
+                            scheduled["next_at"] = advance_slot(
+                                scheduled.get("slot"), now, task, settings
+                            )
+                            scheduled["slot"] = scheduled["next_at"]
                     elif isinstance(result, dict) and result.get("status") == "deferred":
                         scheduled["next_at"] = max(now + 60, float(result.get("retry_at") or now + 300))
+                        scheduled["retry_at"] = scheduled["next_at"]
+                        scheduled.setdefault("retry_slot", scheduled.get("slot"))
                     else:
+                        clear_retry(scheduled)
                         scheduled["next_at"] = advance_slot(scheduled.get("slot"), now, task, settings)
                         scheduled["slot"] = scheduled["next_at"]
                     engine.store.set(PROFILE_STATE_KEY, state)

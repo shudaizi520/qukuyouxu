@@ -542,7 +542,14 @@ class DailyMixin:
             if not scheduled_ready and not self.daily_due(now, schedule=schedule):
                 return {'message': '今天已发布、尚未到时间或自动更新暂停'}
             self.store.set('daily_last_attempt', now)
-            plan = self._preview_daily(now, origin='auto')
+            try:
+                plan = self._preview_daily(now, origin='auto')
+            except Exception as exc:
+                from .clients import PlexError, SourceError
+                if not isinstance(exc, (PlexError, SourceError)):
+                    raise
+                from .scheduler_retry import TransientScheduleError
+                raise TransientScheduleError('每日推荐只读预览暂时不可用') from exc
             self.store.set('daily_auto_checked_date', day_at(now))
             if plan['blocked']:
                 daily = self.store.get('daily_settings')

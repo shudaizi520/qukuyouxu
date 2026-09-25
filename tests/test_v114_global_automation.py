@@ -500,6 +500,77 @@ def test_deferred_daily_occurrence_is_retained_for_retry():
     assert task["slot"] == now
 
 
+def test_transient_daily_retry_survives_runtime_restart():
+    from helper.automation import PROFILE_STATE_KEY, save_automation_settings
+    from helper.profile_runtime import ProfileRuntime
+    from helper.scheduler_retry import TransientScheduleError
+
+    temp, base, registry, runtime, scoped, calls = _configured_runtime()
+    now = datetime(2027, 1, 10, 6, tzinfo=BEIJING).timestamp()
+    try:
+        saved = save_automation_settings(base, {
+            "daily": {"enabled": True, "hour": 6},
+            "smart": {"enabled": False, "interval_days": 7, "hour": 3},
+            "library": {"enabled": False, "hour": 0},
+        })
+        _set_due(scoped, saved, "daily", now)
+        runtime.engine("default").daily_auto = lambda **_kwargs: (
+            (_ for _ in ()).throw(TransientScheduleError("preview unavailable"))
+        )
+
+        first_result = runtime.run_due(now)
+        retry = scoped.get(PROFILE_STATE_KEY)["tasks"]["daily"]
+
+        restarted = ProfileRuntime(
+            base,
+            registry,
+            engine_factory=lambda store: _Engine(store, calls),
+        )
+        restarted.run_due(retry["retry_at"])
+        completed = scoped.get(PROFILE_STATE_KEY)["tasks"]["daily"]
+    finally:
+        temp.cleanup()
+
+    assert first_result[0]["status"] == "transient_error"
+    assert first_result[0]["retry_at"] == now + 300
+    assert retry["slot"] == now
+    assert retry["retry_slot"] == now
+    assert retry["failure_count"] == 1
+    assert calls.count(("default", "daily")) == 1
+    assert completed["slot"] > now + 300
+    assert "failure_count" not in completed
+    assert "retry_at" not in completed
+
+
+def test_ambiguous_daily_write_error_advances_without_automatic_retry():
+    from helper.automation import PROFILE_STATE_KEY, save_automation_settings
+    from helper.clients import PlexError
+
+    temp, base, _registry, runtime, scoped, _calls = _configured_runtime()
+    now = datetime(2027, 1, 10, 6, tzinfo=BEIJING).timestamp()
+    try:
+        saved = save_automation_settings(base, {
+            "daily": {"enabled": True, "hour": 6},
+            "smart": {"enabled": False, "interval_days": 7, "hour": 3},
+            "library": {"enabled": False, "hour": 0},
+        })
+        _set_due(scoped, saved, "daily", now)
+        runtime.engine("default").daily_auto = lambda **_kwargs: (
+            (_ for _ in ()).throw(PlexError("write timed out"))
+        )
+
+        result = runtime.run_due(now)
+        task = scoped.get(PROFILE_STATE_KEY)["tasks"]["daily"]
+    finally:
+        temp.cleanup()
+
+    assert result[0]["status"] == "safety_error"
+    assert "retry_at" not in result[0]
+    assert task["next_at"] > now
+    assert task["slot"] == task["next_at"]
+    assert "failure_count" not in task
+
+
 def test_automation_post_route_uses_framework_request_injection():
     from helper.automation import attach_automation_routes
 

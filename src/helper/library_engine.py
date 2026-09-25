@@ -76,7 +76,14 @@ class LibraryEngine(SingleMixin, BaseMixin, Engine):
         """Find only missing/changed tracks, then append to already-approved playlists."""
         with self.exclusive():
             self.progress('检查 Plex 里有没有新增歌曲')
-            single = self._enrich_singles(new_only=True, auto_connect=True)
+            try:
+                single = self._enrich_singles(new_only=True, auto_connect=True)
+            except Exception as exc:
+                from .clients import PlexError, SourceError
+                if not isinstance(exc, (PlexError, SourceError)):
+                    raise
+                from .scheduler_retry import TransientScheduleError
+                raise TransientScheduleError('新增歌曲只读检查暂时不可用') from exc
             result = {
                 'status': single.get('status'), 'new_count': int(single.get('new_count') or 0),
                 'processed': int(single.get('processed') or 0), 'base': None, 'theme': None,
