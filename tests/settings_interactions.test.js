@@ -170,12 +170,100 @@ async function runSettingsTests(source) {
   return checks;
 }
 
+async function runStatusTests(source) {
+  const checks = [];
+  function assert(value, message) { if (!value) throw Error(message); }
+  function element() {
+    return {
+      children: [], textContent: '', hidden: false, disabled: false, open: false,
+      dataset: {}, listeners: {},
+      replaceChildren(...rows) { this.children = rows; },
+      append(...rows) { this.children.push(...rows); },
+      addEventListener(name, callback) { this.listeners[name] = callback; },
+      async dispatch(name) { return this.listeners[name]?.({ target: this }); },
+    };
+  }
+  async function check(name, test) {
+    try { await test(); checks.push({ name, ok: true }); }
+    catch (error) { checks.push({ name, ok: false, error: String(error.message || error) }); }
+  }
+
+  const names = [
+    'plexHealth', 'plexDetail', 'qqHealth', 'qqDetail', 'jobHealth', 'jobDetail',
+    'behaviorLearned', 'behaviorPreferred', 'behaviorCooled', 'behaviorActive',
+    'behaviorConnection', 'behaviorStatus', 'managedCount', 'dailyManaged', 'lastRun',
+    'dailyDiagnostics', 'dailyBuckets', 'dailySimilarity', 'dailyExclusionDetails',
+    'events', 'statusDetails', 'eventHistory', 'refresh',
+  ];
+  const ids = Object.fromEntries(names.map(name => [name, element()]));
+  const windowListeners = {};
+  const document = {
+    hidden: false,
+    getElementById: id => ids[id],
+    createElement: () => element(),
+    addEventListener() {},
+  };
+  const window = {
+    addEventListener(name, callback) { windowListeners[name] = callback; },
+  };
+  const calls = [];
+  const payloads = {
+    '/api/status': {
+      settings: {}, job: {}, qq_auth: {}, behavior: {}, webhook: {}, managed: {},
+      scheduler: { state: 'normal' },
+    },
+    '/api/daily/diagnostics': { latest: {}, display: {} },
+    '/api/status/details': { events: [] },
+  };
+  const PCHAuth = {
+    status: () => ({ authenticated: true }),
+    request: async path => {
+      calls.push(path);
+      return { json: async () => payloads[path] || {} };
+    },
+  };
+  const PCHUI = { notify() {} };
+  const timers = [];
+  const setTimeout = (callback, delay) => { timers.push({ callback, delay }); return timers.length; };
+  const clearTimeout = () => {};
+  new Function('document', 'window', 'PCHAuth', 'PCHUI', 'setTimeout', 'clearTimeout', source)(
+    document, window, PCHAuth, PCHUI, setTimeout, clearTimeout);
+
+  await check('collapsed status polling fetches summary only', async () => {
+    await windowListeners['pch-auth-ready']();
+    assert(calls.filter(path => path === '/api/status').length === 1, 'Status summary was not fetched');
+    assert(!calls.includes('/api/daily/diagnostics'), 'Collapsed diagnostics were fetched');
+    assert(!calls.includes('/api/status/details'), 'Collapsed history was fetched');
+  });
+  await check('details load once and manual refresh permits one fresh load', async () => {
+    ids.statusDetails.open = true;
+    await ids.statusDetails.dispatch('toggle');
+    await ids.statusDetails.dispatch('toggle');
+    ids.eventHistory.open = true;
+    await ids.eventHistory.dispatch('toggle');
+    await ids.eventHistory.dispatch('toggle');
+    assert(calls.filter(path => path === '/api/daily/diagnostics').length === 1,
+      'Diagnostics did not load exactly once');
+    assert(calls.filter(path => path === '/api/status/details').length === 1,
+      'History did not load exactly once');
+    await ids.refresh.onclick();
+    assert(calls.filter(path => path === '/api/daily/diagnostics').length === 2,
+      'Manual refresh did not permit a fresh diagnostics request');
+    assert(calls.filter(path => path === '/api/status/details').length === 2,
+      'Manual refresh did not permit a fresh history request');
+  });
+  return checks;
+}
+
 globalThis.runSettingsTests = runSettingsTests;
+globalThis.runStatusTests = runStatusTests;
 if (typeof require === 'function' && require.main === module) {
   const fs = require('fs');
   const path = require('path');
   const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'helper', 'static', 'settings.js'), 'utf8');
-  runSettingsTests(source).then(results => {
+  const statusSource = fs.readFileSync(path.join(__dirname, '..', 'src', 'helper', 'static', 'status.js'), 'utf8');
+  Promise.all([runSettingsTests(source), runStatusTests(statusSource)]).then(groups => {
+    const results = groups.flat();
     for (const result of results) process.stdout.write(
       (result.ok ? 'PASS ' : 'FAIL ') + result.name + (result.error ? ': ' + result.error : '') + '\n');
     if (results.some(result => !result.ok)) process.exitCode = 1;

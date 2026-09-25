@@ -17,8 +17,8 @@ from . import __version__
 from .store import Store, DEFAULT_SETTINGS
 from .engine import Engine, SafetyError, safe_error, digest
 from .clients import validate_base, parse_playlist_id
-from .match import CONVERSION_AVAILABLE, normalize
-from .extra_web import attach_routes, extensions_status
+from .match import normalize
+from .extra_web import attach_routes
 from .single_web import attach_single_routes
 from .auth import AuthManager, COOKIE_NAME, SESSION_SECONDS
 from .web_surface import attach_web_surface
@@ -26,7 +26,8 @@ from .profiles import ProfileRegistry
 from .profile_web import attach_profile_routes
 from .scoped_store import ActiveProfileStore
 from .plex_webhook import attach_webhook_route
-from .profile_runtime import ActiveEngineProxy, ProfileRuntime, current_qq_status
+from .profile_runtime import ActiveEngineProxy, ProfileRuntime
+from .status_web import attach_status_routes
 from .smart_mix_web import attach_smart_mix_routes
 from .automation import attach_automation_routes
 from .external_web import attach_external_routes
@@ -211,31 +212,8 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
         if engine.job['running']:
             raise SafetyError('任务运行中，等完成后再修改配置')
 
-    def public_settings():
-        cfg = store.get('settings')
-        return {**{k: v for k, v in cfg.items() if k != 'plex_token'}, 'token_present': bool(cfg.get('plex_token'))}
-
     def connection_scope(cfg):
         return digest([cfg.get('plex_url', ''), cfg.get('plex_token', '')])
-
-    def public_connection():
-        cached = store.get('plex_connection')
-        if not cached:
-            return None
-        cfg = store.get('settings')
-        if not cfg.get('plex_url') or not cfg.get('plex_token'):
-            return None
-        if cached.get('scope') != connection_scope(cfg):
-            pending = store.get('plex_login_pending', {}) or {}
-            if cached.get('source') not in (None, 'official_login') or pending.get('status') != 'connected':
-                return None
-        return cached.get('result')
-
-    def public_name_plan():
-        plan = store.get('name_plan')
-        if not plan:
-            return None
-        return {**{k: plan.get(k) for k in ('id', 'created_at', 'applied', 'result')}, 'groups': [{**{k: g.get(k) for k in ('category_id', 'playlist_id', 'old_title', 'new_title', 'blocked', 'action')}, 'count': len((g.get('before') or {}).get('items', []))} for g in plan['groups']]}
 
     def _auth_rate_limit(req):
         peer = req.client.host if req.client else 'unknown'
@@ -311,12 +289,7 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
         return _set_session_cookie(JSONResponse({'message': '密码已更新', 'username': user}), token, req)
 
     attach_web_surface(app, Path(__file__).with_name('static'), __version__)
-
-    @app.get('/api/status')
-    def status():
-        src = [{k: v for k, v in s.items() if k != 'csv_tracks'} for s in store.get('sources')]
-        plan = store.get('plan')
-        return {'version': __version__, 'settings': public_settings(), 'sources': src, 'job': dict(engine.job), 'managed': store.get('managed'), 'conversion': CONVERSION_AVAILABLE, 'last_run': store.get('last_run'), 'summary': {k: plan.get(k) for k in ('id', 'created_at', 'library_count', 'covered', 'coverage', 'applied', 'result')} if plan else None, 'events': store.get('events')[-30:], 'plex_connection': public_connection(), 'qq_auth': current_qq_status(app, engine), 'single': engine.single_status() if hasattr(engine, 'single_status') else {'running': False}, 'qq_tags': store.get('qq_tags', []), 'name_plan': public_name_plan(), **extensions_status(store)}
+    attach_status_routes(app, store, engine, runtime)
 
     @app.post('/api/settings')
     async def settings(req: Request):

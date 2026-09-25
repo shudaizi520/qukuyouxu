@@ -209,6 +209,35 @@ class BehaviorRepository:
             "last_at": (row or (0, None))[1],
         }
 
+    def summary(self, profile_id: str, now: float) -> dict:
+        """Aggregate learned-track counters without decoding state rows in Python."""
+        profile_id = self._profile(profile_id)
+        with self.store.lock, self.store._db() as db:
+            row = db.execute(
+                """SELECT COUNT(*),
+                          COALESCE(SUM(CASE
+                              WHEN typeof(affinity) IN ('integer','real')
+                                   AND affinity > 0 THEN 1 ELSE 0 END), 0),
+                          COALESCE(SUM(CASE
+                              WHEN typeof(cooldown_until) IN ('integer','real')
+                                   AND cooldown_until > ? THEN 1 ELSE 0 END), 0)
+                   FROM (
+                       SELECT CASE WHEN json_valid(state)
+                                   THEN COALESCE(json_extract(state, '$.affinity'),
+                                                 json_extract(state, '$.score')) END AS affinity,
+                              CASE WHEN json_valid(state)
+                                   THEN json_extract(state, '$.cooldown_until') END AS cooldown_until
+                       FROM behavior_track_state
+                       WHERE profile_id=?
+                   )""",
+                (float(now), profile_id),
+            ).fetchone()
+        return {
+            "learned_tracks": int((row or (0, 0, 0))[0] or 0),
+            "preferred_tracks": int((row or (0, 0, 0))[1] or 0),
+            "cooled_tracks": int((row or (0, 0, 0))[2] or 0),
+        }
+
     def load_track_state(self, profile_id: str, track_id: str) -> dict:
         profile_id = self._profile(profile_id)
         with self.store.lock, self.store._db() as db:

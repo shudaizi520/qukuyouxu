@@ -104,32 +104,33 @@ def public_base(store):
         return {'id': p.get('id'), 'applied': p.get('applied', False), 'groups': [], 'invalidated_reason': p.get('invalidated_reason') or '年代规则已更新，旧基础预览已失效，请重新生成基础分类预览。'}
     return {**{k: p.get(k) for k in ('id', 'created_at', 'library_count', 'base_covered', 'base_coverage', 'theme_covered', 'theme_coverage', 'union_covered', 'union_coverage', 'unclassified_count', 'applied', 'result', 'metadata_review_count', 'dimensions', 'metadata_diagnostics')}, 'groups': [{'id': g.get('id'), 'title': g.get('title'), 'matched': g.get('matched', 0), 'add_count': len(g.get('add') or []), 'dimension': g.get('dimension'), 'inferred_count': g.get('inferred_count', 0), 'evidence': g.get('evidence', {}), 'action': g.get('action'), 'blocked': g.get('blocked', [])} for g in p.get('groups') or []]}
 
-def extensions_status(store):
+def extensions_status(store, now=None):
     counts = Counter((x.get('status') for x in store.get('metadata_audit', [])))
     managed = store.get('daily_managed')
-    now = time.time()
+    now = time.time() if now is None else float(now)
     base_store = getattr(store, 'base', store)
     profile_id = str(getattr(store, 'profile_id', '') or '')
     if profile_id and hasattr(base_store, '_db'):
         from .behavior_store import BehaviorRepository
-        from .plex_webhook import load_behavior_snapshot
-        profile = load_behavior_snapshot(store, now)
-        event_count = BehaviorRepository(base_store).event_stats(profile_id, now)["count"]
+        repository = BehaviorRepository(base_store)
+        behavior_summary = repository.summary(profile_id, now)
+        event_count = repository.event_stats(profile_id, now)["count"]
     else:
         events = recent_behavior_events(store.get('behavior_events', []) or [], now)
         profile = behavior_profile(events, now)
         event_count = len(events)
+        behavior_summary = {
+            'learned_tracks': len(profile),
+            'preferred_tracks': sum(1 for row in profile.values() if (row.get('affinity', row.get('score', 0)) or 0) > 0),
+            'cooled_tracks': sum(1 for row in profile.values() if (row.get('cooldown_until') or 0) > now),
+        }
     behavior_status = store.get('behavior_status') or {}
     product = store.get('product_settings') or {}
     active_sessions = active_session_count(store.get('behavior_sessions', {}) or {})
-    preferred = sum(1 for row in profile.values() if (row.get('affinity', row.get('score', 0)) or 0) > 0)
-    cooled = sum(1 for row in profile.values() if (row.get('cooldown_until') or 0) > now)
     behavior = {
         'enabled': product.get('behavior_enabled', True),
         'event_count': event_count,
-        'learned_tracks': len(profile),
-        'preferred_tracks': preferred,
-        'cooled_tracks': cooled,
+        **behavior_summary,
         'active_sessions': active_sessions,
         'updated_at': behavior_status.get('updated_at'),
         'status': behavior_status.get('status', 'waiting'),
