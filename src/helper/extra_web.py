@@ -130,9 +130,6 @@ def extensions_status(store):
         'learned_tracks': len(profile),
         'preferred_tracks': preferred,
         'cooled_tracks': cooled,
-        # Compatibility aliases remain for one release while the UI switches.
-        'positive_tracks': preferred,
-        'negative_tracks': cooled,
         'active_sessions': active_sessions,
         'updated_at': behavior_status.get('updated_at'),
         'status': behavior_status.get('status', 'waiting'),

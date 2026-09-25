@@ -18,6 +18,8 @@ class DeadCodeCleanupTests(unittest.TestCase):
             "src/helper/static/style.css",
             "src/helper/static/advanced.js",
             "src/helper/static/single.js",
+            "src/helper/theme_mixin.py",
+            "src/helper/static/home.css",
         )
 
         self.assertEqual([], [name for name in obsolete if (ROOT / name).exists()])

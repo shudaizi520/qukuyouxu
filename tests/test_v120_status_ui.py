@@ -62,6 +62,8 @@ class StatusUiV120Tests(unittest.TestCase):
         self.assertEqual(2, behavior["learned_tracks"])
         self.assertEqual(1, behavior["preferred_tracks"])
         self.assertEqual(1, behavior["cooled_tracks"])
+        self.assertNotIn("positive_tracks", behavior)
+        self.assertNotIn("negative_tracks", behavior)
         self.assertEqual(0, behavior["active_sessions"])
         self.assertIn("state", result["webhook"])
 

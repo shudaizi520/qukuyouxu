@@ -91,11 +91,14 @@ class RuntimeIntegrityV0421Tests(unittest.TestCase):
         self.assertIsNotNone(allowed)
 
         referenced = set()
-        for name in ("daily.html", "home.html", "status.html", "mixes.html", "settings.html"):
-            html = (ROOT / "src/helper/static" / name).read_text(encoding="utf-8")
+        static = ROOT / "src/helper/static"
+        for page in static.glob("*.html"):
+            html = page.read_text(encoding="utf-8")
             referenced.update(re.findall(r"/static/([\w.-]+)", html))
 
         self.assertEqual(set(), referenced - allowed)
+        allowed_styles = {name for name in allowed if name.endswith(".css")}
+        self.assertEqual(set(), allowed_styles - referenced)
 
     def test_mix_preview_explains_truncation_before_the_song_list(self):
         script = (ROOT / "src/helper/static/mixes.js").read_text(encoding="utf-8")
