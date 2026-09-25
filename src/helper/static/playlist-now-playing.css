@@ -33,6 +33,7 @@ body[data-view=playlists] .now-playing .now-playing-close:active:not(:disabled){
 .now-playing-open .playlist-player{z-index:55;padding-left:22px;background:transparent;border-top:0;box-shadow:none}
 body[data-view=playlists].now-playing-open .playlist-player{background:transparent;color:var(--immersive-text)}
 .now-playing-open .playlist-player :is(.playlist-now strong,.playlist-player-buttons button,.playlist-volume-control button){color:var(--immersive-text)}
+.now-playing-open .playlist-player .playlist-now-info #playerLiked:not([aria-pressed=true]){color:var(--immersive-text)}
 .now-playing-open .playlist-player :is(.playlist-now-info>span,.playlist-player-time,.playlist-mode-control>button){color:var(--immersive-muted)}
 .now-playing-open .playlist-player .playlist-player-buttons .playlist-player-toggle{color:var(--immersive-control-text);background:var(--immersive-accent)}
 .now-playing-open .playlist-mode-control{display:none}

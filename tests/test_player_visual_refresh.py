@@ -212,7 +212,10 @@ def test_immersive_icons_keep_their_semantic_contrast_across_app_themes():
           <button class="player-detail">
             <span class="playlist-artwork-expand"><svg id="expand" class="ui-icon"></svg></span>
           </button>
-          <div class="playlist-now-info"><span>artist</span></div>
+          <div class="playlist-now-info">
+            <span>artist</span>
+            <button id="playerLiked" class="playlist-heart" aria-pressed="false">♡</button>
+          </div>
         </div>
         <div class="playlist-player-buttons">
           <button><svg id="transport" class="ui-icon"></svg></button>
@@ -238,14 +241,15 @@ def test_immersive_icons_keep_their_semantic_contrast_across_app_themes():
                 "color => document.documentElement.style.setProperty('--icon-default', color)",
                 ordinary_theme_icon,
             )
-            colors = page.locator("svg").evaluate_all(
-                "icons => Object.fromEntries(icons.map(icon => [icon.id, getComputedStyle(icon).color]))"
+            colors = page.locator("#collapse,#expand,#transport,#toggle,#playerLiked").evaluate_all(
+                "controls => Object.fromEntries(controls.map(control => [control.id, getComputedStyle(control).color]))"
             )
             assert colors == {
                 "collapse": "rgb(170, 180, 190)",
                 "expand": "rgb(240, 250, 255)",
                 "transport": "rgb(240, 250, 255)",
                 "toggle": "rgb(8, 18, 24)",
+                "playerLiked": "rgb(240, 250, 255)",
             }
 
         browser.close()
