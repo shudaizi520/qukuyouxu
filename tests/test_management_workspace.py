@@ -143,6 +143,7 @@ def test_management_components_use_shared_theme_tokens_and_control_geometry():
     assert action.get("min-width") == "0"
     assert action.get("height") == "30px"
     assert action.get("border-radius") == "4px"
+    assert action.get("border-color") == "var(--management-line)"
     assert action_visual.get("background") == "transparent"
     assert danger.get("color") == "var(--app-text)"
     assert field.get("min-height") == "32px"
@@ -292,6 +293,8 @@ def test_appearance_is_a_dedicated_page_and_not_embedded_in_system_settings():
     assert appearance.count("data-appearance-grid") == 1
     assert "data-appearance-choice=" not in appearance
     assert 'class="appearance-theme-grid"' in appearance
+    assert "界面主题" not in appearance
+    assert "management-preference-label" not in appearance
 
 
 def test_server_exposes_the_dedicated_appearance_route():

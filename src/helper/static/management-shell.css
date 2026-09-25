@@ -82,6 +82,7 @@ body[data-management-page] .management-action{
  padding:0 10px;
  border-width:1px;
  border-style:solid;
+ border-color:var(--management-line);
  border-radius:4px;
  font-weight:500;
  line-height:1;

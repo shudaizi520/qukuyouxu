@@ -392,7 +392,6 @@ def test_remaining_management_pages_use_the_same_qq_style_two_column_rows():
         "mixes.html": ("每日推荐", "其他智能歌单", "自定义精选"),
         "home.html": ("曲库概况", "新增歌曲整理", "分类歌单", "整理任务", "运行详情"),
         "status.html": ("服务状态", "播放学习", "助手管理", "运行详情", "运行记录"),
-        "appearance.html": ("界面主题",),
     }
     for filename, labels in expected_labels.items():
         html = _text(filename)
@@ -402,6 +401,13 @@ def test_remaining_management_pages_use_the_same_qq_style_two_column_rows():
         assert len(re.findall(r'class="[^"]*\bmanagement-preference-content\b', html)) >= len(labels), filename
         positions = [html.index(f">{label}<") for label in labels]
         assert positions == sorted(positions), filename
+
+    appearance = _text("appearance.html")
+    assert 'class="management-preference-list"' in appearance
+    assert 'class="appearance-theme-section"' in appearance
+    assert 'class="management-preference-content"' in appearance
+    assert "management-preference-label" not in appearance
+    assert "界面主题" not in appearance
 
     css = _text("management-shell.css")
     listing = _rule(css, "body[data-management-page] .management-preference-list")
