@@ -251,6 +251,53 @@ def test_immersive_icons_keep_their_semantic_contrast_across_app_themes():
         browser.close()
 
 
+def test_playlist_headers_align_with_the_visible_track_values():
+    product = (STATIC / "product.css").read_text(encoding="utf-8")
+    document = f"""
+    <style>{product}</style>
+    <body data-view="playlists">
+      <div class="playlist-track-head">
+        <span></span><span id="song-head">歌曲</span><span id="artist-head">歌手</span>
+        <span id="album-head">专辑</span><span id="duration-head">时长</span><span></span>
+      </div>
+      <div class="playlist-track">
+        <span class="playlist-track-number">1</span>
+        <span class="playlist-track-identity">
+          <button class="playlist-heart">♡</button><strong id="song-value">测试歌曲</strong>
+        </span>
+        <span id="artist-value" class="playlist-track-artist">测试歌手</span>
+        <span id="album-value" class="playlist-track-album">测试专辑</span>
+        <span id="duration-value" class="playlist-track-duration">4:28</span>
+        <span class="playlist-track-actions"></span>
+      </div>
+    </body>
+    """
+
+    prepare_playwright_environment(ROOT)
+    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(ROOT / ".playwright"))
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page(viewport={"width": 1600, "height": 900})
+        page.set_content(document)
+        offsets = page.evaluate(
+            """() => {
+              const textX = selector => {
+                const range = document.createRange();
+                range.selectNodeContents(document.querySelector(selector));
+                return range.getBoundingClientRect().x;
+              };
+              return Object.fromEntries(
+                ['song', 'artist', 'album', 'duration'].map(column => [
+                  column,
+                  textX(`#${column}-head`) - textX(`#${column}-value`),
+                ])
+              );
+            }"""
+        )
+        assert offsets == {"song": 0, "artist": 0, "album": 0, "duration": 0}
+        browser.close()
+
+
 def test_playlist_and_player_chrome_stay_lightweight():
     product = (STATIC / "product.css").read_text(encoding="utf-8")
     details = (STATIC / "playlist-now-playing.css").read_text(encoding="utf-8")
