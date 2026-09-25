@@ -304,10 +304,11 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
         d = await body(req)
         if str(d.get('new_password', '')) != str(d.get('confirm_password', '')):
             raise ValueError('两次输入的新密码不一致')
-        username = auth.change_password(user, d.get('current_password', ''), d.get('new_password', ''))
-        token, _ = auth.create_session(username)
+        token, _ = auth.change_password_with_session(
+            user, d.get('current_password', ''), d.get('new_password', '')
+        )
         store.log('管理员密码已修改，旧登录会话已撤销')
-        return _set_session_cookie(JSONResponse({'message': '密码已更新', 'username': username}), token, req)
+        return _set_session_cookie(JSONResponse({'message': '密码已更新', 'username': user}), token, req)
 
     attach_web_surface(app, Path(__file__).with_name('static'), __version__)
 

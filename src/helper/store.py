@@ -15,8 +15,10 @@ class Store:
         self.path=self.root/'helper.sqlite3';self.lock=threading.RLock()
         with self._db() as db:
             db.execute('CREATE TABLE IF NOT EXISTS state (k TEXT PRIMARY KEY, v TEXT NOT NULL)')
+            from .auth_store import ensure_auth_schema
             from .behavior_store import ensure_behavior_schema
             from .external_store import ensure_external_schema
+            ensure_auth_schema(db)
             ensure_behavior_schema(db)
             ensure_external_schema(db)
         os.chmod(self.path,0o600)
