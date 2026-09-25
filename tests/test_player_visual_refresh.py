@@ -1,6 +1,11 @@
 from html.parser import HTMLParser
+import os
 from pathlib import Path
 import re
+
+from playwright.sync_api import sync_playwright
+
+from tools.playwright_runtime import prepare_playwright_environment
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -183,6 +188,67 @@ def test_fullscreen_collapse_is_a_bare_chevron_and_extra_controls_are_hidden():
     assert protected_hover["box-shadow"] == "none!important"
     assert _rule(css, ".now-playing-open .playlist-mode-control")["display"] == "none"
     assert _rule(css, ".now-playing-open .playlist-player-queue")["display"] == "none"
+
+
+def test_immersive_icons_keep_their_semantic_contrast_across_app_themes():
+    product = (STATIC / "product.css").read_text(encoding="utf-8")
+    components = (STATIC / "ui-components.css").read_text(encoding="utf-8")
+    immersive = (STATIC / "playlist-now-playing.css").read_text(encoding="utf-8")
+    document = f"""
+    <style>
+      :root{{--app-text:rgb(31,32,33);--immersive-muted:rgb(170,180,190);
+        --immersive-text:rgb(240,250,255);--immersive-control-text:rgb(8,18,24);
+        --immersive-accent:rgb(20,210,160);--playlist-muted:var(--icon-default)}}
+      {product}
+      {immersive}
+      {components}
+    </style>
+    <body data-view="playlists" class="now-playing-open">
+      <div class="now-playing">
+        <button class="now-playing-close"><svg id="collapse" class="ui-icon"></svg></button>
+      </div>
+      <div class="playlist-player">
+        <div class="playlist-now">
+          <button class="player-detail">
+            <span class="playlist-artwork-expand"><svg id="expand" class="ui-icon"></svg></span>
+          </button>
+          <div class="playlist-now-info"><span>artist</span></div>
+        </div>
+        <div class="playlist-player-buttons">
+          <button><svg id="transport" class="ui-icon"></svg></button>
+          <button class="playlist-player-toggle"><svg id="toggle" class="ui-icon"></svg></button>
+        </div>
+      </div>
+    </body>
+    """
+
+    prepare_playwright_environment(ROOT)
+    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(ROOT / ".playwright"))
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.set_content(document)
+
+        for ordinary_theme_icon in (
+            "rgb(20, 20, 20)",
+            "rgb(105, 75, 45)",
+            "rgb(225, 230, 235)",
+        ):
+            page.evaluate(
+                "color => document.documentElement.style.setProperty('--icon-default', color)",
+                ordinary_theme_icon,
+            )
+            colors = page.locator("svg").evaluate_all(
+                "icons => Object.fromEntries(icons.map(icon => [icon.id, getComputedStyle(icon).color]))"
+            )
+            assert colors == {
+                "collapse": "rgb(170, 180, 190)",
+                "expand": "rgb(240, 250, 255)",
+                "transport": "rgb(240, 250, 255)",
+                "toggle": "rgb(8, 18, 24)",
+            }
+
+        browser.close()
 
 
 def test_playlist_and_player_chrome_stay_lightweight():

@@ -7,6 +7,7 @@
 .now-playing::after{content:"";position:absolute;z-index:-1;inset:0;background:linear-gradient(180deg,var(--immersive-overlay-start),var(--immersive-overlay-end));pointer-events:none}
 .now-playing-close{position:absolute;z-index:3;top:18px;left:24px;width:30px;height:26px;display:grid;place-items:center;border:0;border-radius:0;padding:0;background:transparent;color:var(--immersive-muted);cursor:pointer}
 .now-playing-close svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.now-playing .ui-icon,.now-playing-open .playlist-player .ui-icon{color:inherit}
 .now-playing-close:hover{background:transparent;color:var(--immersive-text)}
 .now-playing-close:focus-visible{outline:1px solid var(--immersive-focus);outline-offset:2px}
 body[data-view=playlists] .now-playing .now-playing-close:hover:not(:disabled){background:transparent!important;box-shadow:none!important;filter:none!important}
@@ -32,8 +33,8 @@ body[data-view=playlists] .now-playing .now-playing-close:active:not(:disabled){
 .now-playing-open .playlist-player{z-index:55;padding-left:22px;background:transparent;border-top:0;box-shadow:none}
 body[data-view=playlists].now-playing-open .playlist-player{background:transparent;color:var(--immersive-text)}
 .now-playing-open .playlist-player :is(.playlist-now strong,.playlist-player-buttons button,.playlist-volume-control button){color:var(--immersive-text)}
-.now-playing-open .playlist-player :is(.playlist-now span,.playlist-player-time,.playlist-mode-control>button){color:var(--immersive-muted)}
-.now-playing-open .playlist-player .playlist-player-toggle{color:var(--immersive-control-text);background:var(--immersive-accent)}
+.now-playing-open .playlist-player :is(.playlist-now-info>span,.playlist-player-time,.playlist-mode-control>button){color:var(--immersive-muted)}
+.now-playing-open .playlist-player .playlist-player-buttons .playlist-player-toggle{color:var(--immersive-control-text);background:var(--immersive-accent)}
 .now-playing-open .playlist-mode-control{display:none}
 .now-playing-open .playlist-player-queue{display:none}
 .now-playing-open .playlist-progress-rail{--progress-played-color:var(--immersive-accent);--progress-rest-color:var(--immersive-line);background:transparent;border:0;box-shadow:none}
