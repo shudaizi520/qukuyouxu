@@ -42,6 +42,19 @@ class ProfileRuntime:
         self.job_gate = threading.Lock()
         self.stop = threading.Event()
         self.wake = threading.Event()
+        self.scheduler_interval = 60.0
+        self._scheduler_thread = None
+        self._scheduler_lock = threading.RLock()
+        self._scheduler_state = {
+            "started_at": None,
+            "heartbeat_at": None,
+            "last_cycle_started_at": None,
+            "last_cycle_finished_at": None,
+            "last_error_at": None,
+            "last_error": "",
+            "consecutive_failures": 0,
+            "alive": False,
+        }
 
     def engine(self, profile_id):
         self.registry.get(profile_id)
@@ -325,17 +338,100 @@ class ProfileRuntime:
         times = [value for value in times if value > 0]
         return {"kinds": failed, "next_at": min(times)} if times else None
 
-    def scheduler(self):
-        while not self.stop.is_set():
-            self.wake.wait(60)
-            self.wake.clear()
-            if self.stop.is_set():
-                break
-            self.run_due()
+    def _update_scheduler_state(self, **changes):
+        with self._scheduler_lock:
+            self._scheduler_state.update(changes)
 
-    def close(self):
+    def scheduler_status(self, now=None):
+        with self._scheduler_lock:
+            return dict(self._scheduler_state)
+
+    def _mark_scheduler_started(self):
+        now = time.time()
+        self._update_scheduler_state(
+            started_at=now,
+            heartbeat_at=now,
+            alive=True,
+        )
+
+    def _mark_cycle_started(self):
+        now = time.time()
+        self._update_scheduler_state(
+            heartbeat_at=now,
+            last_cycle_started_at=now,
+            alive=True,
+        )
+
+    def _mark_cycle_failed(self, exc):
+        from .engine import safe_error
+
+        now = time.time()
+        with self._scheduler_lock:
+            self._scheduler_state.update(
+                heartbeat_at=now,
+                last_cycle_finished_at=now,
+                last_error_at=now,
+                last_error=safe_error(exc),
+                consecutive_failures=self._scheduler_state["consecutive_failures"] + 1,
+                alive=True,
+            )
+
+    def _mark_cycle_finished(self):
+        now = time.time()
+        self._update_scheduler_state(
+            heartbeat_at=now,
+            last_cycle_finished_at=now,
+            consecutive_failures=0,
+            alive=True,
+        )
+
+    def _mark_scheduler_stopped(self):
+        self._update_scheduler_state(heartbeat_at=time.time(), alive=False)
+
+    def scheduler(self):
+        from .engine import safe_error
+
+        self._mark_scheduler_started()
+        try:
+            while not self.stop.is_set():
+                self.wake.wait(self.scheduler_interval)
+                self.wake.clear()
+                if self.stop.is_set():
+                    break
+                self._mark_cycle_started()
+                try:
+                    self.run_due()
+                except Exception as exc:
+                    self._mark_cycle_failed(exc)
+                    try:
+                        self.base_store.log("自动任务调度异常：" + safe_error(exc), "error")
+                    except Exception:
+                        pass
+                else:
+                    self._mark_cycle_finished()
+        finally:
+            self._mark_scheduler_stopped()
+
+    def start_scheduler(self):
+        with self._scheduler_lock:
+            if self._scheduler_thread is not None and self._scheduler_thread.is_alive():
+                return self._scheduler_thread
+            thread = threading.Thread(
+                target=self.scheduler,
+                daemon=True,
+                name="profile-scheduler",
+            )
+            self._scheduler_thread = thread
+            thread.start()
+            return thread
+
+    def close(self, join_timeout=2.0):
         self.stop.set()
         self.wake.set()
+        with self._scheduler_lock:
+            thread = self._scheduler_thread
+        if thread is not None and thread is not threading.current_thread():
+            thread.join(max(0.0, float(join_timeout)))
         with self._lock:
             for engine in self._engines.values():
                 engine.stop.set()

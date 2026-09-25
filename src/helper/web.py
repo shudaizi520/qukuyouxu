@@ -101,18 +101,19 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
         import anyio.to_thread
         anyio.to_thread.current_default_thread_limiter().total_tokens = 8
         lockfile = None
-        if start_scheduler:
-            import fcntl
-            lockfile = open(store.root / '.instance.lock', 'a')
-            try:
+        try:
+            if start_scheduler:
+                import fcntl
+                lockfile = open(store.root / '.instance.lock', 'a')
                 fcntl.flock(lockfile, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
-                raise RuntimeError('已有实例使用本数据目录，禁止双开') from None
-            threading.Thread(target=runtime.scheduler, daemon=True, name='profile-scheduler').start()
-        yield
-        runtime.close()
-        if lockfile:
-            lockfile.close()
+                runtime.start_scheduler()
+            yield
+        except BlockingIOError:
+            raise RuntimeError('已有实例使用本数据目录，禁止双开') from None
+        finally:
+            runtime.close()
+            if lockfile:
+                lockfile.close()
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     app.state.store = store
     app.state.base_store = base_store
