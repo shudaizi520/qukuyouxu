@@ -7,7 +7,7 @@ import sqlite3
 import threading
 import uuid
 
-DEFAULT_SETTINGS={'plex_url':'','plex_token':'','section':'','account_label':'','interval_minutes':10,'source_hours':24,'min_tracks':5,'auto_enabled':False}
+DEFAULT_SETTINGS={'plex_url':'','plex_token':'','section':'','account_label':'','source_hours':24,'min_tracks':5,'auto_enabled':False}
 
 class Store:
     def __init__(self,root):

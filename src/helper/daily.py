@@ -116,11 +116,15 @@ def published_daily_view(plan, playlist, published_at):
 
 class DailyMixin:
 
-    def daily_signature(self):
+    def _base_daily_signature(self):
         from .engine import digest
         cfg = self.store.get('settings')
         daily = {**DEFAULT_DAILY, **self.store.get('daily_settings', {})}
         return digest({'connection': [cfg.get(k) for k in ('plex_url', 'plex_token', 'section', 'account_label')], 'rules': {k: v for k, v in daily.items() if k not in ('enabled', 'hour')}, 'feedback': self.store.get('feedback', {}), 'metadata': self.store.get('metadata_overrides', {}), 'policy': DAILY_POLICY, 'daily_playlist_target': self.store.get('daily_playlist_target')})
+
+    def daily_signature(self):
+        from .rotation import current_daily_signature
+        return current_daily_signature(self)
 
     def daily_scope(self):
         from .connection_scope import stable_library_scope

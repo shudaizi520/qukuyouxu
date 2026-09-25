@@ -396,14 +396,3 @@ class Engine(RenamingMixin, DailyMixin):
             self.job_gate.release()
             raise
         return {'message':'已开始，在页面查看进度'}
-
-    def scheduler(self):
-        while not self.stop.wait(60):
-            cfg=self.store.get('settings')
-            if self.daily_due():
-                try:self.start_job('daily_auto')
-                except SafetyError:pass
-                continue
-            if cfg.get('auto_enabled') and time.time()-self.store.get('last_run',0)>=cfg.get('interval_minutes',10)*60:
-                try:self.start_job('auto')
-                except SafetyError:pass

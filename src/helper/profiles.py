@@ -155,7 +155,7 @@ def _library_reset_state(profile, source=None):
         }
         clean["base_settings"] = dict(source.get("base_settings", {}) or clean["base_settings"])
         previous = dict(source.get("settings", {}) or {})
-        for key in ("interval_minutes", "source_hours", "min_tracks"):
+        for key in ("source_hours", "min_tracks"):
             if key in previous:
                 clean["settings"][key] = previous[key]
 

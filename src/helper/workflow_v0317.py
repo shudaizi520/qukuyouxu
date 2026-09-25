@@ -420,7 +420,6 @@ def attach_routes(app, store, engine, body, ensure_idle):
         ensure_idle()
         settings = dict(store.get("settings", {}) or {})
         settings["auto_enabled"] = data["enabled"]
-        settings["interval_minutes"] = 1440
         from .profile_runtime import next_beijing_midnight
         store.set_many({
             "settings": settings,

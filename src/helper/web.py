@@ -1,10 +1,7 @@
 """Private LAN control panel. Background work is performed by Engine, not an LLM."""
-import csv
-import io
 import os
 import re
 import time
-import uuid
 import hmac
 import threading
 import ipaddress
@@ -12,15 +9,15 @@ from contextlib import asynccontextmanager, nullcontext
 from pathlib import Path
 from urllib.parse import urlsplit
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse
 from . import __version__
-from .store import Store, DEFAULT_SETTINGS
-from .engine import Engine, SafetyError, safe_error, digest
-from .clients import validate_base, parse_playlist_id
-from .match import normalize
+from .store import Store
+from .engine import SafetyError
 from .extra_web import attach_routes
 from .single_web import attach_single_routes
 from .auth import AuthManager, COOKIE_NAME, SESSION_SECONDS
+from .auth_web import attach_auth_routes
+from .management_web import attach_management_routes
 from .web_surface import attach_web_surface
 from .profiles import ProfileRegistry
 from .profile_web import attach_profile_routes
@@ -78,7 +75,6 @@ def _private_request_origin(req):
 
 def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
                public_origin=None):
-    supplied_store = store is not None
     base_store = store or Store(os.environ.get('DATA_ROOT', '/data'))
     profiles = ProfileRegistry(base_store)
     store = ActiveProfileStore(base_store, profiles)
@@ -212,9 +208,6 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
         if engine.job['running']:
             raise SafetyError('任务运行中，等完成后再修改配置')
 
-    def connection_scope(cfg):
-        return digest([cfg.get('plex_url', ''), cfg.get('plex_token', '')])
-
     def _auth_rate_limit(req):
         peer = req.client.host if req.client else 'unknown'
         now = time.monotonic()
@@ -237,283 +230,11 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
         response.set_cookie(COOKIE_NAME, token, max_age=max_age, httponly=True, samesite='strict', secure=secure, path='/')
         return response
 
-    @app.get('/api/auth/status')
-    def auth_status(req: Request):
-        user = auth.session_user(req.cookies.get(COOKIE_NAME))
-        cred = auth.credentials()
-        return {'authenticated': bool(user), 'username': user or (cred.get('username') if cred else None), 'setup_required': cred is None, 'bootstrap_required': False, 'legacy_upgrade_required': False}
-
-    @app.post('/api/auth/setup')
-    async def auth_setup(req: Request):
-        _auth_rate_limit(req)
-        if not auth.setup_required():
-            raise ValueError('管理员账户已经建立')
-        d = await body(req)
-        if str(d.get('password', '')) != str(d.get('confirm_password', '')):
-            raise ValueError('两次输入的密码不一致')
-        username = auth.create_account(d.get('username', 'admin'), d.get('password', ''))
-        token, _ = auth.create_session(username)
-        store.log('管理员账户已建立；旧版验证信息不再用于日常登录')
-        return _set_session_cookie(JSONResponse({'authenticated': True, 'username': username, 'message': '管理员账户已建立'}), token, req)
-
-    @app.post('/api/auth/login')
-    async def auth_login(req: Request):
-        _auth_rate_limit(req)
-        d = await body(req)
-        username = str(d.get('username', ''))
-        password = str(d.get('password', ''))
-        if not auth.verify(username, password):
-            return JSONResponse({'error': '用户名或密码不正确'}, status_code=401)
-        token, _ = auth.create_session(username)
-        return _set_session_cookie(JSONResponse({'authenticated': True, 'username': username}), token, req)
-
-    @app.post('/api/auth/logout')
-    def auth_logout(req: Request):
-        auth.revoke_session(req.cookies.get(COOKIE_NAME))
-        r = JSONResponse({'message': '已退出'})
-        r.delete_cookie(COOKIE_NAME, path='/')
-        return r
-
-    @app.post('/api/auth/password')
-    async def auth_password(req: Request):
-        user = auth.session_user(req.cookies.get(COOKIE_NAME))
-        if not user:
-            return JSONResponse({'error': '请先登录'}, status_code=401)
-        d = await body(req)
-        if str(d.get('new_password', '')) != str(d.get('confirm_password', '')):
-            raise ValueError('两次输入的新密码不一致')
-        token, _ = auth.change_password_with_session(
-            user, d.get('current_password', ''), d.get('new_password', '')
-        )
-        store.log('管理员密码已修改，旧登录会话已撤销')
-        return _set_session_cookie(JSONResponse({'message': '密码已更新', 'username': user}), token, req)
-
+    attach_auth_routes(app, auth, store, body, _set_session_cookie, _auth_rate_limit)
     attach_web_surface(app, Path(__file__).with_name('static'), __version__)
     attach_status_routes(app, store, engine, runtime)
 
-    @app.post('/api/settings')
-    async def settings(req: Request):
-        d = await body(req)
-        ensure_idle()
-        with engine.exclusive():
-            old = store.get('settings')
-            cfg = dict(old)
-            for k in ('plex_url', 'section', 'account_label'):
-                if k in d:
-                    cfg[k] = str(d[k]).strip()
-            if cfg['plex_url']:
-                cfg['plex_url'] = validate_base(cfg['plex_url'])
-            incoming_token = str(d.get('plex_token') or '').strip()
-            if incoming_token:
-                cfg['plex_token'] = incoming_token
-            token = cfg['plex_token']
-            if token and (not 8 <= len(token) <= 512 or not token.isascii() or any((ord(c) < 33 for c in token))):
-                raise ValueError('Plex Token格式不正确')
-            if cfg['section'] and (not cfg['section'].isdigit()):
-                raise ValueError('资料库ID必须为数字')
-            if len(cfg['account_label']) > 80:
-                raise ValueError('账户备注过长')
-            for k, lo, hi in [('interval_minutes', 5, 1440), ('source_hours', 1, 168), ('min_tracks', 1, 100)]:
-                if k in d:
-                    try:
-                        v = int(d[k])
-                    except (ValueError, TypeError):
-                        raise ValueError(k + '需要整数') from None
-                    if not lo <= v <= hi:
-                        raise ValueError(f'{k}必须在{lo}到{hi}之间')
-                    cfg[k] = v
-            changed = any((old[k] != cfg[k] for k in ('plex_url', 'plex_token', 'section', 'account_label')))
-            from .profile_web import connection_is_protected
-            if changed and connection_is_protected(store):
-                raise SafetyError('已有托管歌单，不能直接切换账户/服务器/资料库；请让Codex核对迁移，避免误改其他账户')
-            if changed:
-                cfg['auto_enabled'] = False
-                daily = store.get('daily_settings')
-                daily['enabled'] = False
-                store.set_many({'daily_settings': daily, 'daily_plan': None})
-                if any((old.get(k) != cfg.get(k) for k in ('plex_url', 'plex_token', 'section'))):
-                    store.set_many({'feedback': {'tracks': {}, 'artists': {}}, 'metadata_overrides': {}, 'daily_history': [], 'catalog': [], 'metadata_audit': [], 'behavior_events': [], 'behavior_sessions': {}, 'behavior_status': {}})
-            if any((old.get(k) != cfg.get(k) for k in ('plex_url', 'plex_token'))):
-                store.set('plex_connection', None)
-            store.set('settings', cfg)
-            if old != cfg:
-                store.set('plan', None)
-        return {'message': '配置已保存；还未写入Plex歌单'}
-
-    @app.post('/api/plex/check/legacy')
-    def check():
-        ensure_idle()
-        with engine.exclusive():
-            try:
-                p = engine.plex_factory(store.get('settings'))
-                r = p.identity()
-                r['sections'] = p.sections()
-                r['existing_playlists'] = [x.get('title') for x in p.playlists()][:20]
-                r['checked_at'] = time.time()
-                shown = {k: r[k] for k in ('server', 'machine', 'version', 'sections', 'existing_playlists', 'checked_at') if k in r}
-                store.set('plex_connection', {'scope': connection_scope(store.get('settings')), 'result': shown})
-                return shown
-            except Exception as exc:
-                raise SafetyError(safe_error(exc)) from None
-
-    @app.post('/api/qq/tags')
-    def tags():
-        ensure_idle()
-        with engine.exclusive():
-            try:
-                tags = engine.qq.tags()
-                store.set('qq_tags', tags)
-                return {'items': tags}
-            except Exception as exc:
-                raise SafetyError(safe_error(exc)) from None
-
-    @app.post('/api/sources')
-    async def add_source(req: Request):
-        d = await body(req)
-        ensure_idle()
-        with engine.exclusive():
-            name = str(d.get('name', '')).strip()
-            if not name or len(name) > 60:
-                raise ValueError('分类名称需1—60个字')
-            kind = d.get('kind')
-            src = {'id': uuid.uuid4().hex, 'name': name, 'kind': kind, 'enabled': True, 'approved': False}
-            if kind == 'qq_playlist':
-                src['value'] = parse_playlist_id(d.get('value', ''))
-            elif kind == 'qq_category':
-                val = str(d.get('value', ''))
-                if not any((t['id'] == val for t in store.get('qq_tags', []))):
-                    raise ValueError('先读取真实QQ分类，再选择分类')
-                src.update(value=val, limit=store.get('source_settings', {}).get('reference_limit', 12))
-            elif kind == 'csv':
-                text = str(d.get('csv', '')).lstrip('\ufeff')
-                rows = []
-                for i, r in enumerate(csv.DictReader(io.StringIO(text))):
-                    if i >= 10000:
-                        raise ValueError('CSV最多10000首')
-                    t = {'title': str(r.get('title') or r.get('歌名') or '').strip(), 'artist': str(r.get('artist') or r.get('歌手') or '').strip(), 'album': str(r.get('album') or r.get('专辑') or '').strip()}
-                    if not t['title'] or not t['artist']:
-                        raise ValueError(f'CSV第{i + 2}行缺少歌名/歌手')
-                    if max(map(len, t.values())) > 500:
-                        raise ValueError('CSV字段过长')
-                    try:
-                        t['duration'] = float(r.get('duration') or r.get('时长秒') or 0)
-                    except ValueError:
-                        raise ValueError('CSV时长需为秒数') from None
-                    import math
-                    if not math.isfinite(t['duration']) or not 0 <= t['duration'] <= 86400:
-                        raise ValueError('CSV时长不合理')
-                    from .engine import query_key
-                    t['id'] = query_key(t)
-                    rows.append(t)
-                if not rows:
-                    raise ValueError('CSV为空；首行需title,artist,album,duration')
-                src.update(value='user-csv', csv_tracks=rows)
-            else:
-                raise ValueError('不支持的来源类型')
-            sources = store.get('sources')
-            if len(sources) >= 40:
-                raise ValueError('本版最多40个分类，避免生成过多重复歌单')
-            if any((s['name'] == name for s in sources)):
-                raise ValueError('分类名称重复，请复用现有分类或改名')
-            sources.append(src)
-            store.set('sources', sources)
-            store.set('plan', None)
-        return {'message': '分类已添加；只保存来源，尚未创建Plex歌单', 'id': src['id']}
-
-    @app.post('/api/sources/{cid}/toggle')
-    async def toggle(cid, req: Request):
-        d = await body(req)
-        ensure_idle()
-        with engine.exclusive():
-            src = store.get('sources')
-            found = False
-            for s in src:
-                if s['id'] == cid:
-                    s['enabled'] = bool(d.get('enabled'))
-                    s['approved'] = False
-                    found = True
-            if not found:
-                raise ValueError('分类不存在')
-            store.set('sources', src)
-            store.set('plan', None)
-        return {'message': '已切换；已有Plex歌单保留，重新启用后需再次预览确认'}
-
-    @app.post('/api/schedule')
-    async def schedule(req: Request):
-        d = await body(req)
-        ensure_idle()
-        with engine.exclusive():
-            enable = bool(d.get('enabled'))
-            if enable:
-                raise SafetyError('独立定时开关已合并，请在首页开启“自动整理新歌”。')
-            if enable and (not any((s.get('approved') and s.get('enabled') for s in store.get('sources')))):
-                raise SafetyError('先完成一次预览并确认写入，再开启自动维护')
-            cfg = store.get('settings')
-            cfg['auto_enabled'] = enable
-            store.set('settings', cfg)
-            store.set('last_run', time.time())
-        return {'message': '自动维护已开启' if enable else '自动维护已暂停'}
-
-    @app.get('/api/plan')
-    def get_plan():
-        return store.get('plan') or {}
-
-    @app.post('/api/jobs/{kind}')
-    async def jobs(kind, req: Request):
-        d = await body(req)
-        if kind not in ('preview', 'apply', 'restore', 'name_preview', 'name_apply', 'daily_preview', 'daily_apply', 'daily_repair', 'base_preview', 'base_apply', 'single_check', 'single_enrich'):
-            raise ValueError('未知任务')
-        if kind == 'single_enrich' and d.get('confirm') is not True:
-            raise SafetyError('请确认向QQ查询曲目资料，不发送音频或Plex凭据')
-        if kind == 'apply' and d.get('confirm') is not True:
-            raise SafetyError('请明确确认写入Plex歌单')
-        if kind == 'restore' and d.get('confirm') is not True:
-            raise SafetyError('请明确确认恢复变更')
-        if kind == 'name_apply' and d.get('confirm') is not True:
-            raise SafetyError('请明确确认原地修改歌单名称')
-        if kind == 'daily_apply' and d.get('confirm') is not True:
-            raise SafetyError('请明确确认发布每日推荐（仅更新本助手的每日歌单）')
-        if kind == 'daily_repair' and d.get('confirm') is not True:
-            raise SafetyError('请明确确认修复上次每日推荐（只处理本助手自己的每日歌单）')
-        if kind == 'base_apply' and d.get('confirm') is not True:
-            raise SafetyError('请明确确认写入全库基础分类歌单')
-        return engine.start_job(kind, force_sources=bool(d.get('force_sources')), force_full=bool(d.get('force_full')), plan_id=str(d.get('plan_id', '')), snapshot_id=str(d.get('snapshot_id', '')))
-
-    @app.get('/api/snapshots')
-    def snapshots():
-        return {'items': [{k: v for k, v in s.items() if k not in ('before', 'after', 'add', 'marker')} | {'before_count': len(s['before']['items']) if s['before'] else 0, 'after_count': len(s['after']['items']) if s['after'] else None} for s in reversed(store.get('snapshots'))]}
-
-    @app.get('/api/library')
-    def library(q: str=''):
-        if len(q) > 100:
-            raise ValueError('查询过长')
-        items = [t for t in store.get('catalog', []) if normalize(q) in normalize(t['title'] + ' ' + t['artist'])]
-        return {'items': items[:100], 'total': len(items)}
-
-    @app.post('/api/overrides')
-    async def override(req: Request):
-        d = await body(req)
-        ensure_idle()
-        with engine.exclusive():
-            key = str(d.get('query_key', ''))
-            tid = str(d.get('id', ''))
-            note = str(d.get('note', '')).strip()
-            if not re.fullmatch('[a-f0-9]{64}', key) or not note or len(note) > 200:
-                raise ValueError('需有效请求标识和简短人工核对说明')
-            if tid != 'skip' and (not any((t['id'] == tid and t.get('available', True) for t in store.get('catalog', [])))):
-                raise ValueError('请选择Plex中真实存在的可用曲目ID')
-            rules = store.get('overrides')
-            rules[key] = {'id': tid, 'note': note}
-            store.set('overrides', rules)
-            store.set('plan', None)
-        return {'message': '修正已保存；请重新预览，不会自动立即写入'}
-
-    @app.get('/api/report')
-    def report():
-        import json
-        plan = store.get('plan') or {}
-        export = {k: v for k, v in plan.items() if k not in ('signature', 'track_fingerprints')}
-        return Response(json.dumps(export, ensure_ascii=False, indent=2), media_type='application/json', headers={'Content-Disposition': 'attachment; filename="classification-report.json"'})
+    attach_management_routes(app, store, engine, body, ensure_idle)
     attach_profile_routes(app, base_store, profiles, body, ensure_idle, engine=engine)
     from .library_sharing import attach_library_share_routes
     attach_library_share_routes(app, store, runtime, body, ensure_idle)

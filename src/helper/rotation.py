@@ -2,45 +2,37 @@
 import time
 from .recommend import recommend
 from .daily_mix_v2 import POLICY_VERSION, recommend_rotating_v2, save_v2_plan
-from . import daily as _daily
 
-# The v0.3.4 preview signature did not identify its algorithm.  Keep the old
-# method for rollback/debugging, then wrap it so a pending v0.3.4 preview can
-# never be published after this upgrade. Profile identity, the learning switch,
-# and behavior evidence also invalidate a stale preview.
-if not hasattr(_daily.DailyMixin, '_v034_daily_signature'):
-    _daily.DailyMixin._v034_daily_signature = _daily.DailyMixin.daily_signature
+def current_daily_signature(engine):
+    """Return the active policy signature without mutating DailyMixin at import time."""
+    from .behavior import profile_behavior_identity
+    from .engine import digest
 
-    def _daily_signature_v035(self):
-        from .behavior import profile_behavior_identity
-        from .engine import digest
-        product = self.store.get('product_settings', {}) or {}
-        account_id, _username = profile_behavior_identity(self.store)
-        v2_behavior = {}
-        base_store = getattr(self.store, 'base', self.store)
-        profile_id = str(getattr(self.store, 'profile_id', '') or '')
-        if profile_id and hasattr(base_store, '_db'):
-            try:
-                from .behavior_store import BehaviorRepository
-                repository = BehaviorRepository(base_store)
-                v2_behavior = {
-                    'tracks': repository.load_track_states(profile_id),
-                    'user': repository.load_user_state(profile_id),
-                }
-            except (KeyError, ValueError):
-                v2_behavior = {}
-        return digest({
-            'base': self._v034_daily_signature(),
-            'policy': POLICY_VERSION,
-            'history_account': account_id,
-            'behavior_enabled': product.get('behavior_enabled', True) is not False,
-            'behavior': digest({
-                'legacy': self.store.get('behavior_events',[]) or [],
-                'v2': v2_behavior,
-            }),
-        })
-
-    _daily.DailyMixin.daily_signature = _daily_signature_v035
+    product = engine.store.get('product_settings', {}) or {}
+    account_id, _username = profile_behavior_identity(engine.store)
+    v2_behavior = {}
+    base_store = getattr(engine.store, 'base', engine.store)
+    profile_id = str(getattr(engine.store, 'profile_id', '') or '')
+    if profile_id and hasattr(base_store, '_db'):
+        try:
+            from .behavior_store import BehaviorRepository
+            repository = BehaviorRepository(base_store)
+            v2_behavior = {
+                'tracks': repository.load_track_states(profile_id),
+                'user': repository.load_user_state(profile_id),
+            }
+        except (KeyError, ValueError):
+            v2_behavior = {}
+    return digest({
+        'base': engine._base_daily_signature(),
+        'policy': POLICY_VERSION,
+        'history_account': account_id,
+        'behavior_enabled': product.get('behavior_enabled', True) is not False,
+        'behavior': digest({
+            'legacy': engine.store.get('behavior_events', []) or [],
+            'v2': v2_behavior,
+        }),
+    })
 
 def recommend_rotating(engine,*args,**kwargs):
     return recommend_rotating_v2(engine,recommend,*args,**kwargs)
