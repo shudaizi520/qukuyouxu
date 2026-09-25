@@ -298,13 +298,74 @@ def test_playlist_headers_align_with_the_visible_track_values():
         browser.close()
 
 
+def test_playlist_headers_stay_aligned_when_scrollbar_reserves_width():
+    page_markup = (STATIC / "playlists.html").read_text(encoding="utf-8")
+    product = (STATIC / "product.css").read_text(encoding="utf-8")
+
+    prepare_playwright_environment(ROOT)
+    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(ROOT / ".playwright"))
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page(viewport={"width": 1400, "height": 800})
+        page.set_content(page_markup)
+        page.add_style_tag(content=product)
+        page.add_style_tag(
+            content="""
+              #workspace{display:block!important}
+              #playlistView{display:grid!important;width:1120px;height:420px}
+              .playlist-track-scroll{overflow-y:scroll!important;scrollbar-gutter:stable}
+            """
+        )
+        page.evaluate(
+            """() => {
+              const tracks = document.querySelector('#playlistTracks');
+              tracks.replaceChildren();
+              for (let index = 0; index < 30; index += 1) {
+                const row = document.createElement('div');
+                row.className = 'playlist-track';
+                row.innerHTML = `<span class="playlist-track-number">${index + 1}</span>
+                  <span class="playlist-track-identity"><button class="playlist-heart">♡</button><strong>测试歌曲</strong></span>
+                  <span class="playlist-track-artist">测试歌手</span>
+                  <span class="playlist-track-album">测试专辑</span>
+                  <span class="playlist-track-duration">4:28</span>
+                  <span class="playlist-track-actions"></span>`;
+                tracks.append(row);
+              }
+            }"""
+        )
+        result = page.evaluate(
+            """() => {
+              const textX = element => {
+                const range = document.createRange();
+                range.selectNodeContents(element);
+                return range.getBoundingClientRect().x;
+              };
+              const head = document.querySelector('.playlist-track-head');
+              const row = document.querySelector('.playlist-track');
+              const scroll = document.querySelector('.playlist-track-scroll');
+              const headColumns = [head.children[1], head.children[2], head.children[3], head.children[4]];
+              const rowColumns = [row.children[1].querySelector('strong'), row.children[2], row.children[3], row.children[4]];
+              return {
+                scrollbarWidth: scroll.offsetWidth - scroll.clientWidth,
+                offsets: headColumns.map((column, index) => textX(column) - textX(rowColumns[index])),
+              };
+            }"""
+        )
+        assert result["scrollbarWidth"] > 0
+        assert result["offsets"] == [0, 0, 0, 0]
+        browser.close()
+
+
 def test_playlist_and_player_chrome_stay_lightweight():
     product = (STATIC / "product.css").read_text(encoding="utf-8")
     details = (STATIC / "playlist-now-playing.css").read_text(encoding="utf-8")
     foundation = (STATIC / "design-system.css").read_text(encoding="utf-8")
 
     assert _rule(product, ".playlist-track")["border-bottom"] == "0"
-    assert _rule(product, ".playlist-track-head")["background"] == "transparent"
+    track_head = _rule(product, ".playlist-track-head")
+    assert track_head["position"] == "sticky"
+    assert track_head["top"] == "0"
+    assert track_head["background"] == "var(--playlist-surface)"
     assert "--app-player-height:68px" in foundation
     assert "height:var(--app-player-height);\n grid-template-rows:minmax(0,1fr)" in foundation
     assert "height:80px;grid-template-rows:18px" not in product
