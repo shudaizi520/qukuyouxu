@@ -247,11 +247,48 @@ def test_immersive_icons_keep_their_semantic_contrast_across_app_themes():
             )
             assert colors == {
                 "collapse": "rgb(170, 180, 190)",
-                "expand": "rgb(240, 250, 255)",
+                "expand": "rgb(255, 255, 255)",
                 "transport": "rgb(240, 250, 255)",
                 "toggle": "rgb(8, 18, 24)",
                 "playerLiked": "rgb(240, 250, 255)",
             }
+
+        browser.close()
+
+
+def test_compact_player_artwork_arrow_keeps_contrast_in_every_theme():
+    tokens = (STATIC / "theme-tokens.css").read_text(encoding="utf-8")
+    immersive = (STATIC / "playlist-now-playing.css").read_text(encoding="utf-8")
+    components = (STATIC / "ui-components.css").read_text(encoding="utf-8")
+    document = f"""
+    <style>{tokens}{immersive}{components}</style>
+    <body data-view="playlists">
+      <button class="player-detail">
+        <span class="playlist-artwork-expand">
+          <svg id="expand" class="ui-icon"></svg>
+        </span>
+      </button>
+    </body>
+    """
+
+    prepare_playwright_environment(ROOT)
+    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(ROOT / ".playwright"))
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.set_content(document)
+
+        for theme in (None, "warm", "night"):
+            page.evaluate(
+                "theme => theme ? document.documentElement.dataset.appearance = theme : "
+                "delete document.documentElement.dataset.appearance",
+                theme,
+            )
+            style = page.locator("#expand").evaluate(
+                "icon => ({color:getComputedStyle(icon).color,filter:getComputedStyle(icon).filter})"
+            )
+            assert style["color"] == "rgb(255, 255, 255)"
+            assert style["filter"] != "none"
 
         browser.close()
 

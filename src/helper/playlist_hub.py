@@ -731,8 +731,14 @@ def playlist_cover_candidates(engine, kind, key, hidden_playlist_ids=()):
     return {"track_ids": track_ids}
 
 
-def stream_playlist_audio(engine, kind, key, track_id, range_header, session_key, offset_seconds=0, hidden_playlist_ids=()):
-    detail = playlist_detail(engine, kind, key, hidden_playlist_ids, include_catalog=False)
+def stream_playlist_audio(
+    engine, kind, key, track_id, range_header, session_key, offset_seconds=0,
+    hidden_playlist_ids=(), *, migrate_ownership=True,
+):
+    detail = playlist_detail(
+        engine, kind, key, hidden_playlist_ids,
+        migrate_ownership=migrate_ownership, include_catalog=False,
+    )
     track_id = str(track_id or "")
     if track_id not in {row["id"] for row in detail["tracks"]}:
         raise ValueError("当前歌单中没有这首可试听歌曲")
@@ -783,12 +789,22 @@ def _stream_artwork(engine, track):
     )
 
 
-def stream_playlist_artwork(engine, kind, key, track_id, hidden_playlist_ids=()):
-    return _stream_artwork(engine, playlist_artwork_track(engine, kind, key, track_id, hidden_playlist_ids))
+def stream_playlist_artwork(
+    engine, kind, key, track_id, hidden_playlist_ids=(), *, migrate_ownership=True,
+):
+    return _stream_artwork(engine, playlist_artwork_track(
+        engine, kind, key, track_id, hidden_playlist_ids,
+        migrate_ownership=migrate_ownership,
+    ))
 
 
-def playlist_artwork_track(engine, kind, key, track_id, hidden_playlist_ids=()):
-    detail = playlist_detail(engine, kind, key, hidden_playlist_ids)
+def playlist_artwork_track(
+    engine, kind, key, track_id, hidden_playlist_ids=(), *, migrate_ownership=True,
+):
+    detail = playlist_detail(
+        engine, kind, key, hidden_playlist_ids,
+        migrate_ownership=migrate_ownership,
+    )
     track_id = str(track_id or "")
     track = next((row for row in detail["tracks"] if row["id"] == track_id), None)
     if not track:
@@ -906,6 +922,13 @@ def attach_playlist_hub_routes(app, store, runtime, profiles, body, ensure_idle)
         profiles.get(profile_id)
         return runtime.engine(profile_id)
 
+    def read_playlist(target, reader):
+        """Keep reads available during jobs without permitting lazy writes."""
+        if bool((getattr(target, "job", {}) or {}).get("running")):
+            return reader(False)
+        with target.exclusive():
+            return reader(True)
+
     @app.get("/api/playlists")
     def list_playlists():
         items = playlist_rows(
@@ -982,8 +1005,12 @@ def attach_playlist_hub_routes(app, store, runtime, profiles, body, ensure_idle)
             )
         target = fixed_engine()
         hidden_ids = sibling_owned_playlist_ids(profiles, runtime, str(store.profile_id)) if kind == "plex" else ()
-        with target.exclusive():
-            return playlist_detail(target, kind, key, hidden_ids)
+        return read_playlist(
+            target,
+            lambda migrate: playlist_detail(
+                target, kind, key, hidden_ids, migrate_ownership=migrate,
+            ),
+        )
 
     @app.get("/api/playlists/{kind}/{key}/cover")
     def playlist_cover(kind: str, key: str, request: Request, response: Response):
@@ -1010,13 +1037,15 @@ def attach_playlist_hub_routes(app, store, runtime, profiles, body, ensure_idle)
         with profiles.fixed_active(selected_profile, enabled_only=True):
             target = runtime.engine(selected_profile)
             hidden_ids = sibling_owned_playlist_ids(profiles, runtime, selected_profile) if kind == "plex" else ()
-            with target.exclusive():
-                return stream_playlist_audio(
+            return read_playlist(
+                target,
+                lambda migrate: stream_playlist_audio(
                     target, kind, key, track_id,
                     str(request.headers.get("range") or ""),
                     str(request.cookies.get(COOKIE_NAME) or ""),
-                    offset, hidden_ids,
-                )
+                    offset, hidden_ids, migrate_ownership=migrate,
+                ),
+            )
 
     @app.get("/api/playlists/{kind}/{key}/tracks/{track_id}/artwork")
     def playlist_artwork(
@@ -1027,8 +1056,13 @@ def attach_playlist_hub_routes(app, store, runtime, profiles, body, ensure_idle)
             profile = profiles.get(selected_profile)
             target = runtime.engine(selected_profile)
             hidden_ids = sibling_owned_playlist_ids(profiles, runtime, selected_profile) if kind == "plex" else ()
-            with target.exclusive():
-                track = playlist_artwork_track(target, kind, key, track_id, hidden_ids)
+            track = read_playlist(
+                target,
+                lambda migrate: playlist_artwork_track(
+                    target, kind, key, track_id, hidden_ids,
+                    migrate_ownership=migrate,
+                ),
+            )
             tag = artwork_etag(store, request.cookies.get(COOKIE_NAME), selected_profile,
                                profile.get('created_at'), request.url.path, track.get('thumb'), 300)
             if tag and hmac.compare_digest(request.headers.get('if-none-match', ''), tag):
