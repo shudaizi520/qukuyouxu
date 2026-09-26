@@ -1,6 +1,6 @@
 import {createPlaylistWorkspace} from './playlist-workspace.js';
 import {createLibrarySearch} from './playlist-search.js';
-import {createPlaylistPlayer,normalizePlaybackTrack} from './playlist-player.js?v=2.0.10';
+import {createPlaylistPlayer,normalizePlaybackTrack} from './playlist-player.js?v=2.0.11';
 import {createNowPlaying} from './playlist-now-playing.js';
 import {createPlaylistSections} from './playlist-sections.js';
 import {createPlaylistArtwork} from './playlist-artwork.js';

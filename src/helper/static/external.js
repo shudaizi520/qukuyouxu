@@ -1,4 +1,4 @@
-import {normalizePlaybackTrack} from './playlist-player.js?v=2.0.10';
+import {normalizePlaybackTrack} from './playlist-player.js?v=2.0.11';
 
 (()=>{
 'use strict';

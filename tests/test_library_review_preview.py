@@ -8,7 +8,12 @@ from tools.playwright_runtime import prepare_playwright_environment
 
 ROOT = Path(__file__).resolve().parents[1]
 STATIC = ROOT / "src" / "helper" / "static"
-PLAYWRIGHT_BROWSERS = Path("/home/shudaizi/nas/qukuyouxu/.playwright")
+PLAYWRIGHT_BROWSERS = ROOT / ".playwright"
+
+
+def _prepare_browser() -> None:
+    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(PLAYWRIGHT_BROWSERS))
+    prepare_playwright_environment(ROOT)
 
 
 def _library_page_without_assets() -> str:
@@ -18,8 +23,7 @@ def _library_page_without_assets() -> str:
 
 def test_review_distinguishes_new_updates_and_unchanged_playlists():
     """A no-op managed playlist must never look like another playlist to create."""
-    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(PLAYWRIGHT_BROWSERS)
-    prepare_playwright_environment(Path("/home/shudaizi/nas/qukuyouxu"))
+    _prepare_browser()
     review = {
         "id": "theme-plan|base-plan",
         "expired": False,
@@ -126,8 +130,7 @@ def _install_preview_runtime(page, responses):
 
 
 def test_song_preview_routes_base_groups_to_base_evidence_and_stays_compact():
-    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(PLAYWRIGHT_BROWSERS)
-    prepare_playwright_environment(Path("/home/shudaizi/nas/qukuyouxu"))
+    _prepare_browser()
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page(viewport={"width": 1280, "height": 900})
@@ -174,8 +177,7 @@ def test_song_preview_routes_base_groups_to_base_evidence_and_stays_compact():
 
 
 def test_song_preview_is_dense_keeps_shared_sources_once_and_auto_loads_every_song():
-    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(PLAYWRIGHT_BROWSERS)
-    prepare_playwright_environment(Path("/home/shudaizi/nas/qukuyouxu"))
+    _prepare_browser()
     shared_origins = [{"title": "KTV参考歌单", "basis": "主题来源"}]
     first_page = [
         {
@@ -235,8 +237,7 @@ def test_song_preview_is_dense_keeps_shared_sources_once_and_auto_loads_every_so
 
 
 def test_song_preview_clears_previous_results_before_showing_a_new_error():
-    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(PLAYWRIGHT_BROWSERS)
-    prepare_playwright_environment(Path("/home/shudaizi/nas/qukuyouxu"))
+    _prepare_browser()
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page(viewport={"width": 1280, "height": 900})
@@ -266,8 +267,7 @@ def test_song_preview_clears_previous_results_before_showing_a_new_error():
 
 
 def test_review_passes_group_kind_to_the_song_preview():
-    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(PLAYWRIGHT_BROWSERS)
-    prepare_playwright_environment(Path("/home/shudaizi/nas/qukuyouxu"))
+    _prepare_browser()
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page(viewport={"width": 1280, "height": 900})
