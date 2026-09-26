@@ -1,4 +1,4 @@
-import {createPlaybackVisualizer} from './playlist-visualizer.js?v=2.0.8';
+import {createPlaybackVisualizer} from './playlist-visualizer.js?v=2.0.9';
 
 export function activeLyricIndex(lines,timeMs){
  if(!Array.isArray(lines)||!lines.length||!Number.isFinite(Number(timeMs))||Number(timeMs)<0)return -1;
