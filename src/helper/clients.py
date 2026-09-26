@@ -441,14 +441,28 @@ class PlexClient:
             raise PlexError(f'Plex音频返回HTTP {response.status_code}')
         return response
 
-    def open_artwork(self, artwork_path):
+    def open_artwork(self, artwork_path, width=0, height=0):
         artwork_path = str(artwork_path or '')
         if (not re.fullmatch(r'/library/metadata/\d+/(?:thumb|art)/\d+', artwork_path)
                 or artwork_path.startswith('//')):
             raise PlexError('Plex封面路径无效')
         try:
+            width, height = int(width or 0), int(height or 0)
+        except (TypeError, ValueError, OverflowError):
+            raise PlexError('Plex封面尺寸无效') from None
+        if (width, height) not in {(0, 0), (256, 256), (1280, 1280)}:
+            raise PlexError('Plex封面尺寸无效')
+        if width:
+            url = self.base + '/photo/:/transcode'
+            params = {
+                'url': artwork_path, 'width': str(width), 'height': str(height),
+                'minSize': '1', 'upscale': '0',
+            }
+        else:
+            url, params = self.base + artwork_path, None
+        try:
             response = self.session.request(
-                'GET', self.base + artwork_path, timeout=(5, 20),
+                'GET', url, params=params, timeout=(5, 20),
                 allow_redirects=False, stream=True,
             )
         except requests.RequestException:

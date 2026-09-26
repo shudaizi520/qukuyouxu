@@ -35,10 +35,16 @@ _ARTWORK_CACHE_PATH = re.compile(
     r'^/api/playlists/(?:library/tracks/\d+/artwork|[^/]+/[^/]+/tracks/\d+/artwork)$'
 )
 _COVER_CACHE_PATH = re.compile(r'^/api/playlists/[^/]+/[^/]+/cover$')
+_STATIC_CACHE_PATH = re.compile(r'^/static/[^/]+\.(?:css|js|png|jpg|jpeg|webp|svg|ico)$')
 
 
-def artwork_cache_policy(path, method, status_code, *, authenticated=False, scoped=False):
+def artwork_cache_policy(path, method, status_code, *, authenticated=False, scoped=False,
+                         versioned=False):
     """Keep scoped images locally, but revalidate authorization on every load."""
+    if method == 'GET' and status_code in (200, 304) and _STATIC_CACHE_PATH.fullmatch(path):
+        if versioned:
+            return {'Cache-Control': 'public, max-age=31536000, immutable'}
+        return {'Cache-Control': 'no-cache'}
     if method == 'GET' and status_code in (200, 304) and authenticated and scoped:
         if _ARTWORK_CACHE_PATH.fullmatch(path):
             return {'Cache-Control': 'private, no-cache',
@@ -176,6 +182,7 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
         for name, value in artwork_cache_policy(
             path, req.method, r.status_code,
             authenticated=bool(session_user), scoped=scoped,
+            versioned=str(req.query_params.get('v') or '') == str(__version__),
         ).items():
             r.headers[name] = value
         r.headers['X-Content-Type-Options'] = 'nosniff'

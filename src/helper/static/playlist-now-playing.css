@@ -1,6 +1,6 @@
 .player-icon-defs{position:absolute;width:0;height:0;overflow:hidden;pointer-events:none}
 .sidebar-control-icon,.player-mode-icon,.playlist-mode-menu svg,.playlist-artwork-expand svg{width:18px;height:18px;display:block;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-.player-mode-icon{width:20px;height:20px}
+.playlist-mode-control .player-mode-icon{width:22px;height:22px}
 
 .now-playing{position:fixed;z-index:45;inset:0 0 auto;bottom:0;overflow:hidden;color:var(--immersive-text);background:var(--immersive-bg);isolation:isolate;outline:0}
 .now-playing[hidden]{display:none}
@@ -16,7 +16,7 @@ body[data-view=playlists] .now-playing .now-playing-close:active:not(:disabled){
 
 .now-playing-stage{width:min(1320px,calc(100% - 112px));height:100%;margin:auto;display:grid;grid-template-columns:minmax(430px,.96fr) minmax(440px,1.04fr);align-items:center;gap:clamp(80px,8vw,148px);padding:54px 0 94px}
 .now-playing-record{min-width:0;display:grid;justify-items:center}
-.now-playing-artwork{width:min(430px,35vw);aspect-ratio:1;display:grid;place-items:center;overflow:hidden;border-radius:10px;background:var(--immersive-surface);box-shadow:var(--immersive-shadow);font-size:64px;color:var(--immersive-artwork-icon)}
+.now-playing-artwork{width:min(430px,35vw);aspect-ratio:1;display:grid;place-items:center;overflow:hidden;border-radius:10px;background:var(--immersive-surface);box-shadow:var(--immersive-shadow);font-size:64px;color:var(--immersive-artwork-icon)}.now-playing-artwork img[hidden]{display:none}
 .now-playing-artwork img{width:100%;height:100%;object-fit:cover}
 .now-playing-content{width:min(560px,100%);min-width:0;align-self:center;display:grid;grid-template-rows:auto minmax(0,1fr);gap:16px}
 .now-playing-copy{text-align:left}
@@ -51,8 +51,8 @@ body[data-view=playlists].now-playing-open .playlist-player{background:transpare
 .player-detail:hover .playlist-artwork-expand,.player-detail:focus-visible .playlist-artwork-expand{opacity:1}
 .player-detail:focus-visible{outline:1px solid var(--playlist-accent);outline-offset:2px}
 .playlist-mode-control{position:relative;display:flex}
-.playlist-mode-control>button{width:36px;height:36px;display:grid;place-items:center;border:0;border-radius:0;background:transparent;color:var(--playlist-text);cursor:pointer}
-.playlist-mode-control>button:hover{background:transparent;color:var(--playlist-accent)}
+.playlist-mode-control>button{width:28px;height:36px;display:grid;place-items:center;border:0;border-radius:0;background:transparent;color:var(--playlist-text);cursor:pointer}
+.playlist-player .playlist-mode-control>button:hover{--control-icon-color:var(--playlist-accent);background:transparent;color:var(--playlist-accent)}
 .playlist-mode-menu{position:absolute;z-index:70;left:50%;bottom:calc(100% + 10px);width:154px;overflow:hidden;border:0;border-radius:8px;padding:4px;background:var(--playlist-surface);box-shadow:var(--immersive-menu-shadow);transform:translateX(-50%)}
 .playlist-mode-menu[hidden]{display:none}
 .playlist-mode-menu button{width:100%;min-height:38px;display:grid;grid-template-columns:22px 1fr;align-items:center;gap:8px;border:0;border-radius:5px;padding:7px 10px!important;background:transparent;color:var(--playlist-text);font-size:13px;text-align:left;cursor:pointer}
@@ -70,6 +70,6 @@ body[data-view=playlists].now-playing-open .playlist-player{background:transpare
  .now-playing-lyrics-panel{height:38vh;min-height:230px}.now-playing-lyrics{padding:30% 7px}.now-playing-lyric-line{text-align:center;transform-origin:center}.now-playing-lyric-line.active{transform:none}
  .now-playing-visualizer{width:min(520px,88vw);height:54px}
  body[data-view=playlists] .playlist-player{padding-left:8px}.now-playing-open .playlist-player{padding-left:8px}
- .playlist-player-center{gap:4px}.playlist-mode-control>button{width:36px}
+ .playlist-player-center{gap:6px}.playlist-mode-control>button{width:28px}
 }
 @media(prefers-reduced-motion:reduce){.now-playing-lyric-line{transition:none}.now-playing-lyrics{scroll-behavior:auto}.player-detail .playlist-artwork,.playlist-artwork-expand{transition:none}}

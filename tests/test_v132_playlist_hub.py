@@ -260,8 +260,9 @@ class _PlaylistPlex:
             "library_section_id": self.track_section(track_id),
         }
 
-    def open_artwork(self, path):
+    def open_artwork(self, path, width=0, height=0):
         self.last_artwork = str(path)
+        self.last_artwork_size = (width, height)
         return self.artwork
 
     def delete_playlist(self, playlist_id):
@@ -874,7 +875,10 @@ class PlaylistHubPageTests(unittest.TestCase):
             player.index('id="playlistProgressRail"'),
             player.index('class="playlist-player-body"'),
         )
-        for control_id in ("playerPrevious", "playerToggle", "playerNext", "playerMute"):
+        for control_id in (
+            "playerPrevious", "playerToggle", "playerNext",
+            "playerVolumeToggle", "playerMute",
+        ):
             control = player.split(f'id="{control_id}"', 1)[1].split("</button>", 1)[0]
             self.assertIn("<svg", control, control_id)
         for glyph in ("‹", "›", "▶", "❚❚"):
@@ -892,7 +896,7 @@ class PlaylistHubPageTests(unittest.TestCase):
 
             def handle_starttag(self, tag, attrs):
                 attributes = dict(attrs)
-                if attributes.get("id") == "playerMute":
+                if attributes.get("id") == "playerVolumeControl":
                     self.ancestors = [node.get("class", "") for node in self.stack]
                 if tag not in {"input", "img", "br", "hr", "meta", "link"}:
                     self.stack.append(attributes)
@@ -920,7 +924,8 @@ class PlaylistHubPageTests(unittest.TestCase):
 
         self.assertIn(
             ".playlist-volume-control:hover .playlist-volume-panel,"
-            ".playlist-volume-control:focus-within .playlist-volume-panel",
+            ".playlist-volume-control:focus-within .playlist-volume-panel,"
+            ".playlist-volume-control[data-open=true] .playlist-volume-panel",
             styles,
         )
         bridge = styles.split(".playlist-volume-panel::after{", 1)[1].split(
@@ -931,7 +936,7 @@ class PlaylistHubPageTests(unittest.TestCase):
         self.assertIn("top:100%", bridge)
         self.assertIn("right:0", bridge)
         self.assertIn("width:100%", bridge)
-        self.assertIn("height:9px", bridge)
+        self.assertIn("height:12px", bridge)
 
     def test_player_ranges_reset_the_global_text_input_box_model(self):
         styles = (STATIC / "product.css").read_text(encoding="utf-8")
@@ -950,26 +955,16 @@ class PlaylistHubPageTests(unittest.TestCase):
         ):
             self.assertIn(declaration, reset)
 
-    def test_zero_volume_mute_click_restores_the_last_audible_volume(self):
-        player = (STATIC / "playlist-player.js").read_text(encoding="utf-8")
+    def test_volume_panel_separates_opening_from_muting(self):
+        page = (STATIC / "playlists.html").read_text(encoding="utf-8")
+        trigger = page.split('id="playerVolumeToggle"', 1)[1].split("</button>", 1)[0]
+        panel = page.split('id="playerVolumePanel"', 1)[1].split("</div>", 1)[0]
 
-        self.assertIn("let lastAudibleVolume=audio.volume||1", player)
-        volume_input = player.split("playerVolume.oninput=", 1)[1].split(";\n", 1)[0]
-        self.assertIn("if(audio.volume>0)lastAudibleVolume=audio.volume", volume_input)
-        self.assertIn("audio.muted=audio.volume===0", volume_input)
-        self.assertIn("syncVolumeState()", volume_input)
-        mute_click = player.split("playerMute.onclick=", 1)[1].split(";\n", 1)[0]
-        self.assertIn("if(audio.muted||audio.volume===0)", mute_click)
-        self.assertIn("audio.volume=lastAudibleVolume", mute_click)
-        self.assertIn("playerVolume.value=String(lastAudibleVolume)", mute_click)
-        self.assertIn("audio.muted=false", mute_click)
-        self.assertIn("else audio.muted=true", mute_click)
-        self.assertIn("syncVolumeState()", mute_click)
-        sync = player.split("function syncVolumeState()", 1)[1].split(
-            "function showFeedback", 1
-        )[0]
-        self.assertIn("const muted=audio.muted||audio.volume===0", sync)
-        self.assertIn("setMuted(muted)", sync)
+        self.assertIn('aria-controls="playerVolumePanel"', trigger)
+        self.assertIn('aria-expanded="false"', trigger)
+        self.assertIn('id="playerVolume"', panel)
+        self.assertIn('id="playerVolumePercent"', panel)
+        self.assertIn('id="playerMute"', panel)
 
     def test_mute_icon_has_cross_and_synced_accessible_state(self):
         page = (STATIC / "playlists.html").read_text(encoding="utf-8")
@@ -978,12 +973,7 @@ class PlaylistHubPageTests(unittest.TestCase):
         mute = page.split('id="playerMute"', 1)[1].split("</button>", 1)[0]
         self.assertIn('class="player-icon-mute-waves"', mute)
         self.assertIn('class="player-icon-mute-cross"', mute)
-        set_muted = player.split("function setMuted(value)", 1)[1].split(
-            "function syncVolumeState", 1
-        )[0]
-        self.assertIn("player.dataset.muted=String(value)", set_muted)
-        self.assertIn("playerMute.setAttribute('aria-label',label)", set_muted)
-        self.assertIn("playerMute.title=label", set_muted)
+        self.assertIn("createVolumePopover", player)
         self.assertIn(".player-icon-mute-cross{display:none}", styles)
         self.assertIn("[data-muted=true] .player-icon-mute-waves{display:none}", styles)
         self.assertIn("[data-muted=true] .player-icon-mute-cross{display:block}", styles)

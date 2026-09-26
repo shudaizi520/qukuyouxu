@@ -1,4 +1,5 @@
-import {createPlaybackVisualizer} from './playlist-visualizer.js?v=2.0.11';
+import {createPlaybackVisualizer} from './playlist-visualizer.js';
+import {stageArtworkImage} from './playlist-artwork.js';
 
 export function activeLyricIndex(lines,timeMs){
  if(!Array.isArray(lines)||!lines.length||!Number.isFinite(Number(timeMs))||Number(timeMs)<0)return -1;
@@ -97,12 +98,15 @@ export function createNowPlaying({document,requestJson,getProfileId,lyricsUrl,ar
  function paintTrack(track,nextArtworkUrl){
   title.textContent=track?.title||(track?'未知歌曲':'未播放');
   meta.textContent=track?[track.artist||'未知歌手',track.album||''].filter(Boolean).join(' · '):'请选择歌曲';
-  artwork.replaceChildren();
   if(nextArtworkUrl){
-   const image=document.createElement('img');image.alt='';image.src=nextArtworkUrl;artwork.append(image);
-   root.style.setProperty('--now-playing-image','url('+JSON.stringify(nextArtworkUrl)+')');
+   root.style.removeProperty('--now-playing-image');
+   const image=document.createElement('img');image.alt='';
+   stageArtworkImage(artwork,image,nextArtworkUrl,{
+    onReady:()=>root.style.setProperty('--now-playing-image','url('+JSON.stringify(image.src)+')'),
+    onFailure:()=>root.style.removeProperty('--now-playing-image'),
+   });
   }else{
-   artwork.textContent='♫';root.style.removeProperty('--now-playing-image');
+   artwork.replaceChildren();artwork.textContent='♫';root.style.removeProperty('--now-playing-image');
   }
  }
  function update(next){
@@ -112,7 +116,7 @@ export function createNowPlaying({document,requestJson,getProfileId,lyricsUrl,ar
   const track=snapshot?.track;
   if(!track){currentKey='';loader.cancel();renderLyrics({kind:'none',lines:[]});paintTrack(null,'');return;}
   const profile=String(track.profile_id||getProfileId()||''),key=profile+'\t'+String(track.id||'');
-  if(key!==currentKey){paintTrack(track,snapshot.artworkUrl||artworkUrl(track,profile));loadLyrics(track);}
+  if(key!==currentKey){paintTrack(track,artworkUrl(track,profile));loadLyrics(track);}
   else syncLyric();
  }
  function open(){

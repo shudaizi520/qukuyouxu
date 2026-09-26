@@ -1,9 +1,9 @@
 import {createPlaylistWorkspace} from './playlist-workspace.js';
 import {createLibrarySearch} from './playlist-search.js';
-import {createPlaylistPlayer,normalizePlaybackTrack} from './playlist-player.js?v=2.0.11';
+import {createPlaylistPlayer,normalizePlaybackTrack} from './playlist-player.js';
 import {createNowPlaying} from './playlist-now-playing.js';
 import {createPlaylistSections} from './playlist-sections.js';
-import {createPlaylistArtwork} from './playlist-artwork.js';
+import {artworkUrl,createPlaylistArtwork} from './playlist-artwork.js';
 
 const $=id=>document.getElementById(id);
 const workspace=createPlaylistWorkspace({document});
@@ -199,7 +199,7 @@ const playlistPlayer=createPlaylistPlayer({document,mediaUrl,formatTime,onStateC
 nowPlaying=createNowPlaying({
  document,requestJson:path=>json(path),getProfileId:()=>loadedProfileId,
  lyricsUrl:(trackId,profileId)=>'/api/playlists/library/tracks/'+encoded(trackId)+'/lyrics?profile_id='+encoded(profileId),
- artworkUrl:(track,profileId)=>mediaUrl('artwork',{...track,profile_id:profileId},{profileId}),
+ artworkUrl:(track,profileId)=>artworkUrl(track.id,profileId),
  togglePlayback:()=>playlistPlayer.togglePlayback(),
 });
 function playingFrom(item){return playlistPlayer.isContext(playlistContext(item));}

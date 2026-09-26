@@ -9,6 +9,12 @@ const deferred=()=>{
  const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});
  return {promise,resolve,reject};
 };
+class FakeStorage{
+ constructor(){this.values=new Map();}
+ getItem(key){return this.values.has(key)?this.values.get(key):null;}
+ setItem(key,value){this.values.set(String(key),String(value));}
+ removeItem(key){this.values.delete(String(key));}
+}
 const profile=(id,library=id,extra={})=>({
  id,
  enabled:true,
@@ -169,4 +175,30 @@ test('an invalidated in-flight read cannot restore stale data after a write',asy
  await assert.rejects(first,error=>error?.name==='AbortError');
  const retry=await cache.cachedJson('/api/playlists',{tag:'playlists',freshMs:1000,retainMs:2000,load:async()=>({version:'after-write'})});
  assert.deepEqual(retry,{value:{version:'after-write'},source:'network'});
+});
+
+test('safe profile data survives a full page reload without crossing users',async()=>{
+ const storage=new FakeStorage();
+ let time=100,loads=0;
+ const first=setup({now:()=>time,storage});
+ await first.cachedJson('/api/playlists',{tag:'playlists',freshMs:1000,retainMs:2000,load:async()=>({owner:'alice',load:++loads})});
+
+ const reloaded=setup({now:()=>time+10,storage});
+ const restored=await reloaded.cachedJson('/api/playlists',{tag:'playlists',freshMs:1000,retainMs:2000,load:async()=>({owner:'network',load:++loads})});
+ assert.deepEqual(restored,{value:{owner:'alice',load:1},source:'fresh'});
+ assert.equal(loads,1);
+
+ reloaded.setProfiles('bob',[profile('a'),profile('b')]);
+ reloaded.activate('a');
+ const isolated=await reloaded.cachedJson('/api/playlists',{tag:'playlists',freshMs:1000,retainMs:2000,load:async()=>({owner:'bob',load:++loads})});
+ assert.equal(isolated.source,'network');
+ assert.equal(isolated.value.owner,'bob');
+});
+
+test('logout removes persisted page data',async()=>{
+ const storage=new FakeStorage(),cache=setup({storage});
+ await cache.cachedJson('/api/playlists',{tag:'playlists',freshMs:1000,retainMs:2000,load:async()=>({ok:true})});
+ assert.ok(storage.getItem('pch-page-cache:v1'));
+ cache.clear();
+ assert.equal(storage.getItem('pch-page-cache:v1'),null);
 });

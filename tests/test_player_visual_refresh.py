@@ -6,7 +6,7 @@ import re
 from playwright.sync_api import sync_playwright
 
 from tools.playwright_runtime import prepare_playwright_environment
-from ui_css import product_css
+from ui_css import page_css, product_css
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -402,6 +402,8 @@ def test_playlist_and_player_chrome_stay_lightweight():
     product = product_css()
     details = (STATIC / "playlist-now-playing.css").read_text(encoding="utf-8")
     foundation = (STATIC / "design-system.css").read_text(encoding="utf-8")
+    tokens = (STATIC / "theme-tokens.css").read_text(encoding="utf-8")
+    components = (STATIC / "ui-components.css").read_text(encoding="utf-8")
 
     assert _rule(product, ".playlist-track")["border-bottom"] == "0"
     track_head = _rule(product, ".playlist-track-head")
@@ -426,11 +428,9 @@ def test_playlist_and_player_chrome_stay_lightweight():
 
 
 def test_player_transport_controls_match_full_size_music_app_proportions():
-    product = product_css()
-    details = (STATIC / "playlist-now-playing.css").read_text(encoding="utf-8")
-    foundation = (STATIC / "design-system.css").read_text(encoding="utf-8")
+    shipped_css = page_css("playlists")
     document = f"""
-    <style>{product}{details}{foundation}</style>
+    <style>{shipped_css}</style>
     <body data-view="playlists">
       <footer class="playlist-player">
         <div class="playlist-player-center">
@@ -462,17 +462,32 @@ def test_player_transport_controls_match_full_size_music_app_proportions():
             )
 
         expected = {
-            "mode": ["20px", "20px"],
-            "previous": ["36px", "36px"],
-            "previousIcon": ["21px", "21px"],
-            "toggle": ["46px", "46px"],
-            "toggleIcon": ["20px", "20px"],
-            "next": ["36px", "36px"],
-            "nextIcon": ["21px", "21px"],
-            "mute": ["36px", "36px"],
-            "muteIcon": ["21px", "21px"],
+            "mode": ["22px", "22px"],
+            "previous": ["28px", "36px"],
+            "previousIcon": ["22px", "22px"],
+            "toggle": ["34px", "34px"],
+            "toggleIcon": ["18px", "18px"],
+            "next": ["28px", "36px"],
+            "nextIcon": ["22px", "22px"],
+            "mute": ["28px", "36px"],
+            "muteIcon": ["20px", "20px"],
         }
         assert sizes() == expected
+        gaps = page.locator(".playlist-player-center").evaluate(
+            "node => { const mode=node.querySelector('.playlist-mode-control').getBoundingClientRect();"
+            "const buttons=node.querySelector('.playlist-player-buttons').getBoundingClientRect();"
+            "const volume=node.querySelector('.playlist-volume-control').getBoundingClientRect();"
+            "return [buttons.left-mode.right,volume.left-buttons.right]; }"
+        )
+        assert gaps == [6, 6]
+        button_gap = page.locator(".playlist-player-buttons").evaluate(
+            "node => Number.parseFloat(getComputedStyle(node).gap)"
+        )
+        assert button_gap == 10
+        page.locator("html").evaluate("node => node.dataset.appearance='night'")
+        assert page.locator("#toggleIcon").evaluate(
+            "node => getComputedStyle(node).color"
+        ) == "rgb(13, 42, 32)"
         page.locator("body").evaluate("node => node.classList.add('now-playing-open')")
         assert sizes() == expected
         page.set_viewport_size({"width": 700, "height": 760})
@@ -480,27 +495,114 @@ def test_player_transport_controls_match_full_size_music_app_proportions():
         browser.close()
 
 
+def test_volume_panel_has_soft_floating_surface_and_pointer_tail():
+    page_html = (STATIC / "playlists.html").read_text(encoding="utf-8")
+    prepare_playwright_environment(ROOT)
+    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(ROOT / ".playwright"))
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page(viewport={"width": 1280, "height": 720})
+        page.set_content(page_html)
+        page.add_style_tag(content=page_css("playlists"))
+        page.locator("#bootScreen").evaluate("node => node.hidden=true")
+        page.locator("#workspace").evaluate("node => node.hidden=false")
+        page.locator("#playerVolumeControl").evaluate("node => node.dataset.open='true'")
+
+        surface = page.locator("#playerVolumePanel").evaluate(
+            "node => { const style=getComputedStyle(node); return {"
+            "radius:style.borderRadius,shadow:style.boxShadow,"
+            "background:style.backgroundImage}; }"
+        )
+        assert surface["radius"] == "14px"
+        assert surface["shadow"] != "none"
+        assert surface["background"] != "none"
+        tail = page.locator("#playerVolumePanel").evaluate(
+            "node => { const style=getComputedStyle(node,'::before'); return {"
+            "content:style.content,width:style.width,height:style.height,"
+            "transform:style.transform}; }"
+        )
+        assert tail["content"] != "none"
+        assert tail["width"] == "12px"
+        assert tail["height"] == "12px"
+        assert tail["transform"] != "none"
+        browser.close()
+
+
+def test_transport_hover_keeps_bare_icons_without_a_round_surface():
+    page_html = (STATIC / "playlists.html").read_text(encoding="utf-8")
+    product = (STATIC / "product.css").read_text(encoding="utf-8")
+    details = (STATIC / "playlist-now-playing.css").read_text(encoding="utf-8")
+    foundation = (STATIC / "design-system.css").read_text(encoding="utf-8")
+    tokens = (STATIC / "theme-tokens.css").read_text(encoding="utf-8")
+    components = (STATIC / "ui-components.css").read_text(encoding="utf-8")
+    prepare_playwright_environment(ROOT)
+    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(ROOT / ".playwright"))
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page(viewport={"width": 1280, "height": 720})
+        page.set_content(page_html)
+        page.add_style_tag(content=(
+            product + details + tokens + components + foundation
+            + ":root{--playlist-text:rgb(255,255,255);--playlist-muted:rgb(255,255,255);"
+            "--app-accent:rgb(30,210,150);--playlist-accent:rgb(30,210,150);"
+            "--playlist-surface-soft:rgb(90,90,90)}"
+        ))
+        page.locator("#bootScreen").evaluate("node => node.hidden=true")
+        page.locator("#workspace").evaluate("node => node.hidden=false")
+
+        for selector in ("#playerMode", "#playerPrevious", "#playerNext", "#playerVolumeToggle"):
+            before = page.locator(selector).evaluate(
+                "node => ({background:getComputedStyle(node).backgroundColor,"
+                "color:getComputedStyle(node.querySelector('.ui-icon')).color})"
+            )
+            page.locator(selector).hover(force=True)
+            after = page.locator(selector).evaluate(
+                "node => ({background:getComputedStyle(node).backgroundColor,"
+                "color:getComputedStyle(node.querySelector('.ui-icon')).color})"
+            )
+            assert before["background"] == "rgba(0, 0, 0, 0)", selector
+            assert after["background"] == before["background"], selector
+            assert after["color"] == "rgb(30, 210, 150)", selector
+            assert after["color"] != before["color"], selector
+
+        browser.close()
+
+
 def test_transport_svg_glyphs_fill_their_control_canvas():
     page_html = (STATIC / "playlists.html").read_text(encoding="utf-8")
+    product = (STATIC / "product.css").read_text(encoding="utf-8")
+    details = (STATIC / "playlist-now-playing.css").read_text(encoding="utf-8")
     prepare_playwright_environment(ROOT)
     os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(ROOT / ".playwright"))
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
         page = browser.new_page()
         page.set_content(page_html)
+        page.add_style_tag(content=product + details)
         page.locator("#workspace").evaluate("node => node.hidden=false")
         glyphs = page.locator(
-            "#playerPrevious .player-icon,#playerToggle .player-icon,#playerNext .player-icon"
+            "#playerPrevious .player-icon,#playerToggle .player-icon-play,#playerNext .player-icon"
         ).evaluate_all(
             "nodes => nodes.map(node => { const box=node.getBBox(); "
-            "return {width:box.width,height:box.height}; })"
+            "const style=getComputedStyle(node); "
+            "return {width:box.width,height:box.height,fill:style.fill,stroke:style.stroke}; })"
         )
         assert glyphs == [
-            {"width": 18, "height": 18},
-            {"width": 14, "height": 16},
-            {"width": 14, "height": 16},
-            {"width": 18, "height": 18},
+            {"width": 16, "height": 18, "fill": "rgb(0, 0, 0)", "stroke": "none"},
+            {"width": 14, "height": 16, "fill": "rgb(0, 0, 0)", "stroke": "none"},
+            {"width": 16, "height": 18, "fill": "rgb(0, 0, 0)", "stroke": "none"},
         ]
+        page.locator("#playerToggle").evaluate("node => node.dataset.state='playing'")
+        pause = page.locator("#playerToggle .player-icon-pause").evaluate(
+            "node => { const box=node.getBBox(); const style=getComputedStyle(node); "
+            "return {width:box.width,height:box.height,fill:style.fill,stroke:style.stroke}; }"
+        )
+        assert pause == {"width": 14, "height": 16, "fill": "rgb(0, 0, 0)", "stroke": "none"}
+
+        mode = page.locator("#playerModeIcon").evaluate(
+            "node => { const box=node.getBBox(); return {width:box.width,height:box.height}; }"
+        )
+        assert mode == {"width": 20, "height": 17}
         browser.close()
 
 

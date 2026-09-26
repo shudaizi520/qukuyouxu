@@ -14,6 +14,65 @@ STATIC = Path(__file__).resolve().parents[1] / "src/helper/static"
 
 
 class ArtworkCacheTests(unittest.TestCase):
+    def test_original_artwork_route_does_not_invoke_plex_photo_transcode(self):
+        from helper.clients import PlexClient
+
+        class Upstream:
+            status_code = 200
+
+            def close(self):
+                pass
+
+        class Session:
+            def __init__(self):
+                self.calls = []
+
+            def request(self, method, url, **options):
+                self.calls.append((method, url, options))
+                return Upstream()
+
+        client = object.__new__(PlexClient)
+        client.base = "http://plex:32400"
+        client.session = Session()
+        result = client.open_artwork("/library/metadata/10/thumb/20")
+        self.assertIsInstance(result, Upstream)
+        method, url, options = client.session.calls[0]
+        self.assertEqual(("GET", "http://plex:32400/library/metadata/10/thumb/20"),
+                         (method, url))
+        self.assertIsNone(options["params"])
+
+    def test_plex_artwork_uses_bounded_photo_transcode_for_ui_sizes(self):
+        from helper.clients import PlexClient
+
+        class Upstream:
+            status_code = 200
+
+            def close(self):
+                pass
+
+        class Session:
+            def __init__(self):
+                self.calls = []
+
+            def request(self, method, url, **options):
+                self.calls.append((method, url, options))
+                return Upstream()
+
+        client = object.__new__(PlexClient)
+        client.base = "http://plex:32400"
+        client.session = Session()
+        result = client.open_artwork("/library/metadata/10/thumb/20", width=256, height=256)
+        self.assertIsInstance(result, Upstream)
+        method, url, options = client.session.calls[0]
+        self.assertEqual(("GET", "http://plex:32400/photo/:/transcode"), (method, url))
+        self.assertEqual({
+            "url": "/library/metadata/10/thumb/20",
+            "width": "256",
+            "height": "256",
+            "minSize": "1",
+            "upscale": "0",
+        }, options["params"])
+
     def test_only_successful_get_artwork_and_cover_are_privately_cached(self):
         policy = web.artwork_cache_policy
         for path in (
@@ -47,12 +106,27 @@ class ArtworkCacheTests(unittest.TestCase):
                          policy("/api/playlists/daily/daily/cover", "GET", 200,
                                 authenticated=True, scoped=False))
 
+    def test_only_versioned_static_assets_are_immutable(self):
+        policy = web.artwork_cache_policy
+        self.assertEqual(
+            {"Cache-Control": "public, max-age=31536000, immutable"},
+            policy("/static/product.css", "GET", 200, versioned=True),
+        )
+        self.assertEqual(
+            {"Cache-Control": "no-cache"},
+            policy("/static/product.css", "GET", 200, versioned=False),
+        )
+        self.assertEqual(
+            {"Cache-Control": "no-store"},
+            policy("/playlists", "GET", 200, versioned=True),
+        )
+
     def test_security_middleware_uses_policy(self):
         source = inspect.getsource(web.create_app)
         self.assertIn("for name, value in artwork_cache_policy(", source)
         self.assertIn("authenticated=bool(session_user), scoped=scoped", source)
 
-    def test_etag_requires_session_and_changes_with_profile_identity(self):
+    def test_etag_requires_session_rotates_and_changes_with_profile_identity(self):
         from helper.playlist_hub import artwork_etag
 
         class Store:
@@ -87,7 +161,8 @@ class ArtworkCacheTests(unittest.TestCase):
         self.assertIn("setTimeout(failed,12000)", script)
         self.assertIn("sessionStorage.getItem(key)", script)
         self.assertIn("sessionStorage.setItem(key,JSON.stringify", script)
-        self.assertIn("Date.now()-record.saved<3600000", script)
+        self.assertIn("Date.now()-record.saved<86400000", script)
+        self.assertIn("record.revision===revision(item)", script)
         self.assertIn("node.dataset.coverIds===signature", script)
         self.assertIn("node.children.length===valid.length", script)
         self.assertIn("delete node.dataset.coverIds;if(!node.children.length)", script)
@@ -143,6 +218,7 @@ class ArtworkCacheTests(unittest.TestCase):
                     self.assertEqual(304, unchanged.status_code)
                     self.assertEqual(2, lookup.call_count)
                     self.assertEqual(1, stream.call_count)
+                    self.assertEqual("original", stream.call_args.args[2])
                     lookup.return_value = {"thumb": "/thumb/changed"}
                     self.assertEqual(200, artwork("10", req(path, first.headers["etag"]), "default").status_code)
                     lookup.side_effect = ValueError("这首歌不属于当前曲库")

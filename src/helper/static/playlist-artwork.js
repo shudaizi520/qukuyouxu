@@ -1,8 +1,42 @@
 const encoded=value=>encodeURIComponent(String(value||''));
 const MAX_ACTIVE_IMAGES=6;
 
-export function artworkUrl(trackId,profileId){
- return '/api/playlists/library/tracks/'+encoded(trackId)+'/artwork?profile_id='+encoded(profileId);
+export function artworkUrl(trackId,profileId,size='original'){
+ const base='/api/playlists/library/tracks/'+encoded(trackId)+'/artwork?profile_id='+encoded(profileId);
+ return size==='original'?base:base+'&size='+encoded(size);
+}
+
+export function loadArtworkImage(image,url,{onLoad=()=>{},onFailure=()=>{}}={}){
+ let settled=false;
+ image.onload=()=>{
+  if(settled)return;
+  settled=true;onLoad();
+ };
+ image.onerror=()=>{
+  if(settled)return;
+  settled=true;onFailure();
+ };
+ image.src=url;
+ return image;
+}
+
+export function stageArtworkImage(container,image,url,{onReady=()=>{},onFailure=()=>{}}={}){
+ for(const child of [...container.children]){
+  if(child.dataset?.pendingArtwork==='true')child.removeAttribute('src');
+ }
+ const generation=String((Number(container.dataset.artworkGeneration)||0)+1);
+ container.dataset.artworkGeneration=generation;container.replaceChildren();container.textContent='♫';
+ image.hidden=true;image.dataset.pendingArtwork='true';image.dataset.artworkGeneration=generation;container.append(image);
+ return loadArtworkImage(image,url,{
+  onLoad:()=>{
+   if(image.parentNode!==container||container.dataset.artworkGeneration!==generation)return;
+   image.hidden=false;delete image.dataset.pendingArtwork;container.replaceChildren(image);onReady(image);
+  },
+  onFailure:()=>{
+   if(image.parentNode!==container||container.dataset.artworkGeneration!==generation)return;
+   image.remove();onFailure();
+  },
+ });
 }
 
 export function createPlaylistArtwork({document,request,profileId,cacheUser=()=>'',cacheScope=()=>''}){
@@ -91,15 +125,18 @@ export function createPlaylistArtwork({document,request,profileId,cacheUser=()=>
   if(!scope)return '';
   return 'pch-cover:v2:'+encoded(cacheUser())+':'+encoded(profile)+':'+encoded(scope)+':'+encoded(item.kind)+':'+encoded(item.key);
  }
+ function revision(item){
+  return [item?.playlist_id||'',item?.count??'',item?.updated_at??''].map(value=>String(value)).join('|');
+ }
  function savedIds(profile,item){
   try{
    const key=savedKey(profile,item);if(!key)return null;
    const record=JSON.parse(sessionStorage.getItem(key)||'null');
-   return record&&Date.now()-record.saved<3600000&&Array.isArray(record.ids)?record.ids:null;
+   return record&&Date.now()-record.saved<86400000&&record.revision===revision(item)&&Array.isArray(record.ids)?record.ids:null;
   }catch{return null;}
  }
  function saveIds(profile,item,ids){
-  try{const key=savedKey(profile,item);if(key)sessionStorage.setItem(key,JSON.stringify({saved:Date.now(),ids}));}catch{}
+  try{const key=savedKey(profile,item);if(key)sessionStorage.setItem(key,JSON.stringify({saved:Date.now(),revision:revision(item),ids}));}catch{}
  }
  globalThis.addEventListener?.('pch-auth-logout',()=>{
   try{for(let i=sessionStorage.length-1;i>=0;i--){const key=sessionStorage.key(i);if(key?.startsWith('pch-cover:v2:'))sessionStorage.removeItem(key);}}catch{}
@@ -129,7 +166,7 @@ export function createPlaylistArtwork({document,request,profileId,cacheUser=()=>
   if(!item.can_play){placeholder(node);return;}
   const profile=selectedProfile||String(profileId()||'');
   const ids=savedIds(profile,item);
-  if(ids)paintIds(node,ids,profile);
+  if(ids){paintIds(node,ids,profile);return;}
   queue.push({node,item,profile,generation});pump();
  }
  function create(item,variant='card',existingNode=null){

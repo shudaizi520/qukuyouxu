@@ -835,10 +835,20 @@ def stream_library_audio(engine, track_id, range_header, session_key, offset_sec
     )
 
 
-def _stream_artwork(engine, track):
+def _artwork_dimensions(size):
+    sizes = {'original': (0, 0), 'small': (256, 256), 'large': (1280, 1280)}
+    if str(size or '') not in sizes:
+        raise ValueError("封面尺寸无效")
+    return sizes[str(size)]
+
+
+def _stream_artwork(engine, track, size='original'):
     if not track.get("thumb"):
         raise ValueError("这首歌没有可用封面")
-    upstream = engine.plex_factory(engine.store.get("settings")).open_artwork(track["thumb"])
+    width, height = _artwork_dimensions(size)
+    upstream = engine.plex_factory(engine.store.get("settings")).open_artwork(
+        track["thumb"], width=width, height=height,
+    )
     try:
         size = int(upstream.headers.get("Content-Length") or 0)
     except (TypeError, ValueError):
@@ -1062,17 +1072,18 @@ def attach_playlist_hub_routes(app, store, runtime, profiles, body, ensure_idle)
             return read_track_lyrics(target, track_id)
 
     @app.get("/api/playlists/library/tracks/{track_id}/artwork")
-    def library_artwork(track_id: str, request: Request, profile_id: str = ""):
+    def library_artwork(track_id: str, request: Request, profile_id: str = "", size: str = "original"):
         selected_profile = str(profile_id or store.profile_id)
         with profiles.fixed_active(selected_profile, enabled_only=True):
             profile = profiles.get(selected_profile)
             target = runtime.engine(selected_profile)
             track = library_artwork_track(target, track_id)
             tag = artwork_etag(store, request.cookies.get(COOKIE_NAME), selected_profile,
-                               profile.get('created_at'), request.url.path, track.get('thumb'), 300)
+                               profile.get('created_at'), request.url.path,
+                               str(track.get('thumb')) + ':' + str(size), 300)
             if tag and hmac.compare_digest(request.headers.get('if-none-match', ''), tag):
                 return Response(status_code=304, headers={'ETag': tag})
-            result = _stream_artwork(target, track)
+            result = _stream_artwork(target, track, size)
             if tag:
                 result.headers['ETag'] = tag
             return result
@@ -1130,6 +1141,7 @@ def attach_playlist_hub_routes(app, store, runtime, profiles, body, ensure_idle)
     @app.get("/api/playlists/{kind}/{key}/tracks/{track_id}/artwork")
     def playlist_artwork(
         kind: str, key: str, track_id: str, request: Request, profile_id: str = "",
+        size: str = "original",
     ):
         selected_profile = str(profile_id or store.profile_id)
         with profiles.fixed_active(selected_profile, enabled_only=True):
@@ -1144,10 +1156,11 @@ def attach_playlist_hub_routes(app, store, runtime, profiles, body, ensure_idle)
                 ),
             )
             tag = artwork_etag(store, request.cookies.get(COOKIE_NAME), selected_profile,
-                               profile.get('created_at'), request.url.path, track.get('thumb'), 300)
+                               profile.get('created_at'), request.url.path,
+                               str(track.get('thumb')) + ':' + str(size), 300)
             if tag and hmac.compare_digest(request.headers.get('if-none-match', ''), tag):
                 return Response(status_code=304, headers={'ETag': tag})
-            result = _stream_artwork(target, track)
+            result = _stream_artwork(target, track, size)
             if tag:
                 result.headers['ETag'] = tag
             return result

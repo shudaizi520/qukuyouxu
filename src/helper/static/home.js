@@ -25,7 +25,7 @@ function renderQQAuth(auth,running){
 }
 async function refresh(skipPlexLink=false){
  if(polling)return;polling=true;
- try{const wasActive=workflowIsActive(),next=await(await request('/api/workflow/status?release=2.0.11')).json();current=next;if(wasActive&&!workflowDataIsActive(next))PCHAuth.invalidateCache(['library-summary','playlists']);render(current);if(!libraryNavigationReady){libraryNavigationReady=true;revealLibraryTarget();}if(!skipPlexLink||!lastPlexLinkRefresh||Date.now()-lastPlexLinkRefresh>=PLEX_LINK_TTL_MS)await refreshPlexLink();return true;}finally{polling=false;}
+ try{const wasActive=workflowIsActive(),next=await(await request('/api/workflow/status?release=2.0.17')).json();current=next;if(wasActive&&!workflowDataIsActive(next))PCHAuth.invalidateCache(['library-summary','playlists']);render(current);if(!libraryNavigationReady){libraryNavigationReady=true;revealLibraryTarget();}if(!skipPlexLink||!lastPlexLinkRefresh||Date.now()-lastPlexLinkRefresh>=PLEX_LINK_TTL_MS)await refreshPlexLink();return true;}finally{polling=false;}
 }
 function render(data){
  const w=data.workflow,s=w.state||{},sum=w.summary||{},job=w.job||{},running=!!job.running,discovery=w.discovery||{};

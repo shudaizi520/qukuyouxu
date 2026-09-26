@@ -7,9 +7,12 @@ const DEFAULTS={
  maxEntries:48,
  maxBytes:8*1024*1024,
 };
+const STORAGE_KEY='pch-page-cache:v1';
+const MAX_PERSISTED_BYTES=2*1024*1024;
 
 function createProfilePageCache(options={}){
  const now=typeof options.now==='function'?options.now:()=>Date.now();
+ const storage=options.storage===undefined?(typeof sessionStorage!=='undefined'?sessionStorage:null):options.storage;
  const limits={
   maxEntryBytes:Number(options.maxEntryBytes??DEFAULTS.maxEntryBytes),
   maxEntriesPerScope:Number(options.maxEntriesPerScope??DEFAULTS.maxEntriesPerScope),
@@ -39,12 +42,42 @@ function createProfilePageCache(options={}){
   }
   while(entries.size>limits.maxEntries||totalBytes>limits.maxBytes){const victim=oldest([...entries]);if(!victim)break;remove(victim[0]);}
  };
+ const persist=()=>{
+  if(!storage)return;
+  try{
+   const saved=[];let bytes=0;
+   for(const [,entry] of [...entries].sort((a,b)=>b[1].lastUsed-a[1].lastUsed)){
+    const row={scope:entry.scope,profileId:entry.profileId,path:entry.path,tags:[...entry.tags],value:entry.value,bytes:entry.bytes,createdAt:entry.createdAt,lastUsed:entry.lastUsed};
+    const size=JSON.stringify(row).length*2;
+    if(bytes+size>MAX_PERSISTED_BYTES)continue;
+    bytes+=size;saved.push(row);
+   }
+   if(saved.length)storage.setItem(STORAGE_KEY,JSON.stringify(saved));
+   else storage.removeItem(STORAGE_KEY);
+  }catch{}
+ };
+ const hydrate=()=>{
+  if(!storage)return;
+  try{
+   const saved=JSON.parse(storage.getItem(STORAGE_KEY)||'[]');
+   if(!Array.isArray(saved))throw new TypeError('invalid cache');
+   for(const row of saved){
+    if(!row||typeof row.scope!=='string'||!row.scope||typeof row.profileId!=='string'||typeof row.path!=='string'||!Array.isArray(row.tags))continue;
+    const packed=encoded(row.value),createdAt=Number(row.createdAt),lastUsed=Number(row.lastUsed);
+    if(packed.bytes>limits.maxEntryBytes||!Number.isFinite(createdAt)||!Number.isFinite(lastUsed))continue;
+    const key=cacheKey(row.scope,row.path);
+    entries.set(key,{scope:row.scope,profileId:row.profileId,path:row.path,tags:new Set(row.tags.map(clean).filter(Boolean)),value:packed.value,bytes:packed.bytes,createdAt,lastUsed});
+    totalBytes+=packed.bytes;touch=Math.max(touch,lastUsed);
+   }
+   for(const scope of new Set([...entries.values()].map(row=>row.scope)))evict(scope);
+  }catch{try{storage.removeItem(STORAGE_KEY);}catch{}}
+ };
  const store=(key,scope,profileId,path,tag,value)=>{
   const packed=encoded(value);
   if(packed.bytes>limits.maxEntryBytes)return;
   remove(key);
   entries.set(key,{scope,profileId,path,tags:new Set(Array.isArray(tag)?tag:[tag].filter(Boolean)),value:packed.value,bytes:packed.bytes,createdAt:now(),lastUsed:++touch});
-  totalBytes+=packed.bytes;evict(scope);
+  totalBytes+=packed.bytes;evict(scope);persist();
  };
  const cancel=record=>{record.invalidated=true;record.abort?.();};
  const changed=()=>{generation++;for(const record of inflight.values())cancel(record);inflight.clear();};
@@ -86,7 +119,7 @@ function createProfilePageCache(options={}){
    }).catch(()=>{});
    return {value:clone(entry.value),source:'stale'};
   }
-  if(entry)remove(key);
+  if(entry){remove(key);persist();}
   const value=await startLoad(normalized,settings,scope,profileId,requestGeneration,key);
   return {value:clone(value),source:'network'};
  }
@@ -103,11 +136,14 @@ function createProfilePageCache(options={}){
    if(wanted.size&&![...record.tags].some(tag=>wanted.has(tag)))continue;
    cancel(record);inflight.delete(key);
   }
+  persist();
  }
  function clear(){
   entries.clear();totalBytes=0;username='';profiles=new Map();activeProfileId='';activeScope='';changed();
+  try{storage?.removeItem(STORAGE_KEY);}catch{}
  }
  function stats(){return {entries:entries.size,bytes:totalBytes,scopes:new Set([...entries.values()].map(row=>row.scope)).size,active:!!activeScope,generation,limits:{...limits}};}
+ hydrate();
  return {setProfiles,activate,cachedJson,invalidate,clear,stats};
 }
 

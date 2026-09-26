@@ -1,13 +1,14 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {artworkUrl, createPlaylistArtwork} from '../src/helper/static/playlist-artwork.js';
+import * as artworkModule from '../src/helper/static/playlist-artwork.js';
 
 class FakeElement {
  constructor(tag='span') {this.tagName=tag;this.children=[];this.dataset={};this.attributes={};this.textContent='';this.isConnected=true;this.parentNode=null;}
  get src() {return this.attributes.src||'';}
  set src(value) {this.attributes.src=String(value);}
- append(...children) {for(const child of children){child.parentNode=this;this.children.push(child);}this.textContent='';}
- replaceChildren(...children) {this.children=[];this.textContent='';this.append(...children);}
+ append(...children) {for(const child of children){child.parentNode=this;child.isConnected=true;this.children.push(child);}}
+ replaceChildren(...children) {for(const child of this.children){child.parentNode=null;child.isConnected=false;}this.children=[];this.textContent='';this.append(...children);}
  remove() {if(this.parentNode)this.parentNode.children=this.parentNode.children.filter(child=>child!==this);this.parentNode=null;}
  setAttribute(key,value) {this.attributes[key]=String(value);}
  getAttribute(key) {return this.attributes[key]??null;}
@@ -16,9 +17,18 @@ class FakeElement {
 const document={createElement:tag=>new FakeElement(tag)};
 const item={kind:'plex',key:'72',can_play:true};
 const flush=()=>new Promise(resolve=>setTimeout(resolve,0));
+class FakeStorage{
+ constructor(){this.values=new Map();}
+ get length(){return this.values.size;}
+ key(index){return [...this.values.keys()][index]??null;}
+ getItem(key){return this.values.has(key)?this.values.get(key):null;}
+ setItem(key,value){this.values.set(String(key),String(value));}
+ removeItem(key){this.values.delete(String(key));}
+}
 
 test('cover URLs are scoped to the selected profile',()=>{
  assert.equal(artworkUrl('19','user & library'),'/api/playlists/library/tracks/19/artwork?profile_id=user%20%26%20library');
+ assert.equal(artworkUrl('19','user & library','large'),'/api/playlists/library/tracks/19/artwork?profile_id=user%20%26%20library&size=large');
 });
 
 test('known track artwork paints a compact montage and absent artwork keeps a placeholder',()=>{
@@ -43,6 +53,77 @@ test('failed image load restores the designed placeholder',()=>{
  node.children[0].onerror();
  assert.equal(node.children.length,0);
  assert.equal(node.textContent,'♫');
+});
+
+test('a player artwork failure settles immediately without an artificial delayed retry',()=>{
+ assert.equal(typeof artworkModule.loadArtworkImage,'function');
+ const image={isConnected:true,src:'',onload:null,onerror:null};
+ const scheduled=[];
+ let loaded=0,failed=0;
+ artworkModule.loadArtworkImage(image,'/api/playlists/library/tracks/19/artwork?profile_id=p1&size=large',{
+  schedule:callback=>scheduled.push(callback),
+  onLoad:()=>{loaded+=1;},
+  onFailure:()=>{failed+=1;},
+ });
+ assert.equal(image.src,'/api/playlists/library/tracks/19/artwork?profile_id=p1&size=large');
+ image.onerror();
+ assert.equal(failed,1);
+ assert.equal(loaded,0);
+ assert.deepEqual(scheduled,[]);
+ assert.equal(image.src,'/api/playlists/library/tracks/19/artwork?profile_id=p1&size=large');
+});
+
+test('switching tracks removes the old cover before the new cover is ready',()=>{
+ assert.equal(typeof artworkModule.stageArtworkImage,'function');
+ const container=document.createElement('span');
+ const oldCover=document.createElement('img');oldCover.src='/old.jpg';container.append(oldCover);
+ const nextCover=document.createElement('img');
+ let ready=0,failed=0;
+
+ artworkModule.stageArtworkImage(container,nextCover,'/new.jpg',{
+  onReady:()=>{ready+=1;},
+  onFailure:()=>{failed+=1;},
+ });
+ assert.deepEqual(container.children,[nextCover]);
+ assert.equal(container.textContent,'♫');
+ assert.equal(nextCover.hidden,true);
+
+ nextCover.onload();
+ assert.deepEqual(container.children,[nextCover]);
+ assert.equal(nextCover.hidden,false);
+ assert.equal(ready,1);
+ assert.equal(failed,0);
+});
+
+test('failed staged artwork leaves a neutral placeholder instead of another track cover',()=>{
+ const container=document.createElement('span');
+ const oldCover=document.createElement('img');oldCover.src='/old.jpg';container.append(oldCover);
+ const nextCover=document.createElement('img');
+ let failed=0;
+ artworkModule.stageArtworkImage(container,nextCover,'/new.jpg',{onFailure:()=>{failed+=1;}});
+
+ nextCover.onerror();
+ assert.deepEqual(container.children,[]);
+ assert.equal(container.textContent,'♫');
+ assert.equal(failed,1);
+});
+
+test('a late cover response cannot overwrite the newest track artwork',()=>{
+ const container=document.createElement('span');
+ const first=document.createElement('img');
+ const second=document.createElement('img');
+
+ artworkModule.stageArtworkImage(container,first,'/first.jpg');
+ artworkModule.stageArtworkImage(container,second,'/second.jpg');
+ assert.deepEqual(container.children,[second]);
+ assert.equal(container.textContent,'♫');
+
+ first.onload();
+ assert.deepEqual(container.children,[second]);
+ assert.equal(container.textContent,'♫');
+ second.onload();
+ assert.deepEqual(container.children,[second]);
+ assert.equal(second.hidden,false);
 });
 
 test('an existing artwork node keeps its loaded image while it refreshes',async()=>{
@@ -110,4 +191,25 @@ test('without IntersectionObserver a newly created detached cover loads after it
  await flush();
  assert.equal(started,1);
  assert.equal(node.children[0].src,artworkUrl('12','p1'));
+});
+
+test('a matching playlist revision restores cover ids without another detail request',async()=>{
+ const previous=globalThis.sessionStorage,storage=new FakeStorage();globalThis.sessionStorage=storage;
+ try{
+  let requests=0;
+  const options={document,request:async()=>{requests++;return {track_ids:['12']};},profileId:()=> 'p1',cacheUser:()=> 'alice',cacheScope:()=> 'scope-1'};
+  const current={...item,playlist_id:'72',count:10,updated_at:100};
+  const first=createPlaylistArtwork(options);first.reset('p1');const firstNode=first.create(current,'sidebar');await flush();
+  firstNode.children[0]?.onload?.();
+  assert.equal(requests,1);
+
+  const reloaded=createPlaylistArtwork(options);reloaded.reset('p1');const restored=reloaded.create(current,'sidebar');await flush();
+  assert.equal(requests,1);
+  assert.equal(restored.children[0].src,artworkUrl('12','p1'));
+
+  restored.children[0]?.onload?.();
+  const changed=reloaded.create({...current,updated_at:101},'sidebar');await flush();
+  assert.equal(requests,2);
+  changed.children[0]?.onload?.();
+ }finally{if(previous===undefined)delete globalThis.sessionStorage;else globalThis.sessionStorage=previous;}
 });
