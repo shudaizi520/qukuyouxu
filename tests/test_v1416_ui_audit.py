@@ -87,3 +87,73 @@ def test_narrow_search_keeps_like_and_add_actions_available():
     assert "@media(max-width:720px){body[data-view=playlists] .playlist-search-result .playlist-search-actions" in styles
     assert "body[data-view=playlists] .playlist-search-result .playlist-search-actions button{display:inline-grid}" in styles
     assert "body[data-view=playlists] .playlist-search-result .playlist-search-title-line .playlist-heart{display:grid}" in styles
+
+
+def test_profile_cache_loads_before_auth_on_every_app_page():
+    for name in ("playlists", "home", "mixes", "daily", "status", "settings", "external", "appearance"):
+        page = (STATIC / f"{name}.html").read_text()
+        assert '/static/page-cache.js?v=app' in page, name
+        assert page.index('/static/page-cache.js?v=app') < page.index('/static/auth.js?v=app'), name
+
+
+def test_auth_exposes_profile_scoped_cache_facade_and_clears_it_on_logout():
+    auth = (STATIC / "auth.js").read_text()
+    assert "cachedJson" in auth
+    assert "invalidateCache" in auth
+    assert "PCHPageCache?.setProfiles" in auth
+    assert "PCHPageCache?.activate" in auth
+    assert "PCHPageCache?.clear" in auth
+
+
+def test_playlist_navigation_uses_only_the_profile_scoped_summary_cache():
+    playlists = (STATIC / "playlists.js").read_text()
+    assert "PCHPageCache?.setProfiles(PCHAuth.status()?.username||'',allProfiles)" in playlists
+    assert "PCHPageCache?.activate(profileId)" in playlists
+    assert "PCHAuth.cachedJson('/api/playlists'" in playlists
+    assert "tag:'playlists'" in playlists
+    assert "freshMs:60_000" in playlists
+    assert "retainMs:900_000" in playlists
+    assert "loadedProfileCacheScope!==cacheScope" in playlists
+    assert "PCHAuth.cachedJson('/api/playlists/'" not in playlists
+
+
+def test_profile_switch_still_blanks_the_embedded_workspace_before_loading():
+    playlists = (STATIC / "playlists.js").read_text()
+    workspace = (STATIC / "playlist-workspace.js").read_text()
+    switch = playlists.split("async function switchProfile", 1)[1].split("async function removeTrack", 1)[0]
+    assert "resetPlaylistView()" in switch
+    assert "renderTracks()" in switch
+    assert "renderPlaylistList()" in switch
+    assert "frame.src='about:blank'" in workspace
+
+
+def test_only_safe_management_summaries_use_the_cache_facade():
+    mixes = (STATIC / "mixes.js").read_text()
+    external = (STATIC / "external.js").read_text()
+    settings = (STATIC / "settings.js").read_text()
+    status = (STATIC / "status.js").read_text()
+    home = (STATIC / "home.js").read_text()
+    auth = (STATIC / "auth.js").read_text()
+    assert "CACHEABLE_JSON_PATHS=new Set(['/api/playlists','/api/mixes/status','/api/external/sources','/api/plex/saved','/api/automation'])" in auth
+    assert "PCHAuth.cachedJson('/api/mixes/status'" in mixes
+    assert "PCHAuth.cachedJson('/api/external/sources'" in external
+    assert "cachedSettingsJson('/api/plex/saved'" in settings
+    assert "cachedSettingsJson('/api/automation'" in settings
+    assert "cachedJson('/api/status'" not in status + home + external + settings
+    assert "cachedJson('/api/workflow/status" not in home
+    assert "cachedJson('/api/qq-auth/" not in home
+    assert "PCHAuth.cachedJson('/api/external/sources/'" not in external
+
+
+def test_management_writes_invalidate_only_related_summary_tags():
+    mixes = (STATIC / "mixes.js").read_text()
+    external = (STATIC / "external.js").read_text()
+    settings = (STATIC / "settings.js").read_text()
+    home = (STATIC / "home.js").read_text()
+    playlists = (STATIC / "playlists.js").read_text()
+    assert "const tags=['smart-mixes']" in mixes and "PCHAuth.invalidateCache(tags)" in mixes
+    assert "tags.push('external-sources')" in external and "PCHAuth.invalidateCache(tags)" in external
+    assert "const tags=['settings']" in settings and "PCHAuth.invalidateCache(tags)" in settings
+    assert "invalidateCache(['library-summary','playlists']" in home
+    assert "event.data?.type==='pch-playlists-changed'" in playlists
+    assert "PCHAuth.invalidateCache(['playlists'])" in playlists

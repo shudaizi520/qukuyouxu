@@ -161,7 +161,14 @@ def playlist_rows(engine, hidden_playlist_ids=()):
     """Return assistant and native Plex playlists, retaining the last good native list."""
     store = engine.store
     hidden_playlist_ids = {str(value) for value in hidden_playlist_ids}
-    assistant = [assistant_playlist_row(row) for row in assistant_playlist_rows(store)]
+    assistant = []
+    for row in assistant_playlist_rows(store):
+        prepared = dict(row)
+        if prepared.get("kind") == "external":
+            prepared["_ownership_marker"] = external_marker(
+                store.get("installation_id"), prepared["key"]
+            )
+        assistant.append(assistant_playlist_row(prepared))
     plex = engine.plex_factory(store.get("settings"))
     try:
         section = str((store.get("settings") or {}).get("section") or "")
@@ -182,7 +189,8 @@ def playlist_rows(engine, hidden_playlist_ids=()):
         merged = merge_playlist_rows(assistant, native_rows)
         native = [dict(row) for row in merged if row.get("source") == "plex"]
         store.set("playlist_native_cache_v1", native)
-        return merged
+        return [{key: value for key, value in row.items() if key != "_ownership_marker"}
+                for row in merged]
     except Exception:
         cached = []
         section = str((store.get("settings") or {}).get("section") or "")
@@ -195,7 +203,9 @@ def playlist_rows(engine, hidden_playlist_ids=()):
                 continue
             cached.append({**row, "stale": True})
         return [
-            {**row, "stale": True} if row.get("source") == "plex" else row
+            {key: value for key, value in (
+                {**row, "stale": True} if row.get("source") == "plex" else row
+            ).items() if key != "_ownership_marker"}
             for row in merge_playlist_rows(assistant, cached)
         ]
 
@@ -353,6 +363,61 @@ def _save_playlist_record(engine, kind, key, record):
         ExternalRepository(store).save_managed(profile_id, key, record)
     else:
         raise ValueError("歌单类型无效")
+
+
+def _external_source_track_ids(repository, profile_id, source_id):
+    matches = {
+        str(row.get("source_track_key") or ""): row
+        for row in repository.list_matches(profile_id, source_id)
+    }
+    result, seen = [], set()
+    for track in repository.list_tracks(profile_id, source_id):
+        match = matches.get(str(track.get("source_track_key") or "")) or {}
+        track_id = str(match.get("plex_track_id") or "")
+        if match.get("status") != "matched" or not track_id.isdigit() or track_id in seen:
+            continue
+        result.append(track_id)
+        seen.add(track_id)
+    return result
+
+
+def adopt_external_playlist_state(store, key, record, state):
+    """Make a marked imported playlist follow explicit changes made in Plex."""
+    profile_id = str(getattr(store, "profile_id", "default") or "default")
+    repository = ExternalRepository(store)
+    recorded_source_ids = record.get("source_ids")
+    source_ids = (
+        [str(value) for value in recorded_source_ids if str(value).isdigit()]
+        if isinstance(recorded_source_ids, list)
+        else _external_source_track_ids(repository, profile_id, key)
+    )
+    if not isinstance(recorded_source_ids, list) and not source_ids:
+        # Records created before source_ids was introduced cannot be safely
+        # diffed while their current matches are unavailable. Defer adoption
+        # until the source baseline can be recovered instead of guessing.
+        return record
+    live_ids = [
+        str(row.get("id")) for row in state.get("items", [])
+        if str(row.get("id") or "").isdigit()
+    ]
+    source_set, live_set = set(source_ids), set(live_ids)
+    edits_all = dict(store.get("playlist_manual_edits", {}) or {})
+    edits_all[_manual_key("external", key)] = {
+        "include": [value for value in live_ids if value not in source_set],
+        "exclude": [value for value in source_ids if value not in live_set],
+        "updated_at": time.time(),
+    }
+    store.set("playlist_manual_edits", edits_all)
+    revised = {
+        **record,
+        "title": str(state.get("title") or record.get("title") or "外部歌单"),
+        "fingerprint": fingerprint(state),
+        "count": len(state.get("items", [])),
+        "source_ids": source_ids,
+    }
+    repository.save_managed(profile_id, key, revised)
+    store.log("已同步 Plex 中的导入歌单修改：" + revised["title"])
+    return revised
 
 
 def _pch_category_id(kind, key):
@@ -685,12 +750,25 @@ def playlist_detail(engine, kind, key, hidden_playlist_ids=(), *, migrate_owners
     state = plex.playlist_state(record["id"])
     if str(state.get("id") or "") != str(record["id"]):
         raise SafetyError("Plex 歌单标识已经变化")
-    if str(state.get("title") or "") != str(record.get("title") or ""):
-        raise SafetyError("Plex 歌单名称已经变化，请先核对")
     state, record = _ensure_playlist_ownership(
         engine, str(kind), str(key), record, state, marker, plex,
         migrate=migrate_ownership,
     )
+    recorded_title = str(record.get("title") or "")
+    externally_modified = (
+        str(state.get("title") or "") != recorded_title
+        or bool(record.get("fingerprint") and fingerprint(state) != record.get("fingerprint"))
+    )
+    plex_synced = False
+    if str(kind) == "external" and externally_modified:
+        revised = adopt_external_playlist_state(engine.store, str(key), record, state)
+        adopted = (
+            str(revised.get("title") or "") == str(state.get("title") or "")
+            and revised.get("fingerprint") == fingerprint(state)
+        )
+        record = revised
+        externally_modified = not adopted
+        plex_synced = adopted
     catalog = engine.store.catalog_tracks(
         [row.get("id") for row in state.get("items") or []]
     ) if include_catalog else {}
@@ -713,7 +791,9 @@ def playlist_detail(engine, kind, key, hidden_playlist_ids=(), *, migrate_owners
         })
     return {
         "kind": str(kind), "key": str(key), "playlist_id": str(record["id"]),
-        "title": str(state["title"]), "count": len(tracks), "tracks": tracks,
+        "title": str(state["title"]), "recorded_title": recorded_title,
+        "externally_modified": externally_modified, "plex_synced": plex_synced,
+        "count": len(tracks), "tracks": tracks,
     }
 
 

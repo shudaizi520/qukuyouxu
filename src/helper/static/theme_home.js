@@ -1,36 +1,94 @@
-/* Candidate evidence stays available without exposing source configuration. */
+/* Compact, type-aware song preview for library review groups. */
 (()=>{
  'use strict';
  const get=id=>document.getElementById(id);
- let evidenceCategory='',nextOffset=null,onlyNew=true;
+ let evidenceCategory='',evidenceKind='theme',nextOffset=null,onlyNew=true,requestGeneration=0,loadingEvidence='',totalEvidence=0,loadedEvidence=0;
+ const rows=()=>get('themeEvidenceRows');
  const say=(parent,tag,text,cls)=>{const e=document.createElement(tag);e.textContent=text;if(cls)e.className=cls;parent.append(e);return e;};
  function safeQQ(value){try{const u=new URL(value);if(u.protocol==='https:'&&['y.qq.com','i.y.qq.com'].includes(u.hostname)&&!u.username&&!u.password)return u.href;}catch{}return null;}
- async function loadEvidence(offset=0){
-  const d=await (await request('/api/themes/evidence?category_id='+encodeURIComponent(evidenceCategory)+'&offset='+offset+'&limit=40&added_only='+String(onlyNew))).json();
-  get('themeEvidenceTitle').textContent=d.title+' · '+(onlyNew?'本次新增':'匹配歌曲')+'与来源';
-  get('themeEvidenceNote').textContent='共 '+d.total+' 首。这些是参考歌单的选歌关联，不是单曲权威情绪标签；资料核对不代表音频鉴定。';
-  if(offset===0)get('themeEvidenceRows').replaceChildren();
-  if(!d.items?.length&&offset===0)say(get('themeEvidenceRows'),'p','这个主题当前没有新增曲目。可检查参考范围，不需要重跑全库单曲详情。');
-  for(const row of d.items||[]){
-   const card=document.createElement('article');card.className='theme-evidence-card';say(card,'h3',row.title+' / '+row.artist);
-   say(card,'p',(row.methods||[]).includes('verified_mid')?'匹配依据：复用已核对的QQ录音编号，同时检查来源没有明显矛盾。':'匹配依据：歌名、完整歌手和版本等元数据核对。','muted');
-   for(const origin of row.origins||[]){
-    const p=say(card,'p','');const url=safeQQ(origin.url);
-    if(url){const a=say(p,'a',origin.title||'QQ参考歌单');a.href=url;a.target='_blank';a.rel='noopener noreferrer';}
-    else say(p,'span',origin.title||'参考资料');
-    if(origin.basis)say(p,'small',' · '+origin.basis);
-   }
-   const b=say(card,'button','不放进这个主题');b.type='button';b.className='text-button';
-   b.onclick=()=>action(async()=>{
-    if(!await PCHUI.confirm('以后不再把“'+row.title+'”补入这个主题？其他主题不受影响；已在旧歌单中的成员不会自动删除。'))return;
-    const r=await post('/api/themes/exclude',{confirm:true,category_id:evidenceCategory,track_id:row.id,excluded:true});get('themeEvidence').hidden=true;note(r.message);
-   });get('themeEvidenceRows').append(card);
-  }
-  nextOffset=d.next;get('moreThemeEvidence').hidden=nextOffset==null;
+ function endpoint(offset){
+  const base='/api/base/details?category_id='+encodeURIComponent(evidenceCategory)+'&offset='+offset+'&limit=100';
+  const theme='/api/themes/evidence?category_id='+encodeURIComponent(evidenceCategory)+'&offset='+offset+'&limit=100&added_only='+String(onlyNew);
+  return evidenceKind==='base'?base:theme;
  }
- window.openThemeEvidence=async(categoryId,added=true)=>{evidenceCategory=categoryId;onlyNew=added;get('themeEvidence').hidden=false;await loadEvidence();get('themeEvidence').scrollIntoView({block:'start'});};
- get('moreThemeEvidence').onclick=()=>action(()=>loadEvidence(nextOffset||0));
- get('closeThemeEvidence').onclick=()=>{get('themeEvidence').hidden=true;};
+ function setState(text,kind=''){
+  const state=get('themeEvidenceState');state.textContent=text||'';state.className='song-preview-state'+(kind?' '+kind:'');state.hidden=!text;
+ }
+ function clearPreview(message='正在读取歌曲…'){
+  rows().replaceChildren();get('themeEvidenceTitle').textContent='歌曲预览';get('themeEvidenceNote').textContent='';
+  get('themeEvidenceSources').hidden=true;get('themeEvidenceSources').open=false;get('themeEvidenceSourceList').replaceChildren();get('themeEvidenceColumns').hidden=true;
+  get('themeEvidenceProgress').textContent='';get('moreThemeEvidence').hidden=true;totalEvidence=0;loadedEvidence=0;setState(message,'loading');
+ }
+ function normalized(row){
+  return {
+   id:String(row.id||row.track_id||''),title:String(row.title||'未命名歌曲'),artist:String(row.artist||'未知歌手'),
+   album:String(row.album||row.album_title||''),reason:String(row.reason||((row.methods||[]).includes('verified_mid')?'已核对歌曲编号与版本信息':'歌名、歌手和版本信息匹配')),
+   origins:Array.isArray(row.origins)?row.origins:[],inferred:!!row.inferred,
+  };
+ }
+ function renderSources(origins){
+  const unique=[];
+  for(const origin of origins||[]){
+   const key=String(origin.url||'')+'\u0000'+String(origin.title||'');
+   if(!unique.some(row=>row.key===key))unique.push({key,origin});
+  }
+  if(!unique.length)return;
+  const details=get('themeEvidenceSources'),list=get('themeEvidenceSourceList');list.replaceChildren();
+  details.querySelector('summary').textContent='参考来源（'+unique.length+'）';details.hidden=false;
+  for(const {origin} of unique){
+   const line=document.createElement('p'),url=safeQQ(origin.url);
+   if(url){const link=say(line,'a',origin.title||'QQ 参考歌单');link.href=url;link.target='_blank';link.rel='noopener noreferrer';}
+   else say(line,'span',origin.title||'参考歌单');
+   if(origin.basis)say(line,'small',origin.basis,'muted');list.append(line);
+  }
+ }
+ function renderItem(raw,index){
+  const item=normalized(raw),card=document.createElement('article');card.className='song-preview-row';
+  say(card,'span',String(index),'song-preview-number');
+  const identity=document.createElement('div');identity.className='song-preview-identity';say(identity,'strong',item.title);say(identity,'span',item.artist,'muted');
+  const album=document.createElement('div');album.className='song-preview-album';say(album,'span',item.album||'—');
+  const reason=document.createElement('div');reason.className='song-preview-reason';say(reason,'span',item.reason+(item.inferred?' · 推断补充':''));
+  card.append(identity,album,reason);
+  rows().append(card);
+ }
+ function updateProgress(){
+  const progress=get('themeEvidenceProgress');
+  progress.textContent=totalEvidence?(nextOffset==null?'已显示全部 '+loadedEvidence+' 首':'已显示 '+loadedEvidence+' / '+totalEvidence+' 首'):'';
+ }
+ async function loadEvidence(offset=0,generation=requestGeneration){
+  const loadToken=generation+':'+offset;if(loadingEvidence===loadToken)return;loadingEvidence=loadToken;
+  if(offset===0)clearPreview();
+  else{get('moreThemeEvidence').hidden=true;get('themeEvidenceProgress').textContent='正在继续读取…';}
+  try{
+   const data=await (await request(endpoint(offset))).json();if(generation!==requestGeneration)return;
+   if(offset===0)rows().replaceChildren();
+   get('themeEvidenceTitle').textContent=String(data.title||'歌曲预览');
+   totalEvidence=Number(data.total||0);get('themeEvidenceNote').textContent='共 '+totalEvidence+' 首 · 滚动即可查看全部歌曲';
+   setState('');
+   const items=data.items||[];if(offset===0){const sourceRow=items.find(row=>Array.isArray(row.origins)&&row.origins.length);if(sourceRow)renderSources(sourceRow.origins);}
+   for(const row of items)renderItem(row,++loadedEvidence);
+   if(!(data.items||[]).length&&offset===0)setState('这个歌单当前没有可预览的歌曲。','empty');
+   nextOffset=data.next;get('themeEvidenceColumns').hidden=!loadedEvidence;updateProgress();
+  }catch(error){
+   if(generation!==requestGeneration)return;
+   if(offset===0){rows().replaceChildren();get('themeEvidenceTitle').textContent='歌曲预览';get('themeEvidenceNote').textContent='';get('themeEvidenceColumns').hidden=true;setState(error?.message||'歌曲预览读取失败，请重新分析后再试。','error');}
+   else{get('themeEvidenceProgress').textContent='后续歌曲读取失败';get('moreThemeEvidence').hidden=false;get('moreThemeEvidence').textContent='重试加载';}
+  }finally{
+   if(loadingEvidence===loadToken)loadingEvidence='';if(generation===requestGeneration)get('themeEvidence').removeAttribute('aria-busy');
+  }
+ }
+ function closePreview(){
+  requestGeneration++;get('themeEvidence').hidden=true;get('songPreviewBackdrop').hidden=true;document.body.classList.remove('song-preview-open');
+ }
+ window.openThemeEvidence=async(categoryId,added=true,kind='theme')=>{
+  evidenceCategory=String(categoryId||'');evidenceKind=kind==='base'?'base':'theme';onlyNew=!!added;nextOffset=null;loadingEvidence='';requestGeneration++;
+  get('themeEvidence').hidden=false;get('songPreviewBackdrop').hidden=false;get('themeEvidence').setAttribute('aria-busy','true');document.body.classList.add('song-preview-open');
+  get('closeThemeEvidence').focus();await loadEvidence(0,requestGeneration);
+ };
+ rows().addEventListener('scroll',()=>{if(nextOffset!=null&&!loadingEvidence&&rows().scrollHeight-rows().scrollTop-rows().clientHeight<240)loadEvidence(nextOffset,requestGeneration);},{passive:true});
+ get('moreThemeEvidence').onclick=()=>loadEvidence(nextOffset||0,requestGeneration);
+ get('closeThemeEvidence').onclick=closePreview;get('songPreviewBackdrop').onclick=closePreview;
+ document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!get('themeEvidence').hidden)closePreview();});
 })();
 
 

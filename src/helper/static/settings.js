@@ -1,9 +1,9 @@
 'use strict';
 const $=id=>document.getElementById(id);
-let busy=false,current=null,plexPin='',plexTimer=null,plexDeadline=0,plexProfiles=[],activeProfile='default',automationState={},webhookTimer=null;
+let busy=false,current=null,plexPin='',plexTimer=null,plexDeadline=0,plexProfiles=[],activeProfile='default',automationState={},webhookTimer=null,settingsRequest=0;
 function note(t,e=false){PCHUI.notify(t,{error:e});}
 async function request(path,method='GET',body){return PCHAuth.request(path,method,body);}
-async function post(path,b){return PCHAuth.post(path,b);}
+async function post(path,b){const result=await PCHAuth.post(path,b);if(path==='/api/plex/profiles/remove'&&b?.profile_id)PCHAuth.invalidateCache(undefined,String(b.profile_id));if(!path.startsWith('/api/auth/')){const tags=['settings'];if(path.startsWith('/api/plex/')||path==='/api/settings')tags.push('playlists','library-summary','smart-mixes','external-sources');PCHAuth.invalidateCache(tags);}return result;}
 async function action(fn){if(busy)return;busy=true;try{await PCHUI.run(fn);}catch(e){note(e.message,true);}finally{busy=false;}}
 const settingsAnchors={accounts:'currentUser',learning:'people',system:'settings-system'};
 function showSettingsPanel(name,updateHash=true){
@@ -78,7 +78,7 @@ async function pollProfileStatus(){
  }catch(_error){scheduleProfileStatusPoll();}
 }
 function renderProfiles(data){
- plexProfiles=Array.isArray(data?.items)?data.items:[];const requested=PCHAuth.profile();const enabled=plexProfiles.filter(row=>row.enabled);const fallback=String(data?.active_profile_id||enabled[0]?.id||'default');activeProfile=enabled.some(row=>row.id===requested)?requested:fallback;if(activeProfile!==requested)PCHAuth.setProfile(activeProfile);
+ plexProfiles=Array.isArray(data?.items)?data.items:[];globalThis.PCHPageCache?.setProfiles(PCHAuth.status()?.username||'',plexProfiles);const requested=PCHAuth.profile();const enabled=plexProfiles.filter(row=>row.enabled);const fallback=String(data?.active_profile_id||enabled[0]?.id||'default');activeProfile=enabled.some(row=>row.id===requested)?requested:fallback;if(activeProfile!==requested)PCHAuth.setProfile(activeProfile);else globalThis.PCHPageCache?.activate(activeProfile);
  renderManagedUsers();scheduleProfileStatusPoll();
 }
 function render(s,saved){
@@ -105,17 +105,21 @@ async function responseJson(path){
  if(!response.ok)throw Error(data.error||('读取失败：'+path));
  return data;
 }
+async function cachedSettingsJson(path,generation,profileId,onUpdate){
+ return PCHAuth.cachedJson(path,{tag:'settings',freshMs:120_000,retainMs:1_800_000,onUpdate:value=>{if(generation===settingsRequest&&profileId===activeProfile)onUpdate?.(value);}});
+}
 async function refresh(){
- const profiles=await responseJson('/api/plex/profiles');renderProfiles(profiles);
+ const generation=++settingsRequest,profiles=await responseJson('/api/plex/profiles');if(generation!==settingsRequest)return;renderProfiles(profiles);const profileId=activeProfile;
  const [libraryResult,savedResult,statusResult,automationResult]=await Promise.allSettled([
-  responseJson('/api/plex/profiles/libraries?profile_id='+encodeURIComponent(activeProfile)),responseJson('/api/plex/saved'),responseJson('/api/status'),responseJson('/api/automation')
+  responseJson('/api/plex/profiles/libraries?profile_id='+encodeURIComponent(activeProfile)),cachedSettingsJson('/api/plex/saved',generation,profileId,renderSavedConnection),responseJson('/api/status'),cachedSettingsJson('/api/automation',generation,profileId,renderAutomation)
  ]);
- const saved=savedResult.status==='fulfilled'?savedResult.value:{configured:false,state:'not_configured'};
+ if(generation!==settingsRequest||profileId!==activeProfile)return;
+ const saved=savedResult.status==='fulfilled'?savedResult.value.value:{configured:false,state:'not_configured'};
  renderSavedConnection(saved);
  if(statusResult.status!=='fulfilled')throw statusResult.reason;
  const s=statusResult.value;
  render(s,saved);renderOfficialSections(libraryResult.status==='fulfilled'?libraryResult.value.items:[],saved.library?.id||'');
- if(automationResult.status==='fulfilled')renderAutomation(automationResult.value);
+ if(automationResult.status==='fulfilled')renderAutomation(automationResult.value.value);
 }
 function profileKind(kind){return {owner:'管理员',home:'家庭成员',shared:'共享朋友'}[kind]||'Plex 用户';}
 function controlsCell(profile,key,label){

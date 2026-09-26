@@ -186,8 +186,6 @@ class DailyMixin:
                 if managed.get('scope') != self.daily_scope() or managed.get('machine') != identity['machine']:
                     raise SafetyError('每日歌单所属账户或服务器已变化')
                 before = p.playlist_state(managed['id'])
-                if before.get('title') != target_title:
-                    raise SafetyError('每日歌单名称已变化，请改回“每日推荐”后重试')
                 marker = self.marker(DAILY_CID)
                 if marker not in before.get('summary', ''):
                     legacy = legacy_pch_marker(before.get('summary', ''), DAILY_CID)
@@ -359,6 +357,20 @@ class DailyMixin:
         self._save_snapshot(snap)
         try:
             if before:
+                if before.get('title') != daily_target_title(self):
+                    previous_ids = state_ids(before)
+                    p.rename(before['id'], daily_target_title(self))
+                    predicate = lambda row: (
+                        row.get('title') == daily_target_title(self)
+                        and state_ids(row) == previous_ids
+                        and self.marker(DAILY_CID) in row.get('summary', '')
+                    )
+                    before = p.read_playlist_until(
+                        before['id'],
+                        predicate,
+                    )
+                    if not before or not predicate(before):
+                        raise SafetyError('每日歌单改名后回读未确认，停止更新成员')
                 after = sync_owned_items(p, before, ids)
             else:
                 after = p.create(daily_target_title(self), ids, self.marker(DAILY_CID), description='仅播放本地音乐；每日推荐会按已确认设置更新成员，其他歌单不受影响。')

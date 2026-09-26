@@ -91,6 +91,9 @@ class _DailyPlex:
         self.summary_updates.append((str(playlist_id), str(summary)))
         self.playlists_by_id[str(playlist_id)]["summary"] = str(summary)
 
+    def rename(self, playlist_id, title):
+        self.playlists_by_id[str(playlist_id)]["title"] = str(title)
+
     def move_item(self, playlist_id, item_id, after=None):
         state = self.playlists_by_id[str(playlist_id)]
         moving = next(row for row in state["items"] if row["item_id"] == str(item_id))
@@ -149,6 +152,29 @@ class _OrderDifferentDailyPlex(_DailyPlex):
         super().move_item(playlist_id, item_id, after)
 
 
+class _UnconfirmedRenameDailyPlex(_DailyPlex):
+    """Plex can exhaust read retries without confirming a metadata write."""
+
+    def __init__(self):
+        super().__init__(existing=True)
+        self.membership_mutations = 0
+
+    def rename(self, playlist_id, title):
+        super().rename(playlist_id, title)
+        self.playlists_by_id[str(playlist_id)]["summary"] = "所有权标记同时被移除"
+
+    def read_playlist_until(self, playlist_id, predicate, attempts=8, delay=0.25):
+        return self.playlist_state(playlist_id)
+
+    def append(self, playlist_id, ids):
+        self.membership_mutations += 1
+        super().append(playlist_id, ids)
+
+    def remove_items(self, playlist_id, item_ids):
+        self.membership_mutations += 1
+        super().remove_items(playlist_id, item_ids)
+
+
 def _recommendation(*_args, **_kwargs):
     return {
         "items": [
@@ -200,6 +226,43 @@ class DailyFixedPlaylistTests(unittest.TestCase):
 
         self.assertTrue(any("同名" in message for message in plan["blocked"]))
         self.assertIsNone(plan["before"])
+
+    def test_next_daily_update_restores_an_owned_playlist_changed_in_plex(self):
+        plex = _DailyPlex(existing=True)
+        _store, engine = self.make_engine(plex)
+        with patch("helper.daily.recommend_rotating", side_effect=_recommendation):
+            first = engine.preview_daily(now=1_800_000_000)
+        engine.publish_daily(first["id"], now=1_800_000_010)
+        plex.playlists_by_id["900"]["title"] = "Plex 手工改名"
+        plex.playlists_by_id["900"]["items"] = [
+            {"id": "5", "item_id": "5005"},
+        ]
+
+        with patch("helper.daily.recommend_rotating", side_effect=_next_recommendation):
+            second = engine.preview_daily(now=1_800_086_400)
+        result = engine.publish_daily(second["id"], now=1_800_086_410)
+
+        restored = plex.playlist_state(result["playlist_id"])
+        self.assertEqual("每日推荐", restored["title"])
+        self.assertEqual({"3", "4"}, {row["id"] for row in restored["items"]})
+
+    def test_unconfirmed_rename_never_starts_membership_replacement(self):
+        from helper.engine import SafetyError
+
+        plex = _UnconfirmedRenameDailyPlex()
+        _store, engine = self.make_engine(plex)
+        with patch("helper.daily.recommend_rotating", side_effect=_recommendation):
+            first = engine.preview_daily(now=1_800_000_000)
+        engine.publish_daily(first["id"], now=1_800_000_010)
+        plex.playlists_by_id["900"]["title"] = "Plex 手工改名"
+        plex.membership_mutations = 0
+
+        with patch("helper.daily.recommend_rotating", side_effect=_next_recommendation):
+            second = engine.preview_daily(now=1_800_086_400)
+        with self.assertRaises(SafetyError):
+            engine.publish_daily(second["id"], now=1_800_086_410)
+
+        self.assertEqual(0, plex.membership_mutations)
 
     def test_new_profile_uses_own_daily_title_when_another_library_owns_default(self):
         from helper.profiles import ProfileRegistry

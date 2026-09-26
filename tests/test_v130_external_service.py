@@ -102,11 +102,39 @@ class ExternalServiceV130Tests(unittest.TestCase):
 
         published = self.service.publish(imported["id"], "百万收藏", imported["revision"])
         self.assertEqual(["10", "30"], self.plex.playlist_ids(published["playlist_id"]))
+        self.assertEqual(["10", "30"], self.service.repository.get_managed(
+            "default", imported["id"]
+        )["source_ids"])
 
         self.plex.catalog.append(local("20", "缺失歌", "歌手乙"))
         result = self.service.rematch_missing()
         self.assertEqual(["10", "20", "30"], self.plex.playlist_ids(published["playlist_id"]))
         self.assertEqual(0, result["missing"])
+
+    def test_legacy_refresh_does_not_treat_a_new_source_track_as_a_manual_exclusion(self):
+        imported = self.service.import_source(value=QQ_URL)
+        published = self.service.publish(imported["id"], "百万收藏", imported["revision"])
+        managed = self.service.repository.get_managed("default", imported["id"])
+        managed.pop("source_ids", None)
+        self.service.repository.save_managed("default", imported["id"], managed)
+        self.service.repository.replace_matches("default", imported["id"], [], "catalog-empty")
+        self.plex.states[published["playlist_id"]]["title"] = "Plex 手工新名字"
+
+        self.plex.catalog.append(local("50", "后来新增", "歌手戊"))
+        refreshed_tracks = snapshot()["tracks"] + [
+            source_track("e", "后来新增", ["歌手戊"], 4),
+        ]
+        self.providers.results.append(snapshot(refreshed_tracks, revision="source-r2"))
+
+        self.service.refresh(imported["id"], force=True)
+
+        self.assertEqual(
+            ["10", "30", "50"],
+            self.plex.playlist_ids(published["playlist_id"]),
+        )
+        revised = self.service.repository.get_managed("default", imported["id"])
+        self.assertEqual("Plex 手工新名字", revised["title"])
+        self.assertEqual(["10", "30", "50"], revised["source_ids"])
 
     def test_stale_revision_and_no_reliable_matches_never_create(self):
         from helper.engine import SafetyError
@@ -132,6 +160,43 @@ class ExternalServiceV130Tests(unittest.TestCase):
         self.assertEqual(first["id"], second["id"])
         self.assertEqual(1, len(self.service.repository.list_sources("default")))
         self.assertIsNotNone(self.service.repository.get_managed("default", first["id"]))
+
+    def test_external_management_page_adopts_live_plex_name_and_membership(self):
+        from helper.playlist_hub import apply_manual_edits
+
+        imported = self.service.import_source(value=QQ_URL)
+        published = self.service.publish(imported["id"], "百万收藏", imported["revision"])
+        playlist_id = published["playlist_id"]
+        state = self.plex.states[playlist_id]
+        state["title"] = "Plex 手工改名"
+        state["items"] = [state["items"][0], *self.plex._items(["40"])]
+
+        refreshed = self.service.public_source(imported["id"])
+
+        self.assertEqual("Plex 手工改名", refreshed["managed"]["title"])
+        self.assertEqual(["10", "40"], apply_manual_edits(
+            self.store, "external", imported["id"], ["10", "30"]
+        ))
+
+    def test_background_source_refresh_preserves_direct_plex_edits(self):
+        imported = self.service.import_source(value=QQ_URL)
+        published = self.service.publish(imported["id"], "百万收藏", imported["revision"])
+        playlist_id = published["playlist_id"]
+        state = self.plex.states[playlist_id]
+        state["title"] = "Plex 手工改名"
+        state["items"] = [state["items"][0], *self.plex._items(["40"])]
+        self.plex.catalog.append(local("50", "来源新增", "歌手戊"))
+        self.providers.results.append(snapshot([
+            source_track("a", "已有一", ["歌手甲"], 0),
+            source_track("c", "已有三", ["歌手丙"], 1),
+            source_track("e", "来源新增", ["歌手戊"], 2),
+        ], revision="source-r2"))
+
+        result = self.service.refresh(imported["id"], force=True)
+
+        self.assertEqual("updated", result["status"])
+        self.assertEqual("Plex 手工改名", self.plex.states[playlist_id]["title"])
+        self.assertEqual(["10", "50", "40"], self.plex.playlist_ids(playlist_id))
 
     def test_confirmation_and_source_ids_are_profile_isolated(self):
         imported = self.service.import_source(value=QQ_URL)

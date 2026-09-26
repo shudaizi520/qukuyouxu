@@ -1,4 +1,4 @@
-import {normalizePlaybackTrack} from './playlist-player.js?v=2.0.9';
+import {normalizePlaybackTrack} from './playlist-player.js?v=2.0.10';
 
 (()=>{
 'use strict';
@@ -11,13 +11,14 @@ let activeStatus='matched';
 let page=1;
 let pollTimer=null;
 let statusSwitching=false;
+let sourceRequest=0;
 
 function notify(message,error=false){
  if(window.PCHUI){PCHUI.notify(message,{error});return;}
  const node=$('notice');node.hidden=!message;node.textContent=message||'';node.className='notice'+(error?' error':'');
 }
 async function request(path,method='GET',payload){return PCHAuth.request(path,method,payload);}
-async function json(path,method='GET',payload){return (await request(path,method,payload)).json();}
+async function json(path,method='GET',payload){const result=await(await request(path,method,payload)).json();if(method==='POST'){const tags=[];if(path.startsWith('/api/external/'))tags.push('external-sources');if(path==='/api/playlists/rename'||/\/publish$|\/remove$/.test(path))tags.push('playlists');if(tags.length)PCHAuth.invalidateCache(tags);}return result;}
 async function action(fn){
  try{return await (window.PCHUI?PCHUI.run(fn):fn());}
  catch(error){notify(error.message||'操作失败',true);}
@@ -52,10 +53,17 @@ function renderSourceList(){
  }
  list.value=current?.id||'';
 }
-async function loadSources(preferred=''){
- const result=await json('/api/external/sources');sources=Array.isArray(result.items)?result.items:[];
+function applySourceSummary(result,generation,profileId){
+ if(generation!==sourceRequest||profileId!==PCHAuth.profile())return false;
+ sources=Array.isArray(result?.items)?result.items:[];
  $('sourceWorkspace').hidden=!sources.length;
- if(!sources.length){current=null;return;}
+ if(!sources.length)current=null;else renderSourceList();
+ return true;
+}
+async function loadSources(preferred=''){
+ const generation=++sourceRequest,profileId=PCHAuth.profile();
+ const result=await PCHAuth.cachedJson('/api/external/sources',{tag:'external-sources',freshMs:60_000,retainMs:900_000,onUpdate:value=>applySourceSummary(value,generation,profileId)});
+ if(!applySourceSummary(result.value,generation,profileId)||!sources.length)return;
  const sourceId=preferred&&sources.some(row=>row.id===preferred)?preferred:selectSourceId();
  await openSource(sourceId,false);
 }

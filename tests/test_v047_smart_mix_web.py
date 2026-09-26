@@ -63,6 +63,19 @@ class FakePlex:
     def delete_playlist(self, pid):
         del self.states[str(pid)]
 
+    def append(self, pid, ids):
+        state = self.states[str(pid)]
+        next_item = max([int(row["item_id"]) for row in state["items"]] or [0]) + 1
+        state["items"].extend(
+            {"id": str(value), "item_id": str(next_item + index)}
+            for index, value in enumerate(ids)
+        )
+
+    def remove_items(self, pid, item_ids):
+        removed = set(map(str, item_ids))
+        state = self.states[str(pid)]
+        state["items"] = [row for row in state["items"] if row["item_id"] not in removed]
+
 
 class SmartMixLifecycleV047Tests(unittest.TestCase):
     def setUp(self):
@@ -105,16 +118,18 @@ class SmartMixLifecycleV047Tests(unittest.TestCase):
             publish_smart_mix(self.engine, plan["id"], now=NOW + 1)
         self.assertEqual(0, self.plex.created)
 
-    def test_manually_changed_owned_playlist_is_not_overwritten(self):
+    def test_next_update_restores_a_manually_changed_owned_playlist(self):
         from helper.smart_mix_web import preview_smart_mix, publish_smart_mix
 
         plan = preview_smart_mix(self.engine, "recent_additions", {"size": 10}, now=NOW)
         publish_smart_mix(self.engine, plan["id"], now=NOW + 1)
         pid = self.store.get("smart_mix_managed")["recent_additions"]["id"]
-        self.plex.states[pid]["items"].append({"id": "20", "item_id": "999"})
+        self.plex.states[pid]["items"].append({"id": "999", "item_id": "999"})
 
         next_plan = preview_smart_mix(self.engine, "recent_additions", {"size": 10}, now=NOW + 2)
-        self.assertTrue(any("手动修改" in message for message in next_plan["blocked"]))
+        self.assertEqual([], next_plan["blocked"])
+        publish_smart_mix(self.engine, next_plan["id"], now=NOW + 3)
+        self.assertNotIn("999", {row["id"] for row in self.plex.states[pid]["items"]})
 
     def test_new_smart_mix_can_be_rolled_back_without_touching_other_playlists(self):
         from helper.smart_mix_web import preview_smart_mix, publish_smart_mix

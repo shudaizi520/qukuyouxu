@@ -487,7 +487,7 @@ def attach_routes(app, store, engine, body, ensure_idle):
             track_id = str(local.get("id") or "")
             if track_id not in wanted:
                 continue
-            items.append({"id": track_id, "title": str(local.get("title") or source.get("title") or ""), "artist": str(local.get("artist") or source.get("artist") or ""), "methods": ["metadata"], "origins": group.get("origins") or []})
+            items.append({"id": track_id, "title": str(local.get("title") or source.get("title") or ""), "artist": str(local.get("artist") or source.get("artist") or ""), "album": str(local.get("album") or source.get("album") or ""), "methods": ["metadata"], "origins": group.get("origins") or []})
         offset, limit = max(0, offset), max(1, min(100, limit))
         chunk = items[offset:offset + limit]
         next_offset = offset + limit if offset + limit < len(items) else None

@@ -77,6 +77,9 @@ class FakePlex:
             row for row in self.states[str(pid)]["items"] if row["item_id"] not in wanted
         ]
 
+    def rename(self, pid, title):
+        self.states[str(pid)]["title"] = str(title)
+
     def move_item(self, pid, item_id, after_item_id):
         rows = self.states[str(pid)]["items"]
         moving = next(row for row in rows if row["item_id"] == str(item_id))
@@ -194,6 +197,28 @@ class SmartMixControlsV0420Tests(unittest.TestCase):
         self.assertEqual(managed["id"], result["playlist_id"])
         self.assertEqual(managed["id"], self.store.get("smart_mix_managed")["weekly"]["id"])
         self.assertFalse(weekly_auto_due(self.engine, monday + 60))
+
+    def test_next_smart_update_restores_an_owned_playlist_changed_in_plex(self):
+        from helper.smart_mix_web import preview_smart_mix, publish_smart_mix
+
+        managed = self.publish()
+        self.plex.states[managed["id"]]["title"] = "Plex 手工改名"
+        self.plex.states[managed["id"]]["items"] = [
+            {"id": "30", "item_id": "999"},
+        ]
+
+        plan = preview_smart_mix(
+            self.engine, "weekly", {"size": 10, "recent_days": 30}, now=NOW + 2
+        )
+        self.assertEqual([], plan["blocked"])
+        result = publish_smart_mix(self.engine, plan["id"], now=NOW + 3)
+
+        restored = self.plex.playlist_state(result["playlist_id"])
+        self.assertEqual("每周常听", restored["title"])
+        self.assertEqual(
+            {str(row["id"]) for row in plan["items"]},
+            {row["id"] for row in restored["items"]},
+        )
 
     def test_publish_accepts_plex_membership_when_server_keeps_its_own_order(self):
         from helper.smart_mix_web import preview_smart_mix, publish_smart_mix

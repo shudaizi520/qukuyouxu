@@ -10,7 +10,7 @@ async function action(fn){
  if(busy)return;busy=true;note('');
  try{await PCHUI.run(fn);await refresh();}catch(e){note(e.message,true);}finally{busy=false;schedulePolling();}
 }
-async function post(path,body){return (await request(path,'POST',body)).json();}
+async function post(path,body){const result=await(await request(path,'POST',body)).json();if(path==='/api/workflow/confirm')PCHAuth.invalidateCache(['library-summary','playlists']);return result;}
 function addText(el,tag,text,className){const n=document.createElement(tag);n.textContent=text;if(className)n.className=className;el.append(n);return n;}
 function blobDataUrl(blob){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result||''));r.onerror=()=>reject(Error('二维码读取失败'));r.readAsDataURL(blob);});}
 async function loadQQQR(){if(qqQrLoading)return;qqQrLoading=true;try{const r=await request('/api/qq-auth/qrcode');const data=await blobDataUrl(await r.blob());$('qqAuthQR').src=data;$('qqAuthQRWrap').hidden=false;}finally{qqQrLoading=false;}}
@@ -25,7 +25,7 @@ function renderQQAuth(auth,running){
 }
 async function refresh(skipPlexLink=false){
  if(polling)return;polling=true;
- try{current=await(await request('/api/workflow/status?release=2.0.9')).json();render(current);if(!libraryNavigationReady){libraryNavigationReady=true;revealLibraryTarget();}if(!skipPlexLink||!lastPlexLinkRefresh||Date.now()-lastPlexLinkRefresh>=PLEX_LINK_TTL_MS)await refreshPlexLink();return true;}finally{polling=false;}
+ try{const wasActive=workflowIsActive(),next=await(await request('/api/workflow/status?release=2.0.10')).json();current=next;if(wasActive&&!workflowDataIsActive(next))PCHAuth.invalidateCache(['library-summary','playlists']);render(current);if(!libraryNavigationReady){libraryNavigationReady=true;revealLibraryTarget();}if(!skipPlexLink||!lastPlexLinkRefresh||Date.now()-lastPlexLinkRefresh>=PLEX_LINK_TTL_MS)await refreshPlexLink();return true;}finally{polling=false;}
 }
 function render(data){
  const w=data.workflow,s=w.state||{},sum=w.summary||{},job=w.job||{},running=!!job.running,discovery=w.discovery||{};
@@ -109,6 +109,8 @@ function blockedReviewReasons(review){
  return [...new Set((review?.groups||[]).flatMap(group=>group.blocked||[]).filter(Boolean))];
 }
 const REVIEW_GROUP_ORDER=['主题精选','场景','心情','语种','曲风','版本','歌曲年代','专辑年代','其他'];
+const REVIEW_ACTION_ORDER=['create','update','unchanged','blocked'];
+const REVIEW_ACTION_LABELS={create:'可新建歌单',update:'已有歌单更新',unchanged:'无需变化',blocked:'暂不处理'};
 const REVIEW_THEME_DIMENSIONS={
  '网络热歌':'主题精选','KTV金曲':'主题精选','综艺现场':'主题精选','影视金曲':'主题精选','合唱精选':'主题精选',
  '开车精选':'场景','运动精选':'场景','工作陪伴':'场景','睡前舒缓':'场景',
@@ -118,9 +120,23 @@ function reviewGroupLabel(group){
  const labels={track_year:'歌曲年代',album_year:'专辑年代',language:'语种',genre:'曲风',version:'版本',主题:'主题精选',场景:'场景',心情:'心情'};
  return labels[group.dimension]||REVIEW_THEME_DIMENSIONS[group.title]||(group.kind==='theme'?'主题精选':'其他');
 }
+function reviewActionKind(group){
+ if(group.blocked?.length)return 'blocked';
+ if(group.action==='create'||!Number(group.existing_count||0))return 'create';
+ if(group.action==='append'||Number(group.add_count||0)>0)return 'update';
+ return 'unchanged';
+}
+function reviewChangeText(group,kind){
+ const existing=number(Number(group.existing_count||0)),added=number(Number(group.add_count||0)),count=number(Number(group.count||0));
+ if(kind==='create')return '新建 · '+count+' 首';
+ if(kind==='update')return '现有 '+existing+' 首 · 新增 '+added+' 首';
+ if(kind==='blocked')return '现有 '+existing+' 首 · 暂不处理';
+ return '现有 '+existing+' 首 · 无需变化';
+}
 function renderReview(review,running){
  $('reviewPanel').hidden=!review;if(!review){reviewId='';return;}
- const usableGroups=review.groups.filter(group=>!group.blocked.length);
+ $('reviewTitle').textContent='本次整理预览';
+ const usableGroups=review.groups.filter(group=>['create','update'].includes(reviewActionKind(group)));
  const blockedReasons=blockedReviewReasons(review);
  $('selectAll').disabled=!usableGroups.length;
  $('reviewMessage').textContent=review.expired?review.problem:'';
@@ -129,17 +145,19 @@ function renderReview(review,running){
  if(reviewId!==review.id){
   reviewId=review.id;$('reviewRows').replaceChildren();
   const groupRank=group=>{const rank=REVIEW_GROUP_ORDER.indexOf(reviewGroupLabel(group));return rank<0?REVIEW_GROUP_ORDER.length:rank;};
-  const grouped=[...usableGroups].sort((a,b)=>groupRank(a)-groupRank(b));
+  const actionRank=group=>REVIEW_ACTION_ORDER.indexOf(reviewActionKind(group));
+  const grouped=[...review.groups].sort((a,b)=>actionRank(a)-actionRank(b)||groupRank(a)-groupRank(b));
   let lastGroup='';
   for(const g of grouped){
-   const groupName=reviewGroupLabel(g);
-   if(groupName!==lastGroup){const heading=document.createElement('tr');heading.className='review-group-row';const cell=addText(heading,'th',groupName);cell.colSpan=4;cell.scope='rowgroup';$('reviewRows').append(heading);lastGroup=groupName;}
-   const tr=document.createElement('tr');const td=addText(tr,'td','');const box=document.createElement('input');box.type='checkbox';box.value=g.id;box.checked=!!g.default_selected;box.disabled=!!g.blocked.length;box.setAttribute('aria-label','同步 '+g.title);box.onchange=updateSelection;td.append(box);
-   addText(tr,'td',g.title);addText(tr,'td',number(g.count));const actionCell=addText(tr,'td','');const view=document.createElement('button');view.type='button';view.className='secondary evidence-button';view.textContent='查看歌曲';view.onclick=()=>action(()=>window.openThemeEvidence(g.id,false));actionCell.append(view);
+   const kind=reviewActionKind(g),groupName=REVIEW_ACTION_LABELS[kind];
+   if(groupName!==lastGroup){const heading=document.createElement('tr');heading.className='review-group-row review-action-row';heading.dataset.reviewSection=kind;const cell=addText(heading,'th',groupName);cell.colSpan=4;cell.scope='rowgroup';$('reviewRows').append(heading);lastGroup=groupName;}
+   const tr=document.createElement('tr');tr.dataset.reviewKind=kind;const td=addText(tr,'td','');
+   if(['create','update'].includes(kind)){const box=document.createElement('input');box.type='checkbox';box.value=g.id;box.checked=!!g.default_selected;box.setAttribute('aria-label',(kind==='create'?'创建 ':'更新 ')+g.title);box.onchange=updateSelection;td.append(box);}else addText(td,'span','—','review-no-action');
+   const titleCell=addText(tr,'td','');addText(titleCell,'strong',g.title);addText(titleCell,'small',reviewGroupLabel(g),'muted');
+   addText(tr,'td',reviewChangeText(g,kind),'review-change');const actionCell=addText(tr,'td','');const view=document.createElement('button');view.type='button';view.className='secondary evidence-button';view.textContent='查看歌曲';view.onclick=()=>action(()=>window.openThemeEvidence(g.id,false,g.kind));actionCell.append(view);
    $('reviewRows').append(tr);
   }
  }
- $('confirmReview').textContent=review.expired?'预览已过期':'创建选中歌单';
  $('refreshReview').className=review.expired?'primary':'secondary';
  $('confirmReview').disabled=running||review.expired||!usableGroups.length;updateSelection();
 }
@@ -177,7 +195,15 @@ async function openUnclassified(){
  $('unclassifiedPanel').hidden=false;await loadUnclassified(0);$('unclassifiedPanel').scrollIntoView({block:'start'});
 }
 function selected(){return [...$('reviewRows').querySelectorAll('input:checked:not(:disabled)')].map(n=>n.value);}
-function updateSelection(){const all=[...$('reviewRows').querySelectorAll('input:not(:disabled)')];const n=selected().length;$('selectedCount').textContent=n?'已选择 '+n+' 个歌单':'';$('selectAll').checked=!!all.length&&n===all.length;$('selectAll').indeterminate=n>0&&n<all.length;$('confirmReview').disabled=!!current?.workflow?.job?.running||!!current?.workflow?.review?.expired||!n;}
+function updateSelection(){
+ const all=[...$('reviewRows').querySelectorAll('input:not(:disabled)')],checked=all.filter(input=>input.checked);
+ const create=checked.filter(input=>input.closest('tr')?.dataset.reviewKind==='create').length,update=checked.filter(input=>input.closest('tr')?.dataset.reviewKind==='update').length,n=checked.length;
+ $('selectedCount').textContent=n?'已选择：'+(create?'新建 '+create+' 个':'')+(create&&update?'，':'')+(update?'更新 '+update+' 个':''):'尚未选择要执行的变化';
+ $('selectAll').checked=!!all.length&&n===all.length;$('selectAll').indeterminate=n>0&&n<all.length;
+ const review=current?.workflow?.review,expired=!!review?.expired;
+ $('confirmReview').textContent=expired?'预览已过期':create&&update?'创建 '+create+' 个新歌单并更新 '+update+' 个已有歌单':create?'创建 '+create+' 个新歌单':update?'更新 '+update+' 个已有歌单':'请选择要执行的变化';
+ $('confirmReview').disabled=!!current?.workflow?.job?.running||expired||!n;
+}
 async function run(){
  if(!current)return;
  if(current.workflow.state.phase==='review'){$('reviewPanel').scrollIntoView({block:'start'});return;}
@@ -209,7 +235,8 @@ $('downloadError').onclick=()=>action(async()=>{const r=await request('/api/work
 
 
 function stopPolling(){clearTimeout(timer);timer=null;}
-function workflowIsActive(){const w=current?.workflow||{},phase=w.state?.phase||'',qq=w.qq_auth?.phase||'';return !!w.job?.running||['checking','enriching','planning','publishing','external'].includes(phase)||['starting','qr_ready','scanned','confirming'].includes(qq);}
+function workflowDataIsActive(data){const w=data?.workflow||{},phase=w.state?.phase||'',qq=w.qq_auth?.phase||'';return !!w.job?.running||['checking','enriching','planning','publishing','external'].includes(phase)||['starting','qr_ready','scanned','confirming'].includes(qq);}
+function workflowIsActive(){return workflowDataIsActive(current);}
 function schedulePolling(delay=workflowIsActive()?ACTIVE_POLL_MS:IDLE_POLL_MS){stopPolling();if(!PCHAuth.status().authenticated||document.hidden)return;timer=setTimeout(pollOnce,delay);}
 async function pollOnce(){timer=null;if(!PCHAuth.status().authenticated||document.hidden)return;try{await refresh(true);}catch(e){note(e.message,true);}schedulePolling();}
 async function startPolling(){stopPolling();if(!PCHAuth.status().authenticated||document.hidden)return;try{await refresh(true);}catch(e){note(e.message,true);}schedulePolling();}
@@ -232,7 +259,7 @@ function renderLibraryPresentation(w,phase,running){
  }else{$('sourceStepState').textContent='QQ 状态待确认';}
  $('reviewEmpty').hidden=discovery.phase!=='empty';
  $('attentionLink').textContent='查看待核对'+(w.summary?.review_count?' · '+number(w.summary.review_count):'');
- if(discovery.phase==='choose')$('taskTitle').textContent='发现可创建的歌单';
+ if(discovery.phase==='choose')$('taskTitle').textContent='分类整理预览';
  else if(discovery.phase==='empty')$('taskTitle').textContent='分析完成';
  else if(discovery.phase==='before_analysis'&&!w.needs_setup)$('taskTitle').textContent='整理任务';
  else if(phase==='ready'){

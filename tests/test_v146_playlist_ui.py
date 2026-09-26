@@ -77,6 +77,18 @@ class PlaylistSectionUiTests(unittest.TestCase):
         self.assertIn("只删除歌单，不删除音乐文件", script)
         self.assertIn("/api/playlists/rename", script)
 
+    def test_plex_modified_playlists_follow_their_source_authority(self):
+        script = (STATIC / "playlists.js").read_text(encoding="utf-8")
+        open_playlist = script.split("async function openPlaylist", 1)[1].split(
+            "async function openFirstAvailable", 1
+        )[0]
+
+        self.assertIn("detail.externally_modified", open_playlist)
+        self.assertIn("detail.plex_synced", open_playlist)
+        self.assertIn("Plex 修改已同步", open_playlist)
+        self.assertIn("下次更新会继续按系统规则维护", open_playlist)
+        self.assertNotIn("Plex 中已修改，当前为只读浏览", open_playlist)
+
     def test_liked_writes_are_serialized_and_profile_guarded_with_rollback(self):
         script = (STATIC / "playlists.js").read_text(encoding="utf-8")
         liked = script.split("async function setLiked(track,liked)", 1)[1].split(

@@ -6,7 +6,11 @@ import json
 import time
 
 from .external_match import apply_external_confirmation, match_external_tracks
-from .external_playlist_sync import create_or_reconcile_external_playlist, delete_owned_external_playlist
+from .clients import PlexError
+from .external_playlist_sync import (
+    create_or_reconcile_external_playlist, delete_owned_external_playlist,
+    external_marker, playlist_fingerprint,
+)
 from .external_sources import ExternalSourceError, parse_uploaded_playlist, recognize_source, refresh_needs_confirmation
 from .external_store import ExternalRepository
 from .match import Catalog
@@ -65,6 +69,24 @@ class ExternalPlaylistService:
             "finished_at": self.clock(), "message": str(message or "")[:300], **payload,
         })
 
+    def _adopt_live_managed(self, source, plex):
+        managed = self.repository.get_managed(self.profile_id, source["id"])
+        if not managed:
+            return None
+        try:
+            state = plex.playlist_state(managed["id"])
+        except PlexError:
+            return managed
+        marker = external_marker(self.store.get("installation_id"), source["id"])
+        changed = (
+            str(state.get("title") or "") != str(managed.get("title") or "")
+            or playlist_fingerprint(state) != managed.get("fingerprint")
+        )
+        if marker not in str(state.get("summary") or "") or not changed:
+            return managed
+        from .playlist_hub import adopt_external_playlist_state
+        return adopt_external_playlist_state(self.store, source["id"], managed, state)
+
     def _match_with_catalog(self, source_id, tracks, catalog_revision):
         source_tracks = self.repository.list_tracks(self.profile_id, source_id)
         previous = {
@@ -77,7 +99,13 @@ class ExternalPlaylistService:
         return rows
 
     def _apply_snapshot(self, source, snapshot, *, force, started, kind):
-        old_count = len(self.repository.list_tracks(self.profile_id, source["id"]))
+        old_tracks = self.repository.list_tracks(self.profile_id, source["id"])
+        old_count = len(old_tracks)
+        old_track_keys = {str(row.get("source_track_key") or "") for row in old_tracks}
+        legacy_managed = self.repository.get_managed(self.profile_id, source["id"])
+        needs_legacy_baseline = bool(
+            legacy_managed and not isinstance(legacy_managed.get("source_ids"), list)
+        )
         new_count = len(snapshot.get("tracks") or [])
         if not force and refresh_needs_confirmation(old_count, new_count):
             self.repository.set_needs_confirmation(self.profile_id, source["id"], True)
@@ -87,12 +115,35 @@ class ExternalPlaylistService:
                 "old_count": old_count, "new_count": new_count,
             }
         plex, tracks, catalog_revision = self._catalog()
+        self._adopt_live_managed(source, plex)
         previous = {
             row["source_track_key"]: row
             for row in self.repository.list_matches(self.profile_id, source["id"])
             if row.get("manual")
         }
         rows = match_external_tracks(snapshot.get("tracks") or [], tracks, previous, catalog_revision)
+        if needs_legacy_baseline:
+            # Upgrade records predate source_ids. Recover only IDs belonging to
+            # tracks that existed before this refresh; otherwise a newly added
+            # source track absent from Plex would be mistaken for a manual
+            # exclusion. If none can be recovered, an explicit empty baseline
+            # is safer: live Plex members become inclusions and new source
+            # matches remain eligible for addition.
+            baseline, seen = [], set()
+            for row in rows:
+                track_id = str(row.get("plex_track_id") or "")
+                if (str(row.get("source_track_key") or "") in old_track_keys
+                        and row.get("status") == "matched"
+                        and track_id.isdigit() and track_id not in seen):
+                    baseline.append(track_id)
+                    seen.add(track_id)
+            current_managed = self.repository.get_managed(self.profile_id, source["id"])
+            if current_managed and not isinstance(current_managed.get("source_ids"), list):
+                self.repository.save_managed(
+                    self.profile_id, source["id"],
+                    {**current_managed, "source_ids": baseline},
+                )
+                self._adopt_live_managed(source, plex)
         source = self.repository.replace_snapshot_and_matches(
             self.profile_id, source["id"], snapshot, self.clock(), rows, catalog_revision,
         )
@@ -101,7 +152,7 @@ class ExternalPlaylistService:
         return {"source_id": source["id"], "status": "updated", "counts": _counts(rows), "sync": sync}
 
     def _sync_managed(self, source, plex, rows):
-        managed = self.repository.get_managed(self.profile_id, source["id"])
+        managed = self._adopt_live_managed(source, plex)
         if not managed:
             return None
         if managed.get("order_attention"):
@@ -117,6 +168,7 @@ class ExternalPlaylistService:
                 seen.add(track_id)
         if not desired:
             return {"status": "no_matches", "playlist_id": managed["id"]}
+        source_ids = list(desired)
         from .playlist_hub import apply_manual_edits
         desired = apply_manual_edits(self.store, "external", source["id"], desired)
         if not desired:
@@ -125,6 +177,7 @@ class ExternalPlaylistService:
         after, revised = create_or_reconcile_external_playlist(
             plex, self.store.get("installation_id"), sync_source, managed, desired
         )
+        revised = {**revised, "source_ids": source_ids}
         self.repository.save_managed(self.profile_id, source["id"], revised)
         return {
             "status": "attention" if revised.get("order_attention") else "updated",
@@ -241,6 +294,7 @@ class ExternalPlaylistService:
         if not title or len(title) > 80 or any(ord(char) < 32 for char in title):
             raise ValueError("Plex 歌单名称无效")
         plex, tracks, catalog_revision = self._catalog()
+        self._adopt_live_managed(source, plex)
         rows = self.repository.list_matches(self.profile_id, source["id"])
         if not rows or any(row.get("catalog_revision") != catalog_revision for row in rows):
             rows = self._match_with_catalog(source["id"], tracks, catalog_revision)
@@ -255,6 +309,7 @@ class ExternalPlaylistService:
                 seen.add(track_id)
         if not desired:
             raise _safety("没有可靠匹配的本地歌曲，不能创建 Plex 歌单")
+        source_ids = list(desired)
         from .playlist_hub import apply_manual_edits
         desired = apply_manual_edits(self.store, "external", source["id"], desired)
         if not desired:
@@ -263,6 +318,7 @@ class ExternalPlaylistService:
         after, record = create_or_reconcile_external_playlist(
             plex, self.store.get("installation_id"), {**source, "title": title}, managed, desired
         )
+        record = {**record, "source_ids": source_ids}
         self.repository.save_managed(self.profile_id, source["id"], record)
         status = "attention" if record.get("order_attention") else "completed"
         self._record(source["id"], "publish", status, started, "发布完成", playlist_id=after["id"])
@@ -354,6 +410,10 @@ class ExternalPlaylistService:
                 )
             }})
         managed = self.repository.get_managed(self.profile_id, source["id"])
+        if managed:
+            managed = self._adopt_live_managed(
+                source, self.plex_factory(self._settings())
+            )
         return {
             **source, "counts": _counts(public_tracks), "tracks": public_tracks,
             "managed": ({"id": managed["id"], "title": managed["title"], "order_attention": bool(managed.get("order_attention"))} if managed else None),

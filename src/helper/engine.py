@@ -177,9 +177,10 @@ class Engine(RenamingMixin, DailyMixin):
             if cid in managed:
                 try:
                     current=p.playlist_state(managed[cid]['id'])
-                    if self.marker(cid) not in current.get('summary','') or fingerprint(current)!=managed[cid]['fingerprint']:
-                        blocked.append('歌单被手动修改或所有权标记变化：暂停，不覆盖')
-                    exists=set(state_ids(current));add=[k for k in desired if k not in exists];action='append' if add else 'unchanged'
+                    if self.marker(cid) not in current.get('summary',''):
+                        blocked.append('歌单所有权标记变化：暂停，不覆盖')
+                    exists=set(state_ids(current));add=[k for k in desired if k not in exists]
+                    action='append' if add or current.get('title')!=title else 'unchanged'
                 except Exception as exc:blocked.append('读取程序管理歌单失败：'+safe_error(exc))
             elif any(x.get('title')==title for x in playlists):
                 blocked.append('已存在同名未托管歌单：不会接管或覆盖')
@@ -236,7 +237,8 @@ class Engine(RenamingMixin, DailyMixin):
                     before=p.playlist_state(g['before']['id'])
                     if fingerprint(before)!=fingerprint(g['before']) or self.marker(cid) not in before.get('summary',''):raise SafetyError('预览后歌单被修改，停止覆盖')
                 elif any(x.get('title')==g['title'] for x in p.playlists()):raise SafetyError('预览后出现同名歌单，不接管')
-                if not g['add'] and before:
+                rename_needed=bool(before and before.get('title')!=g['title'])
+                if not g['add'] and before and not rename_needed:
                     result['unchanged']+=1;src['approved']=True;continue
             except Exception as exc:
                 result['errors'].append(g['title']+'：'+safe_error(exc));continue
@@ -244,7 +246,20 @@ class Engine(RenamingMixin, DailyMixin):
             self._save_snapshot(snap)
             try:
                 if before:
-                    p.append(before['id'],g['add']);after=p.playlist_state(before['id'])
+                    working=before
+                    if before.get('title')!=g['title']:
+                        p.rename(before['id'],g['title'])
+                        predicate=lambda state:(state.get('title')==g['title'] and
+                                                state_ids(state)==state_ids(before) and
+                                                self.marker(cid) in state.get('summary',''))
+                        if hasattr(p,'read_playlist_until'):
+                            working=p.read_playlist_until(before['id'],predicate)
+                        else:
+                            working=p.playlist_state(before['id'])
+                        if not working or not predicate(working):raise SafetyError('歌单改名后回读与预期不一致')
+                    if g['add']:
+                        p.append(before['id'],g['add']);after=p.playlist_state(before['id'])
+                    else:after=working
                 else:after=p.create(g['title'],g['desired'],self.marker(cid))
                 expected=(state_ids(before) if before else [])+g['add']
                 if state_ids(after)!=expected or after['title']!=g['title'] or self.marker(cid) not in after.get('summary',''):

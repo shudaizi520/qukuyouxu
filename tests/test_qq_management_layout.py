@@ -270,9 +270,10 @@ def test_library_status_text_is_neutral_and_fixed_labels_do_not_change():
     mobile_metrics = _rule(css, "body[data-management-page=library] .library-metrics")
 
     assert '<div class="management-preference-label"><h2>整理任务</h2></div>' in html
-    assert '<div class="management-preference-label"><h2>歌曲与来源</h2></div>' in html
+    assert 'id="themeEvidence" class="song-preview-drawer"' in html
+    assert '<span class="song-preview-eyebrow">歌曲预览</span>' in html
     assert html.index('<h2>整理任务</h2>') < html.index('id="taskTitle"')
-    assert html.index('<h2>歌曲与来源</h2>') < html.index('id="themeEvidenceTitle"')
+    assert html.index('song-preview-eyebrow') < html.index('id="themeEvidenceTitle"')
     assert auth["color"] == "var(--management-text)"
     assert dot["display"] == "none"
     assert mobile_metrics["grid-template-columns"] == "repeat(2,minmax(0,1fr))"

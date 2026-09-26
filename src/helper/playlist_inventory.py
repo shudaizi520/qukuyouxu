@@ -133,11 +133,27 @@ def order_playlist_rows(rows):
 
 def merge_playlist_rows(assistant_rows, plex_rows):
     assistant_rows = [dict(row) for row in (assistant_rows or [])]
+    raw_native_by_id = {
+        str(row.get("ratingKey") or row.get("playlist_id") or ""): row
+        for row in (plex_rows or []) if isinstance(row, dict)
+    }
     native = normalize_native_playlist_rows(plex_rows)
     native_by_id = {row["playlist_id"]: row for row in native}
+    verified_external_ids = set()
     for row in assistant_rows:
-        live = native_by_id.get(str(row.get("playlist_id") or ""))
+        playlist_id = str(row.get("playlist_id") or "")
+        live = native_by_id.get(playlist_id)
         if not live:
+            continue
+        if row.get("source") == "external":
+            marker = str(row.get("_ownership_marker") or "")
+            summary = str((raw_native_by_id.get(playlist_id) or {}).get("summary") or "")
+            if not marker or marker not in summary:
+                continue
+            verified_external_ids.add(playlist_id)
+            row["title"] = live["title"]
+            row["count"] = live["count"]
+            row["updated_at"] = live["updated_at"]
             continue
         if row.get("count") is None:
             row["count"] = live["count"]
@@ -146,6 +162,8 @@ def merge_playlist_rows(assistant_rows, plex_rows):
     owned = {
         str(row.get("playlist_id")) for row in assistant_rows
         if str(row.get("playlist_id") or "")
+        and (row.get("source") != "external"
+             or str(row.get("playlist_id")) in verified_external_ids)
     }
     return order_playlist_rows([
         *assistant_rows,

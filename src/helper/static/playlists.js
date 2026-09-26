@@ -1,6 +1,6 @@
 import {createPlaylistWorkspace} from './playlist-workspace.js';
 import {createLibrarySearch} from './playlist-search.js';
-import {createPlaylistPlayer,normalizePlaybackTrack} from './playlist-player.js?v=2.0.9';
+import {createPlaylistPlayer,normalizePlaybackTrack} from './playlist-player.js?v=2.0.10';
 import {createNowPlaying} from './playlist-now-playing.js';
 import {createPlaylistSections} from './playlist-sections.js';
 import {createPlaylistArtwork} from './playlist-artwork.js';
@@ -19,6 +19,7 @@ let renderedTrackCount=0;
 const TRACK_BATCH_SIZE=80;
 let unavailablePlaylists=new Set();
 let loadedProfileId='';
+let loadedProfileCacheScope='';
 let playlistRequest=0;
 let profileRequest=0;
 let embeddedProfileRequest=0;
@@ -61,7 +62,7 @@ async function navigate(fn){
  try{return await fn();}
  catch(error){notify(error.message||'操作失败',true);}
 }
-async function json(path,method='GET',body){return (await PCHAuth.request(path,method,body)).json();}
+async function json(path,method='GET',body){const result=await(await PCHAuth.request(path,method,body)).json();if(method==='POST'&&path!=='/api/playlists/favorite/ensure')PCHAuth.invalidateCache(['playlists']);return result;}
 function profileArtworkScope(id){
  const p=profiles.find(row=>String(row.id)===String(id));
  return p?.account?.id&&p?.server?.machine&&p?.library?.id?[id,p.account.id,p.server.machine,p.library.id,p.created_at].join(':'):'';
@@ -209,9 +210,10 @@ function renderPlaylistList(){
  workspace.renderNavigation();
 }
 async function refreshPlaylistSidebar(){
- const requestId=profileRequest,data=await json('/api/playlists');
- if(requestId!==profileRequest)return;
- playlistArtwork.reset(loadedProfileId);playlists=Array.isArray(data.items)?data.items:[];renderPlaylistList();
+ const requestId=profileRequest,profileId=loadedProfileId,cacheScope=loadedProfileCacheScope;
+ PCHAuth.invalidateCache(['playlists']);
+ const result=await PCHAuth.cachedJson('/api/playlists',{tag:'playlists',freshMs:60_000,retainMs:900_000});
+ applyPlaylistSummary(result.value,requestId,profileId,cacheScope);
 }
 
 function setPlaylistLoading(value){
@@ -237,9 +239,12 @@ async function openPlaylist(item){
  notify('');setPlaylistLoading(true);workspace.show({type:'playlist',kind:item.kind,key:item.key,panel:'playlist'});
  try{
   const detail=await json('/api/playlists/'+encoded(item.kind)+'/'+encoded(item.key));if(requestId!==playlistRequest)return false;
-  current=item;tracks=Array.isArray(detail.tracks)?detail.tracks:[];filtered=tracks.slice();unavailablePlaylists.delete(item.kind+'\t'+item.key);
+  tracks=Array.isArray(detail.tracks)?detail.tracks:[];filtered=tracks.slice();unavailablePlaylists.delete(item.kind+'\t'+item.key);
+  if(detail.plex_synced){Object.assign(item,{title:detail.title||item.title,count:tracks.length,externally_modified:false});renderPlaylistList();}
+  else if(detail.externally_modified){Object.assign(item,{title:detail.title||item.title,count:tracks.length,externally_modified:true,can_rename:false,can_delete:false,can_add_tracks:false,can_remove_tracks:false});renderPlaylistList();}
+  current=item;
   if(item.kind==='favorite'){item.count=tracks.length;markFavoriteUnseen(false);renderPlaylistList();}
-  $('playlistTitle').textContent=detail.title;$('playlistSummary').textContent=tracks.length+' 首歌曲'+(item.smart?' · 歌曲由 Plex 规则生成':'');
+  $('playlistTitle').textContent=detail.title;$('playlistSummary').textContent=tracks.length+' 首歌曲'+(item.smart?' · 歌曲由 Plex 规则生成':'')+(detail.plex_synced?' · Plex 修改已同步':detail.externally_modified?' · Plex 中有手工修改，下次更新会继续按系统规则维护':'');
   playlistArtwork.paintTracks($('playlistHeroArtwork'),tracks);
   $('playlistManage').hidden=!item.manage_url;$('playlistManage').textContent=item.kind==='external'?'整理导入来源':'调整此歌单';
   $('playlistRename').hidden=!item.can_rename;$('playlistRemove').hidden=!item.can_delete;$('playlistPlayAll').disabled=!tracks.length;$('playlistEmpty').textContent=item.kind==='plex'?'已在 Plex 创建，歌单里还没有歌曲。可搜索歌曲后添加。':'歌单里还没有歌曲';renderTracks();
@@ -255,16 +260,26 @@ function openSection(section='smart'){
  playlistArtwork.placeholder($('playlistHeroArtwork'));
  playlistSections.renderSection(section);workspace.show({type:'section',section,panel:'section'});
 }
+function applyPlaylistSummary(data,requestId,profileId,cacheScope){
+ if(requestId!==profileRequest||profileId!==loadedProfileId||loadedProfileCacheScope!==cacheScope)return false;
+ playlistArtwork.reset(profileId);playlists=Array.isArray(data?.items)?data.items:[];
+ unavailablePlaylists=new Set();renderPlaylistList();return true;
+}
 async function loadPlaylists(preferred,requestId=profileRequest){
- const data=await json('/api/playlists');if(requestId!==profileRequest)return;
- playlistArtwork.reset(loadedProfileId);playlists=Array.isArray(data.items)?data.items:[];
- unavailablePlaylists=new Set();renderPlaylistList();
+ const profileId=loadedProfileId,cacheScope=loadedProfileCacheScope;
+ const result=await PCHAuth.cachedJson('/api/playlists',{
+  tag:'playlists',freshMs:60_000,retainMs:900_000,
+  onUpdate:data=>applyPlaylistSummary(data,requestId,profileId,cacheScope),
+ });
+ if(!applyPlaylistSummary(result.value,requestId,profileId,cacheScope))return;
  const selected=preferred?.kind&&playlists.find(row=>row.kind===preferred.kind&&row.key===preferred.key);
  if(selected&&selected.can_play){await openPlaylist(selected);return;}
  openSection(preferred?.section||'smart');
 }
 async function loadProfiles(){
- const data=await json('/api/plex/profiles');profiles=Array.isArray(data.items)?data.items.filter(row=>row.enabled):[];
+ const data=await json('/api/plex/profiles'),allProfiles=Array.isArray(data.items)?data.items:[];
+ window.PCHPageCache?.setProfiles(PCHAuth.status()?.username||'',allProfiles);
+ profiles=allProfiles.filter(row=>row.enabled);
  const selected=PCHAuth.profile()||String(data.active_profile_id||profiles[0]?.id||'');
  const select=$('playlistProfile');select.replaceChildren();
  for(const row of profiles){const option=document.createElement('option');option.value=row.id;option.textContent=profileLabel(row);select.append(option);}
@@ -277,15 +292,17 @@ function resetPlaylistView(){
  $('playlistManage').hidden=true;$('playlistRename').hidden=true;$('playlistRemove').hidden=true;$('playlistPlayAll').disabled=true;$('playlistEmpty').textContent='正在读取这个账户的歌单…';
 }
 function resetSession(){
- ++profileRequest;++playlistRequest;++embeddedProfileRequest;likedRequests.clear();loadedProfileId='';profiles=[];playlists=[];current=null;tracks=[];filtered=[];unavailablePlaylists=new Set();
+ ++profileRequest;++playlistRequest;++embeddedProfileRequest;likedRequests.clear();loadedProfileId='';loadedProfileCacheScope='';profiles=[];playlists=[];current=null;tracks=[];filtered=[];unavailablePlaylists=new Set();
  playlistArtwork.reset('');
  const renameDialog=$('playlistRenameDialog');if(renameDialog.open)renameDialog.close();
  const createDialog=$('playlistCreateDialog');if(createDialog.open)createDialog.close();
  playlistPlayer.stop();librarySearch.reset();setPlaylistLoading(false);resetPlaylistView();renderTracks();renderPlaylistList();setSidebarOpen(false);
 }
 async function switchProfile(profileId,persist=true){
- profileId=String(profileId||'');if(!profileId||profileId===loadedProfileId)return;
- const requestId=++profileRequest;++playlistRequest;likedRequests.clear();loadedProfileId=profileId;$('playlistProfile').value=profileId;
+ profileId=String(profileId||'');if(!profileId)return;
+ const cacheScope=window.PCHPageCache?.activate(profileId)||'';
+ if(profileId===loadedProfileId&&cacheScope===loadedProfileCacheScope)return;
+ const requestId=++profileRequest;++playlistRequest;likedRequests.clear();loadedProfileId=profileId;loadedProfileCacheScope=cacheScope;$('playlistProfile').value=profileId;
  playlistArtwork.reset(profileId);
  const renameDialog=$('playlistRenameDialog');if(renameDialog.open)renameDialog.close();
  const createDialog=$('playlistCreateDialog');if(createDialog.open)createDialog.close();
@@ -323,7 +340,8 @@ async function returnFromWorkspace(){
  const view=workspace.current();
  const preferred=view.type==='playlist'&&view.kind?{kind:view.kind,key:view.key}:view.type==='section'?{section:view.section}:current?{kind:current.kind,key:current.key}:null;
  const selected=await loadProfiles();
- if(selected&&selected!==loadedProfileId){await switchProfile(selected,false);return;}
+ const selectedScope=selected?(window.PCHPageCache?.activate(selected)||''):'';
+ if(selected&&(selected!==loadedProfileId||selectedScope!==loadedProfileCacheScope)){await switchProfile(selected,false);return;}
  const requestId=profileRequest;
  librarySearch.reset();setSidebarOpen(false);++playlistRequest;setPlaylistLoading(false);
  await loadPlaylists(preferred,requestId);
@@ -407,7 +425,7 @@ function mount(){
  });
  $('smartHubButton').onclick=()=>openSection('smart');$('libraryHubButton').onclick=()=>openSection('library');
  $('playlistSectionTitle').onclick=()=>{const section=workspace.current().section==='library'?'library':'smart';openWorkspacePage(section==='library'?'/library':'/mixes',section==='library'?'曲库整理设置':'智能歌单设置','tool',{type:'section',section});};
- $('customPlaylistRefresh').onclick=()=>action(()=>loadPlaylists(workspace.current(),profileRequest));
+ $('customPlaylistRefresh').onclick=()=>action(()=>{PCHAuth.invalidateCache(['playlists']);return loadPlaylists(workspace.current(),profileRequest);});
  $('customPlaylistCreate').onclick=openCreateDialog;
  $('mobileSettings').onclick=()=>openWorkspacePage('/settings','设置','system');
  $('playlistCreateConfirm').onclick=()=>action(confirmCreate);

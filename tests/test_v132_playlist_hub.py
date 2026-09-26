@@ -31,6 +31,59 @@ class PlaylistHubRowsTests(unittest.TestCase):
         self.assertEqual(2239, rows[0]["count"])
         self.assertEqual(123, rows[0]["updated_at"])
 
+    def test_external_playlist_uses_the_live_plex_title_and_count_in_navigation(self):
+        from helper.playlist_inventory import merge_playlist_rows
+
+        assistant = [
+            {
+                "source": "external", "kind": "external", "key": "qq-1",
+                "playlist_id": "77", "title": "网易云歌单", "count": 125,
+                "_ownership_marker": "[owned:external:qq-1]",
+            },
+            {
+                "source": "assistant", "kind": "category", "key": "base:国语",
+                "playlist_id": "88", "title": "国语", "count": 100,
+            },
+        ]
+        plex = [
+            {
+                "ratingKey": "77", "playlistType": "audio",
+                "title": "网易云歌单123", "leafCount": "126",
+                "summary": "[owned:external:qq-1]",
+            },
+            {
+                "ratingKey": "88", "playlistType": "audio",
+                "title": "Plex 手工改过的国语", "leafCount": "99",
+            },
+        ]
+
+        rows = merge_playlist_rows(assistant, plex)
+        external = next(row for row in rows if row["kind"] == "external")
+        category = next(row for row in rows if row["kind"] == "category")
+
+        self.assertEqual("网易云歌单123", external["title"])
+        self.assertEqual(126, external["count"])
+        self.assertEqual("国语", category["title"])
+        self.assertEqual(100, category["count"])
+
+    def test_external_playlist_never_adopts_an_unmarked_reused_plex_id(self):
+        from helper.playlist_inventory import merge_playlist_rows
+
+        rows = merge_playlist_rows([{
+            "source": "external", "kind": "external", "key": "qq-1",
+            "playlist_id": "77", "title": "原导入歌单", "count": 10,
+            "_ownership_marker": "[owned:external:qq-1]",
+        }], [{
+            "ratingKey": "77", "playlistType": "audio", "title": "用户自己的歌单",
+            "leafCount": "99", "summary": "没有本系统标记",
+        }])
+
+        external = next(row for row in rows if row["kind"] == "external")
+        native = next(row for row in rows if row["kind"] == "plex")
+        self.assertEqual("原导入歌单", external["title"])
+        self.assertEqual(10, external["count"])
+        self.assertEqual("用户自己的歌单", native["title"])
+
     def setUp(self):
         from helper.external_store import ExternalRepository
         from helper.profiles import ProfileRegistry
@@ -304,6 +357,26 @@ class PlaylistHubPlaybackTests(unittest.TestCase):
         self.assertEqual([180, 200], [row["duration"] for row in result["tracks"]])
         self.assertEqual("/library/metadata/10/thumb/1", result["tracks"][0]["thumb"])
 
+    def test_detail_keeps_a_marked_playlist_readable_after_plex_changes_it(self):
+        from helper.playlist_hub import playlist_detail
+
+        self.state["title"] = "Plex 中的新名字"
+
+        result = playlist_detail(self.engine, "daily", "daily")
+
+        self.assertEqual("Plex 中的新名字", result["title"])
+        self.assertEqual("每日推荐", result["recorded_title"])
+        self.assertTrue(result["externally_modified"])
+        self.assertEqual(["10", "20"], [row["id"] for row in result["tracks"]])
+
+    def test_writes_stay_blocked_after_a_marked_playlist_changes_in_plex(self):
+        from helper.playlist_hub import edit_playlist_track
+
+        self.state["title"] = "Plex 中的新名字"
+
+        with self.assertRaisesRegex(Exception, "已在 Plex 中被修改"):
+            edit_playlist_track(self.engine, "daily", "daily", "10", "remove")
+
     def test_imported_playlist_rename_updates_its_managed_record(self):
         from helper.external_playlist_sync import external_marker, playlist_fingerprint
         from helper.external_store import ExternalRepository
@@ -333,6 +406,137 @@ class PlaylistHubPlaybackTests(unittest.TestCase):
         self.assertEqual("新名字", managed["title"])
         self.assertEqual(playlist_fingerprint(self.state), managed["fingerprint"])
         self.assertEqual(["10", "20"], [row["id"] for row in self.state["items"]])
+
+    def test_imported_playlist_adopts_live_plex_changes_as_manual_overrides(self):
+        from helper.external_playlist_sync import external_marker, playlist_fingerprint
+        from helper.external_store import ExternalRepository
+        from helper.playlist_hub import apply_manual_edits, playlist_detail
+
+        self.store.set("catalog", [
+            *self.store.get("catalog"),
+            {"id": "30", "title": "手工加入", "artist": "丙", "available": True},
+        ])
+        repository = ExternalRepository(self.store)
+        source = repository.upsert_source("default", {
+            "provider": "qq", "external_id": "adopt-1", "url": "https://y.qq.com/adopt-1",
+            "title": "导入歌单", "revision": "r1", "tracks": [
+                {"source_track_key": "a", "position": 0, "title": "第一首", "artists": ["甲"]},
+                {"source_track_key": "b", "position": 1, "title": "第二首", "artists": ["乙"]},
+            ],
+        }, 4_000)
+        repository.replace_matches("default", source["id"], [
+            {"source_track_key": "a", "status": "matched", "plex_track_id": "10"},
+            {"source_track_key": "b", "status": "matched", "plex_track_id": "20"},
+        ], "catalog-r1")
+        marker = external_marker(self.store.get("installation_id"), source["id"])
+        recorded = {
+            "id": "900", "title": "导入歌单", "summary": marker + "\n由曲库有序管理",
+            "items": [{"id": "10", "item_id": "1"}, {"id": "20", "item_id": "2"}],
+        }
+        repository.save_managed("default", source["id"], {
+            "id": "900", "title": "导入歌单",
+            "fingerprint": playlist_fingerprint(recorded), "revision": "r1",
+        })
+        self.state.update({
+            "title": "Plex 中的新名字", "summary": recorded["summary"],
+            "items": [{"id": "10", "item_id": "1"}, {"id": "30", "item_id": "3"}],
+        })
+
+        result = playlist_detail(self.engine, "external", source["id"])
+
+        managed = repository.get_managed("default", source["id"])
+        self.assertEqual("Plex 中的新名字", result["title"])
+        self.assertTrue(result["plex_synced"])
+        self.assertFalse(result["externally_modified"])
+        self.assertEqual("Plex 中的新名字", managed["title"])
+        self.assertEqual(playlist_fingerprint(self.state), managed["fingerprint"])
+        self.assertEqual(["10", "30"], apply_manual_edits(
+            self.store, "external", source["id"], ["10", "20"]
+        ))
+
+    def test_imported_playlist_uses_last_source_baseline_when_matches_are_temporarily_empty(self):
+        from helper.external_playlist_sync import external_marker, playlist_fingerprint
+        from helper.external_store import ExternalRepository
+        from helper.playlist_hub import apply_manual_edits, playlist_detail
+
+        self.store.set("catalog", [
+            *self.store.get("catalog"),
+            {"id": "30", "title": "手工加入", "artist": "丙", "available": True},
+        ])
+        repository = ExternalRepository(self.store)
+        source = repository.upsert_source("default", {
+            "provider": "qq", "external_id": "empty-1", "url": "https://y.qq.com/empty-1",
+            "title": "导入歌单", "revision": "r1", "tracks": [
+                {"source_track_key": "missing", "position": 0, "title": "暂未匹配", "artists": ["甲"]},
+            ],
+        }, 4_000)
+        marker = external_marker(self.store.get("installation_id"), source["id"])
+        recorded = {
+            "id": "900", "title": "导入歌单", "summary": marker,
+            "items": [{"id": "10", "item_id": "1"}, {"id": "20", "item_id": "2"}],
+        }
+        repository.save_managed("default", source["id"], {
+            "id": "900", "title": "导入歌单", "source_ids": ["10", "20"],
+            "fingerprint": playlist_fingerprint(recorded), "revision": "r1",
+        })
+        self.state.update({
+            "title": "导入歌单", "summary": marker,
+            "items": [{"id": "10", "item_id": "1"}, {"id": "30", "item_id": "3"}],
+        })
+
+        playlist_detail(self.engine, "external", source["id"])
+
+        self.assertEqual(["10", "30"], apply_manual_edits(
+            self.store, "external", source["id"], ["10", "20"]
+        ))
+
+    def test_upgraded_import_defers_adoption_until_its_source_baseline_is_known(self):
+        from helper.external_playlist_sync import external_marker, playlist_fingerprint
+        from helper.external_store import ExternalRepository
+        from helper.playlist_hub import apply_manual_edits, playlist_detail
+
+        repository = ExternalRepository(self.store)
+        self.store.set("catalog", [
+            *self.store.get("catalog"),
+            {"id": "30", "title": "Plex 手工加入", "artist": "丙", "available": True},
+        ])
+        source = repository.upsert_source("default", {
+            "provider": "qq", "external_id": "upgrade-empty", "url": "https://y.qq.com/upgrade-empty",
+            "title": "旧版导入歌单", "revision": "r1", "tracks": [
+                {"source_track_key": "a", "position": 0, "title": "第一首", "artists": ["甲"]},
+                {"source_track_key": "b", "position": 1, "title": "第二首", "artists": ["乙"]},
+            ],
+        }, 4_000)
+        marker = external_marker(self.store.get("installation_id"), source["id"])
+        recorded = {
+            "id": "900", "title": "旧版导入歌单", "summary": marker,
+            "items": [{"id": "10", "item_id": "1"}, {"id": "20", "item_id": "2"}],
+        }
+        repository.save_managed("default", source["id"], {
+            "id": "900", "title": "旧版导入歌单",
+            "fingerprint": playlist_fingerprint(recorded), "revision": "r1",
+        })
+        self.state.update({
+            "title": "Plex 新名字", "summary": marker,
+            "items": [{"id": "10", "item_id": "1"}, {"id": "30", "item_id": "3"}],
+        })
+
+        deferred = playlist_detail(self.engine, "external", source["id"])
+
+        self.assertFalse(deferred["plex_synced"])
+        self.assertTrue(deferred["externally_modified"])
+        self.assertNotIn("external:" + source["id"], self.store.get("playlist_manual_edits", {}))
+
+        repository.replace_matches("default", source["id"], [
+            {"source_track_key": "a", "status": "matched", "plex_track_id": "10"},
+            {"source_track_key": "b", "status": "matched", "plex_track_id": "20"},
+        ], "catalog-r1")
+        adopted = playlist_detail(self.engine, "external", source["id"])
+
+        self.assertTrue(adopted["plex_synced"])
+        self.assertEqual(["10", "30"], apply_manual_edits(
+            self.store, "external", source["id"], ["10", "20"]
+        ))
 
     def test_detail_uses_only_selected_catalog_rows(self):
         from helper.playlist_hub import playlist_detail

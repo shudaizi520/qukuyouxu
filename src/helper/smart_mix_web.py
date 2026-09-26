@@ -192,8 +192,7 @@ def set_smart_mix_schedule(engine, enabled, now=None):
                 current = plex.playlist_state(record["id"])
                 if (record.get("scope") != engine.daily_scope()
                         or record.get("machine") != plex.identity()["machine"]
-                        or engine.marker("smart:" + kind) not in current.get("summary", "")
-                        or fingerprint(current) != record.get("fingerprint")):
+                        or engine.marker("smart:" + kind) not in current.get("summary", "")):
                     raise SafetyError("已有智能歌单被手动修改或所属资料库变化，不能自动更新")
             settings["auto_enabled"] = True
             settings["weekly_auto_enabled"] = True
@@ -250,7 +249,7 @@ def preview_smart_mix(engine, kind, options=None, now=None):
                 if managed.get("scope") != engine.daily_scope() or managed.get("machine") != identity["machine"]:
                     raise SafetyError("智能歌单所属账户、服务器或资料库已变化")
                 before = plex.playlist_state(managed["id"])
-                if marker not in before.get("summary", "") or fingerprint(before) != managed.get("fingerprint"):
+                if marker not in before.get("summary", ""):
                     raise SafetyError("歌单被手动修改或管理标记变化，不会覆盖")
             except Exception as exc:
                 blocked.append(safe_error(exc))
@@ -321,7 +320,6 @@ def publish_smart_mix(engine, plan_id, now=None):
             if (
                 not managed or managed.get("id") != before["id"]
                 or fingerprint(current) != fingerprint(before)
-                or fingerprint(current) != managed.get("fingerprint")
                 or marker not in current.get("summary", "")
             ):
                 raise SafetyError("歌单在预览后被手动修改，不会覆盖")
@@ -338,7 +336,24 @@ def publish_smart_mix(engine, plan_id, now=None):
         engine._save_snapshot(snapshot)
         try:
             if before:
-                after = sync_owned_items(plex, before, ids)
+                current = before
+                if current.get("title") != plan["title"]:
+                    previous_ids = state_ids(current)
+                    plex.rename(current["id"], plan["title"])
+                    predicate = lambda row: (
+                        row.get("title") == plan["title"]
+                        and state_ids(row) == previous_ids
+                        and marker in row.get("summary", "")
+                    )
+                    if hasattr(plex, "read_playlist_until"):
+                        current = plex.read_playlist_until(
+                            current["id"], predicate,
+                        )
+                    else:
+                        current = plex.playlist_state(current["id"])
+                    if not current or not predicate(current):
+                        raise SafetyError("智能歌单改名后回读未确认，停止更新成员")
+                after = sync_owned_items(plex, current, ids)
             else:
                 after = plex.create(
                     plan["title"], ids, marker,
