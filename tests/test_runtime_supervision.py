@@ -114,3 +114,25 @@ def test_lifespan_closes_runtime_when_application_body_raises(tmp_path):
     asyncio.run(fail_inside_lifespan())
 
     assert runtime.stop.is_set()
+
+
+def test_disable_background_automation_keeps_preview_scheduler_stopped(tmp_path, monkeypatch):
+    from helper.store import Store
+    from helper.web import create_app
+
+    monkeypatch.setenv("DISABLE_BACKGROUND_AUTOMATION", "1")
+    app = create_app(store=Store(tmp_path))
+    runtime = app.state.profile_runtime
+    cycles = []
+    runtime.scheduler_interval = 0.01
+    runtime.run_due = lambda: cycles.append(time.monotonic())
+
+    async def inspect_lifespan():
+        async with app.router.lifespan_context(app):
+            await asyncio.sleep(0.05)
+            assert cycles == []
+            assert runtime.scheduler_status()["alive"] is False
+
+    asyncio.run(inspect_lifespan())
+
+    assert runtime.stop.is_set()

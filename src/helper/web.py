@@ -87,6 +87,9 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
         base_store.set('auth_bootstrap_token', None)
     runtime = ProfileRuntime(base_store, profiles)
     engine = engine or ActiveEngineProxy(runtime, profiles)
+    background_automation_enabled = bool(start_scheduler) and str(
+        os.environ.get('DISABLE_BACKGROUND_AUTOMATION', '')
+    ).strip().lower() not in {'1', 'true', 'yes', 'on'}
     attempts = {}
     attempt_lock = threading.Lock()
 
@@ -99,7 +102,7 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
         anyio.to_thread.current_default_thread_limiter().total_tokens = 8
         lockfile = None
         try:
-            if start_scheduler:
+            if background_automation_enabled:
                 import fcntl
                 lockfile = open(store.root / '.instance.lock', 'a')
                 fcntl.flock(lockfile, fcntl.LOCK_EX | fcntl.LOCK_NB)
