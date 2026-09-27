@@ -113,6 +113,58 @@ def test_scheduler_health_maps_normal_running_retrying_dead_and_stale(tmp_path):
     )["state"] == "error"
 
 
+def test_scheduler_health_reports_safety_pause_as_attention_not_retry(tmp_path):
+    from helper.automation import PROFILE_STATE_KEY
+    from helper.scoped_store import ScopedStore
+    from helper.status_summary import scheduler_health
+    from helper.store import Store
+
+    now = 10_000.0
+    store = ScopedStore(Store(tmp_path), "default")
+    store.set(PROFILE_STATE_KEY, {"tasks": {"smart": {"retry_at": now + 300}}})
+    store.set("smart_mix_settings", {
+        "auto_enabled": True,
+        "auto_paused_reasons": {"weekly": "上一次智能歌单写入结果待核对，禁止重复写入"},
+        "auto_retry_state": {"weekly": {"failures": 5, "next_retry_at": now + 300}},
+    })
+    healthy = {
+        "alive": True, "heartbeat_at": now - 10, "last_error_at": None,
+        "last_error": "", "consecutive_failures": 0,
+    }
+
+    result = scheduler_health(_Runtime(healthy), store, _Engine(), now)
+
+    assert result["state"] == "attention"
+    assert result["attention"] == [
+        {"kind": "weekly", "message": "上一次智能歌单写入结果待核对，禁止重复写入"}
+    ]
+    assert result["next_retry_at"] is None
+
+
+def test_scheduler_health_preserves_legacy_weekly_safety_pause(tmp_path):
+    from helper.scoped_store import ScopedStore
+    from helper.status_summary import scheduler_health
+    from helper.store import Store
+
+    now = 10_000.0
+    store = ScopedStore(Store(tmp_path), "default")
+    store.set("smart_mix_settings", {
+        "weekly_auto_enabled": True,
+        "weekly_paused_reason": "上一次智能歌单写入结果待核对，禁止重复写入",
+    })
+    healthy = {
+        "alive": True, "heartbeat_at": now - 10, "last_error_at": None,
+        "last_error": "", "consecutive_failures": 0,
+    }
+
+    result = scheduler_health(_Runtime(healthy), store, _Engine(), now)
+
+    assert result["state"] == "attention"
+    assert result["attention"] == [
+        {"kind": "weekly", "message": "上一次智能歌单写入结果待核对，禁止重复写入"}
+    ]
+
+
 def test_status_details_are_bounded_and_absent_from_polling_payload(tmp_path):
     from helper.store import Store
     from helper.web import create_app

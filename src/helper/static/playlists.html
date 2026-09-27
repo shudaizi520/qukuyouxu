@@ -2,7 +2,7 @@
 <html class="playlist-shell" lang="zh-CN">
 <head>
  <meta charset="utf-8">
- <meta name="app-version" content="2.0.17">
+ <meta name="app-version" content="2.0.18">
  <meta name="viewport" content="width=device-width,initial-scale=1">
  <title>曲库有序 · 我的歌单</title>
  <script src="/static/appearance.js?v=app"></script><link rel="stylesheet" href="/static/product.css?v=app"><link rel="stylesheet" href="/static/product-refinements.css?v=app"><link rel="stylesheet" href="/static/playlist-now-playing.css?v=app"><link rel="stylesheet" href="/static/theme-tokens.css?v=app"><link rel="stylesheet" href="/static/theme-background.css?v=app"><link rel="stylesheet" href="/static/ui-components.css?v=app"><link rel="stylesheet" href="/static/design-system.css?v=app">
@@ -17,6 +17,7 @@
   <symbol id="icon-mode-sequential" viewBox="0 0 24 24"><path d="M5 6h11M5 12h11M5 18h11M18 15l3 3-3 3"/></symbol>
   <symbol id="icon-mode-single" viewBox="0 0 24 24"><path d="M7 6h9a4 4 0 0 1 4 4v1M17 3l3 3-3 3M17 18H8a4 4 0 0 1-4-4v-1M7 21l-3-3 3-3M12 9v6M10 10l2-1"/></symbol>
   <symbol id="icon-mode-list" viewBox="0 0 24 24"><path d="M2 5h14M2 11h14M2 17h9M15 14l7 4-7 4Z"/></symbol>
+  <symbol id="icon-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
   <symbol id="icon-refresh" viewBox="0 0 24 24"><path d="M19 8a7 7 0 1 0 1 7M19 4v4h-4"/></symbol>
   <symbol id="icon-import-down" viewBox="0 0 24 24"><path d="M12 4v11M8 11l4 4 4-4M5 19h14"/></symbol>
   <symbol id="icon-expand-up" viewBox="0 0 24 24"><path d="m7 15 5-5 5 5M7 10l5-5 5 5"/></symbol>
@@ -47,7 +48,7 @@
     <button id="libraryHubButton" type="button" data-section="library"><span class="playlist-fixed-icon" aria-hidden="true">▦</span><span>曲库整理</span></button>
    </nav>
    <div class="playlist-list-scroll">
-    <div class="playlist-side-heading"><h2>歌单</h2><span id="playlistHeadingActions" class="playlist-side-heading-actions"><button id="customPlaylistCreate" type="button" aria-label="新建歌单" title="新建歌单">＋</button><button id="importHubButton" type="button" data-tool-url="/external" aria-label="导入歌单" title="导入歌单"><svg class="ui-icon sidebar-control-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="#icon-import-down"></use></svg></button><button id="customPlaylistRefresh" type="button" aria-label="刷新歌单" title="刷新歌单"><svg class="ui-icon sidebar-control-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="#icon-refresh"></use></svg></button></span></div>
+    <div class="playlist-side-heading"><h2>歌单</h2><span id="playlistHeadingActions" class="playlist-side-heading-actions"><button id="customPlaylistCreate" type="button" aria-label="新建歌单" title="新建歌单"><svg class="ui-icon sidebar-control-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="#icon-plus"></use></svg></button><button id="importHubButton" type="button" data-tool-url="/external" aria-label="导入歌单" title="导入歌单"><svg class="ui-icon sidebar-control-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="#icon-import-down"></use></svg></button><button id="customPlaylistRefresh" type="button" aria-label="刷新歌单" title="刷新歌单"><svg class="ui-icon sidebar-control-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><use href="#icon-refresh"></use></svg></button></span></div>
     <nav id="customPlaylistList" class="playlist-side-list" aria-label="歌单"></nav>
    </div>
    <div class="playlist-sidebar-footer"><button id="mobileSettings" type="button">设置</button></div>

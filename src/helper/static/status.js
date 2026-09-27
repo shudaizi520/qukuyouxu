@@ -106,7 +106,7 @@ function render(summary) {
   $('qqDetail').textContent = q.logged_in ? '主题来源可用' : '主题扩充暂不可用';
 
   const schedulerLabels = {
-    normal: '空闲', running: '执行中', retrying: '等待重试', error: '异常',
+    normal: '空闲', running: '执行中', attention: '需要核对', retrying: '等待重试', error: '异常',
   };
   $('jobHealth').textContent = schedulerLabels[scheduler.state]
     || (j.running ? '执行中' : '空闲');
@@ -114,6 +114,11 @@ function render(summary) {
     $('jobDetail').textContent = scheduler.last_error || '调度器未正常运行';
   } else if (scheduler.state === 'retrying') {
     $('jobDetail').textContent = `下次重试 ${time(scheduler.next_retry_at)}`;
+  } else if (scheduler.state === 'attention') {
+    const attention = (scheduler.attention || [])[0] || {};
+    const names = {weekly:'每周常听',time_capsule:'时光胶囊',recent_additions:'最近新增'};
+    $('jobDetail').textContent = attention.message
+      ? `${names[attention.kind] || '智能歌单'}：${attention.message}` : '有任务需要核对';
   } else {
     $('jobDetail').textContent = j.running ? (j.message || j.kind || '正在处理') : '无后台任务';
   }

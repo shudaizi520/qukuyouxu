@@ -13,6 +13,10 @@ READ_AFTER_WRITE_ATTEMPTS = 10
 READ_AFTER_WRITE_DELAY = 1.0
 
 
+class PlaylistPreconditionChanged(RuntimeError):
+    """The playlist changed after preview but before the first mutation."""
+
+
 def has_exact_members(state, desired):
     """Return true when Plex has exactly the requested unique members, regardless of order."""
     from .engine import state_ids
@@ -28,7 +32,8 @@ def sync_owned_items(plex,before,desired):
     if not desired or len(desired)>100 or len(set(desired))!=len(desired) or any(not k.isdigit() for k in desired):
         raise SafetyError('每日推荐需1～100首不同的有效本地曲目，禁止清空歌单')
     current=plex.playlist_state(before['id'])
-    if fingerprint(current)!=fingerprint(before):raise SafetyError('每日歌单在写入前被修改，停止')
+    if fingerprint(current)!=fingerprint(before):
+        raise PlaylistPreconditionChanged('歌单在写入前发生变化，本次更新已取消')
     if len(set(state_ids(current)))!=len(current['items']):raise SafetyError('每日歌单已有重复曲目，先核对，不自动清理')
     def verify(expected):
         # Plex can briefly serve the pre-write playlist after a successful

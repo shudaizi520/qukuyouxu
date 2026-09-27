@@ -77,7 +77,7 @@ class ExternalPlaylistUiV130Tests(unittest.TestCase):
         response = routes["/external"].endpoint()
         self.assertEqual(200, response.status_code)
         self.assertIn("external.js", STATIC_ASSETS)
-        self.assertIn(b'/static/external.js?v=test', response.body)
+        self.assertRegex(response.body, rb'/static/external\.js\?v=test-[0-9a-f]{12}')
         page = (STATIC / "external.html").read_text(encoding="utf-8")
         self.assertNotIn('id="version"', page)
         self.assertIn('/static/external.js?v=app', page)

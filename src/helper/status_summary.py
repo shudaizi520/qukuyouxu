@@ -9,6 +9,7 @@ from .engine import digest
 from .extra_web import extensions_status
 from .match import CONVERSION_AVAILABLE
 from .profile_runtime import current_qq_status
+from .smart_mix_web import smart_mix_settings
 
 
 def _public_settings(store):
@@ -70,16 +71,33 @@ def scheduler_health(runtime, store, engine, now=None):
         or now - float(heartbeat) > stale_after
     )
     schedule = store.get(PROFILE_STATE_KEY, {}) or {}
+    smart_settings = smart_mix_settings(store)
+    smart_paused = dict(smart_settings.get("auto_paused_reasons") or {})
+    smart_retry = dict(smart_settings.get("auto_retry_state") or {})
+    attention = [
+        {"kind": str(kind), "message": str(message)[:300]}
+        for kind, message in smart_paused.items()
+        if message and kind not in smart_retry
+        or message and any(marker in str(message) for marker in (
+            "写入结果待核对", "禁止重复写入", "不会覆盖", "写入前",
+        ))
+    ]
+    attention_kinds = {row["kind"] for row in attention}
+    retryable_smart = any(kind not in attention_kinds for kind in smart_retry)
     retry_times = [
         float(task.get("retry_at") or 0)
-        for task in (schedule.get("tasks") or {}).values()
-        if isinstance(task, dict) and float(task.get("retry_at") or 0) > 0
+        for task_name, task in (schedule.get("tasks") or {}).items()
+        if isinstance(task, dict)
+        and float(task.get("retry_at") or 0) > 0
+        and not (task_name == "smart" and attention_kinds and not retryable_smart)
     ]
     next_retry_at = min(retry_times) if retry_times else None
     if unhealthy:
         state = "error"
     elif (getattr(engine, "job", {}) or {}).get("running"):
         state = "running"
+    elif attention:
+        state = "attention"
     elif next_retry_at is not None:
         state = "retrying"
     else:
@@ -90,6 +108,7 @@ def scheduler_health(runtime, store, engine, now=None):
         "last_error_at": health.get("last_error_at"),
         "last_error": str(health.get("last_error") or "")[:300],
         "next_retry_at": next_retry_at,
+        "attention": attention,
     }
 
 

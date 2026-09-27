@@ -1,6 +1,7 @@
 import pathlib
 import re
 import sys
+import tempfile
 import unittest
 
 
@@ -43,6 +44,24 @@ class PageVersionV0331Tests(unittest.TestCase):
         self.assertIn('/static/product.css?v=2.1.0', rendered)
         self.assertIn('/static/home.js?v=2.1.0', rendered)
         self.assertNotIn('?v=0.3.20', rendered)
+
+    def test_static_asset_url_changes_when_content_changes_inside_one_release(self):
+        from helper.page_version import render_versioned_html
+
+        source = '<link rel="stylesheet" href="/static/product.css?v=app">'
+        with tempfile.TemporaryDirectory() as root:
+            static = pathlib.Path(root)
+            asset = static / "product.css"
+            asset.write_text("body{color:red}", encoding="utf-8")
+            first = render_versioned_html(source, "2.1.0", static_root=static)
+            asset.write_text("body{color:blue}", encoding="utf-8")
+            second = render_versioned_html(source, "2.1.0", static_root=static)
+
+        first_version = re.search(r'\?v=([^"\']+)', first).group(1)
+        second_version = re.search(r'\?v=([^"\']+)', second).group(1)
+        self.assertRegex(first_version, r"^2\.1\.0-[0-9a-f]{12}$")
+        self.assertRegex(second_version, r"^2\.1\.0-[0-9a-f]{12}$")
+        self.assertNotEqual(first_version, second_version)
 
 
 if __name__ == "__main__":

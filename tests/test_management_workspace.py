@@ -240,7 +240,8 @@ def test_management_pages_remove_secondary_explanations_but_keep_live_feedback()
 
     assert 'id="notice"' in pages["external.html"]
     assert 'id="dailyContextMessage"' not in pages["mixes.html"]
-    assert 'id="taskMessage"' in pages["home.html"]
+    assert 'id="taskMessage"' not in pages["home.html"]
+    assert 'id="taskBadge"' in pages["home.html"]
     assert "$('nextStep')" not in (STATIC / "home.js").read_text(encoding="utf-8")
     assert 'id="events"' in pages["status.html"]
     assert 'id="plexState"' in pages["settings.html"]

@@ -18,6 +18,7 @@ from .single_web import attach_single_routes
 from .auth import AuthManager, COOKIE_NAME, SESSION_SECONDS
 from .auth_web import attach_auth_routes
 from .management_web import attach_management_routes
+from .page_version import is_current_static_asset_version
 from .web_surface import attach_web_surface
 from .profiles import ProfileRegistry
 from .profile_web import attach_profile_routes
@@ -81,6 +82,7 @@ def _private_request_origin(req):
 
 def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
                public_origin=None):
+    static_root = Path(__file__).with_name('static')
     base_store = store or Store(os.environ.get('DATA_ROOT', '/data'))
     profiles = ProfileRegistry(base_store)
     store = ActiveProfileStore(base_store, profiles)
@@ -179,10 +181,13 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
                 payload['code'] = 'profile_unavailable'
             return JSONResponse(payload, status_code=400)
         scoped = bool(requested_profile or req.query_params.get('profile_id'))
+        current_static_version = is_current_static_asset_version(
+            static_root, path, req.query_params.get('v'), __version__
+        )
         for name, value in artwork_cache_policy(
             path, req.method, r.status_code,
             authenticated=bool(session_user), scoped=scoped,
-            versioned=str(req.query_params.get('v') or '') == str(__version__),
+            versioned=current_static_version,
         ).items():
             r.headers[name] = value
         r.headers['X-Content-Type-Options'] = 'nosniff'
@@ -241,7 +246,7 @@ def create_app(store=None, admin_token=None, start_scheduler=True, engine=None,
         return response
 
     attach_auth_routes(app, auth, store, body, _set_session_cookie, _auth_rate_limit)
-    attach_web_surface(app, Path(__file__).with_name('static'), __version__)
+    attach_web_surface(app, static_root, __version__)
     attach_status_routes(app, store, engine, runtime)
 
     attach_management_routes(app, store, engine, body, ensure_idle)

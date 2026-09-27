@@ -9,7 +9,7 @@ from fastapi import Request
 
 from .behavior import profile_behavior_subject
 from .engine import SafetyError, fingerprint, safe_error, state_ids, track_fingerprint
-from .playlist_sync import has_exact_members, sync_owned_items
+from .playlist_sync import PlaylistPreconditionChanged, has_exact_members, sync_owned_items
 from .smart_mixes import KINDS, select_smart_mix
 
 
@@ -33,6 +33,7 @@ DEFAULT_SMART_MIX_SETTINGS = {
 }
 AUTO_KINDS = ("weekly", "time_capsule", "recent_additions")
 AUTO_RETRY_DELAYS = (15 * 60, 60 * 60, 6 * 60 * 60, 24 * 60 * 60)
+NO_ELIGIBLE_TRACKS_REASON = "没有符合条件的曲目，保留现有歌单"
 
 
 def _configured(engine):
@@ -256,7 +257,7 @@ def preview_smart_mix(engine, kind, options=None, now=None):
         elif _unsafe_same_title(engine, plex, kind, selected["title"], identity["machine"]):
             blocked.append("存在同名非本助手托管的歌单，不会接管或覆盖")
         if not selected["items"]:
-            blocked.append("没有符合条件的曲目，保留现有歌单")
+            blocked.append(NO_ELIGIBLE_TRACKS_REASON)
 
         ids = [str(row["id"]) for row in selected["items"]]
         plan = {
@@ -378,6 +379,10 @@ def publish_smart_mix(engine, plan_id, now=None):
             engine.store.set_many({MANAGED_KEY: managed_all, PLANS_KEY: plans, REMOVED_KEY: removed})
             engine.store.log(f"智能歌单已发布：{plan['title']}，{len(ids)}首")
             return plan["result"]
+        except PlaylistPreconditionChanged as exc:
+            snapshot.update(status="cancelled", error=str(exc)[:300])
+            engine._save_snapshot(snapshot)
+            raise SafetyError(str(exc)) from None
         except Exception as exc:
             snapshot.update(status="uncertain", error=safe_error(exc))
             engine._save_snapshot(snapshot)
@@ -556,8 +561,23 @@ def run_smart_mix_auto(engine, now=None, due_kinds=None, slot=None):
                 "recent_additions": {"size": 30, "added_days": 90},
             }
             plan = preview_smart_mix(engine, kind, dict(record.get("options") or defaults[kind]), now=now)
-            if plan.get("blocked"):
-                raise SafetyError("；".join(plan["blocked"]))
+            blocked = list(plan.get("blocked") or [])
+            actionable = [reason for reason in blocked if reason != NO_ELIGIBLE_TRACKS_REASON]
+            if actionable:
+                raise SafetyError("；".join(actionable))
+            if blocked:
+                plans = _plan_map(engine.store)
+                plans.pop(kind, None)
+                engine.store.set(PLANS_KEY, plans)
+                results[kind] = {
+                    "status": "unchanged",
+                    "count": len((plan.get("before") or {}).get("items", [])),
+                    "reason": NO_ELIGIBLE_TRACKS_REASON,
+                }
+                settings["auto_last_success_at"][kind] = now
+                settings["auto_paused_reasons"].pop(kind, None)
+                settings["auto_retry_state"].pop(kind, None)
+                continue
             desired = [str(row["id"]) for row in plan.get("items", [])]
             current = [str(row.get("id")) for row in (plan.get("before") or {}).get("items", [])]
             if desired == current:
@@ -571,6 +591,11 @@ def run_smart_mix_auto(engine, now=None, due_kinds=None, slot=None):
             settings["auto_last_success_at"][kind] = now
             settings["auto_paused_reasons"].pop(kind, None)
             settings["auto_retry_state"].pop(kind, None)
+        except SafetyError as exc:
+            message = safe_error(exc)[:300]
+            settings["auto_paused_reasons"][kind] = message
+            settings["auto_retry_state"].pop(kind, None)
+            results[kind] = {"status": "needs_attention", "error": message}
         except Exception as exc:
             message = safe_error(exc)[:300]
             settings["auto_paused_reasons"][kind] = message

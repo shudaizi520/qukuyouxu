@@ -121,6 +121,34 @@ class ArtworkCacheTests(unittest.TestCase):
             policy("/playlists", "GET", 200, versioned=True),
         )
 
+    def test_only_the_current_content_fingerprint_is_immutable(self):
+        with tempfile.TemporaryDirectory() as root:
+            static = Path(root)
+            asset = static / "management-shell.css"
+            asset.write_text(".row{display:grid}", encoding="utf-8")
+            from helper.page_version import (
+                is_current_static_asset_version,
+                static_asset_version,
+            )
+
+            current = static_asset_version(static, asset.name, "2.0.17")
+            self.assertTrue(
+                is_current_static_asset_version(
+                    static, "/static/management-shell.css", current, "2.0.17"
+                )
+            )
+            self.assertFalse(
+                is_current_static_asset_version(
+                    static, "/static/management-shell.css", "2.0.17", "2.0.17"
+                )
+            )
+            asset.write_text(".row{display:flex}", encoding="utf-8")
+            self.assertFalse(
+                is_current_static_asset_version(
+                    static, "/static/management-shell.css", current, "2.0.17"
+                )
+            )
+
     def test_security_middleware_uses_policy(self):
         source = inspect.getsource(web.create_app)
         self.assertIn("for name, value in artwork_cache_policy(", source)

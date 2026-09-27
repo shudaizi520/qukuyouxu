@@ -1,5 +1,8 @@
 """Render live release data into HTML without exposing stale build markers."""
+import hashlib
+import hmac
 import re
+from pathlib import Path
 
 
 FAVICON = (
@@ -25,7 +28,30 @@ def _with_favicon(source):
     return source[:head_end] + FAVICON + source[head_end:]
 
 
-def render_versioned_html(source, version, defer_version=False):
+def static_asset_version(static_root, asset_name, release_version):
+    """Return a release-scoped fingerprint for one public static asset."""
+    name = str(asset_name or "")
+    if not name or Path(name).name != name or "/" in name or "\\" in name:
+        raise ValueError("静态资源名称无效")
+    digest = hashlib.sha256((Path(static_root) / name).read_bytes()).hexdigest()[:12]
+    return f"{release_version}-{digest}"
+
+
+def is_current_static_asset_version(static_root, request_path, requested_version,
+                                    release_version):
+    prefix = "/static/"
+    path = str(request_path or "")
+    if not path.startswith(prefix):
+        return False
+    name = path[len(prefix):]
+    try:
+        current = static_asset_version(static_root, name, release_version)
+    except (OSError, ValueError):
+        return False
+    return hmac.compare_digest(str(requested_version or ""), current)
+
+
+def render_versioned_html(source, version, defer_version=False, static_root=None):
     marker = '<small id="version">'
     value = "" if defer_version else "v" + str(version)
     visible_slots = source.count(marker)
@@ -42,10 +68,17 @@ def render_versioned_html(source, version, defer_version=False):
     if meta.search(rendered):
         rendered = meta.sub(lambda match: match.group(1) + str(version) + match.group(2), rendered, count=1)
     rendered = _with_favicon(rendered)
-    asset = re.compile(r'((?:href|src)="/static/[^"?]+)\?v=[^"]*')
-    return asset.sub(lambda match: match.group(1) + "?v=" + str(version), rendered)
+    asset = re.compile(r'((?:href|src)="/static/([^"?]+))\?v=[^"]*')
+
+    def version_asset(match):
+        token = str(version)
+        if static_root is not None:
+            token = static_asset_version(static_root, match.group(2), version)
+        return match.group(1) + "?v=" + token
+
+    return asset.sub(version_asset, rendered)
 
 
-def render_library_html(source, version):
+def render_library_html(source, version, static_root=None):
     """Use the server release as the library page's only version writer."""
-    return render_versioned_html(source, version)
+    return render_versioned_html(source, version, static_root=static_root)

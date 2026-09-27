@@ -19,7 +19,9 @@ def test_candidate_interface_uses_direct_names_counts_and_actions():
     html = (STATIC / "home.html").read_text(encoding="utf-8")
     script = (STATIC / "home.js").read_text(encoding="utf-8")
 
-    assert "本次整理预览" in html
+    assert "本次整理预览" not in html
+    assert 'id="taskBadge"' in html
+    assert '<input type="checkbox" id="selectAll">全选' in html
     assert "确认所选变化" in html
     assert "查看歌曲" in script
     assert "算法版本" not in html

@@ -25,7 +25,7 @@ function renderQQAuth(auth,running){
 }
 async function refresh(skipPlexLink=false){
  if(polling)return;polling=true;
- try{const wasActive=workflowIsActive(),next=await(await request('/api/workflow/status?release=2.0.17')).json();current=next;if(wasActive&&!workflowDataIsActive(next))PCHAuth.invalidateCache(['library-summary','playlists']);render(current);if(!libraryNavigationReady){libraryNavigationReady=true;revealLibraryTarget();}if(!skipPlexLink||!lastPlexLinkRefresh||Date.now()-lastPlexLinkRefresh>=PLEX_LINK_TTL_MS)await refreshPlexLink();return true;}finally{polling=false;}
+ try{const wasActive=workflowIsActive(),next=await(await request('/api/workflow/status?release=2.0.18')).json();current=next;if(wasActive&&!workflowDataIsActive(next))PCHAuth.invalidateCache(['library-summary','playlists']);render(current);if(!libraryNavigationReady){libraryNavigationReady=true;revealLibraryTarget();}if(!skipPlexLink||!lastPlexLinkRefresh||Date.now()-lastPlexLinkRefresh>=PLEX_LINK_TTL_MS)await refreshPlexLink();return true;}finally{polling=false;}
 }
 function render(data){
  const w=data.workflow,s=w.state||{},sum=w.summary||{},job=w.job||{},running=!!job.running,discovery=w.discovery||{};
@@ -39,14 +39,8 @@ function render(data){
  $('totalCount').textContent=number(sum.library_count);$('classifiedCount').textContent=number(sum.matched);$('unclassifiedCount').textContent=number(sum.unclassified);$('unclassifiedLink').disabled=!sum.unclassified;$('reviewCount').textContent=number(sum.review_count);$('playlistCount').textContent=number(sum.managed);
  const titles={idle:'新歌整理，从这里开始',setup:'先完成一次连接设置',checking:'正在读取新歌',enriching:'正在补充歌曲资料',planning:'正在整理分类',publishing:'正在同步歌单',review:'分类已准备好，等你确认',ready:'已整理，可以去听歌了',paused:'整理已暂停，进度已保留',cooldown:'联网暂时暂停，已有资料仍可用',theme_error:'主题读取失败，已有资料仍可用',error:'这轮整理遇到了问题',attention:'有部分歌单需要核对',external:'另一个任务正在执行'};
  const badges={idle:'等待开始',setup:'需要设置',checking:'执行中',enriching:'执行中',planning:'执行中',publishing:'执行中',review:'等待确认',ready:'已同步',paused:'已暂停',cooldown:'联网等待',theme_error:'读取失败',error:'需要处理',attention:'需要处理',external:'执行中'};
- $('taskTitle').textContent=titles[phase]||'整理新增歌曲';$('taskBadge').textContent=badges[phase]||'等待开始';$('taskBadge').className='status-pill'+(['review','cooldown','attention','error','theme_error'].includes(phase)?' warm':'');
- $('taskMessage').textContent=s.message||'';
- if(running&&job.message)$('taskMessage').textContent=job.message;
- if(phase==='idle'&&ss.processed)$('taskMessage').textContent='已处理 '+number(ss.processed)+' 首';
- if(phase==='cooldown'&&!themeFailed)$('taskMessage').textContent=(s.message||'联网暂不可用')+(cooling?' · '+timeText(hold):'');
- if(phase==='setup')$('taskMessage').textContent='';
- if(!w.needs_setup&&!qqLogged&&!['review','publishing'].includes(phase)){$('taskTitle').textContent='先扫码授权 QQ';$('taskBadge').textContent='需要授权';$('taskMessage').textContent='';}
- $('taskMessage').hidden=!$('taskMessage').textContent;
+ $('taskBadge').textContent=badges[phase]||'等待开始';$('taskBadge').className='status-pill'+(['review','cooldown','attention','error','theme_error'].includes(phase)?' warm':'');
+ if(!w.needs_setup&&!qqLogged&&!['review','publishing'].includes(phase))$('taskBadge').textContent='需要授权';
  const stageNames=['checking','enriching','planning','publishing'];let stage=stageNames.indexOf(phase);
  if(phase==='review')stage=3;if(phase==='ready')stage=4;if(themeFailed&&['cooldown','theme_error'].includes(phase))stage=2;
  document.querySelectorAll('.steps li').forEach((li,i)=>{li.className=i<stage?'done':i===stage&&running?'active':'';});
@@ -135,7 +129,6 @@ function reviewChangeText(group,kind){
 }
 function renderReview(review,running){
  $('reviewPanel').hidden=!review;if(!review){reviewId='';return;}
- $('reviewTitle').textContent='本次整理预览';
  const usableGroups=review.groups.filter(group=>['create','update'].includes(reviewActionKind(group)));
  const blockedReasons=blockedReviewReasons(review);
  $('selectAll').disabled=!usableGroups.length;
@@ -154,7 +147,7 @@ function renderReview(review,running){
    const tr=document.createElement('tr');tr.dataset.reviewKind=kind;const td=addText(tr,'td','');
    if(['create','update'].includes(kind)){const box=document.createElement('input');box.type='checkbox';box.value=g.id;box.checked=!!g.default_selected;box.setAttribute('aria-label',(kind==='create'?'创建 ':'更新 ')+g.title);box.onchange=updateSelection;td.append(box);}else addText(td,'span','—','review-no-action');
    const titleCell=addText(tr,'td','');addText(titleCell,'strong',g.title);addText(titleCell,'small',reviewGroupLabel(g),'muted');
-   addText(tr,'td',reviewChangeText(g,kind),'review-change');const actionCell=addText(tr,'td','');const view=document.createElement('button');view.type='button';view.className='secondary evidence-button';view.textContent='查看歌曲';view.onclick=()=>action(()=>window.openThemeEvidence(g.id,false,g.kind));actionCell.append(view);
+   addText(tr,'td',reviewChangeText(g,kind),'review-change');const actionCell=addText(tr,'td','');const view=document.createElement('button');view.type='button';view.className='secondary evidence-button';view.textContent='查看歌曲';view.setAttribute('aria-label','查看'+g.title+'的歌曲');view.onclick=()=>action(()=>window.openThemeEvidence(g.id,false,g.kind));actionCell.append(view);
    $('reviewRows').append(tr);
   }
  }
@@ -199,6 +192,7 @@ function updateSelection(){
  const all=[...$('reviewRows').querySelectorAll('input:not(:disabled)')],checked=all.filter(input=>input.checked);
  const create=checked.filter(input=>input.closest('tr')?.dataset.reviewKind==='create').length,update=checked.filter(input=>input.closest('tr')?.dataset.reviewKind==='update').length,n=checked.length;
  $('selectedCount').textContent=n?'已选择：'+(create?'新建 '+create+' 个':'')+(create&&update?'，':'')+(update?'更新 '+update+' 个':''):'尚未选择要执行的变化';
+ $('confirmSelectionSummary').textContent=n?'共选择 '+n+' 个歌单':'';
  $('selectAll').checked=!!all.length&&n===all.length;$('selectAll').indeterminate=n>0&&n<all.length;
  const review=current?.workflow?.review,expired=!!review?.expired;
  $('confirmReview').textContent=expired?'预览已过期':create&&update?'创建 '+create+' 个新歌单并更新 '+update+' 个已有歌单':create?'创建 '+create+' 个新歌单':update?'更新 '+update+' 个已有歌单':'请选择要执行的变化';
@@ -259,15 +253,6 @@ function renderLibraryPresentation(w,phase,running){
  }else{$('sourceStepState').textContent='QQ 状态待确认';}
  $('reviewEmpty').hidden=discovery.phase!=='empty';
  $('attentionLink').textContent='查看待核对'+(w.summary?.review_count?' · '+number(w.summary.review_count):'');
- if(discovery.phase==='choose')$('taskTitle').textContent='分类整理预览';
- else if(discovery.phase==='empty')$('taskTitle').textContent='分析完成';
- else if(discovery.phase==='before_analysis'&&!w.needs_setup)$('taskTitle').textContent='整理任务';
- else if(phase==='ready'){
-  $('taskTitle').textContent='最近整理';
-  const r=w.state?.result;
-  if(r)$('taskMessage').textContent=number(r.written||0)+' 个歌单已更新 · '+number(r.unchanged||0)+' 个无需变化'+(r.blocked?' · '+number(r.blocked)+' 个保护跳过':'');
- }
- $('taskMessage').hidden=!$('taskMessage').textContent;
  const allGroupsBlocked=!!w.review?.groups?.length&&!(w.review.groups.some(group=>!group.blocked.length));
  const reviewNeedsMessage=!!(w.review?.expired||w.review?.cache_only||allGroupsBlocked&&blockedReviewReasons(w.review).length);
  $('reviewMessage').hidden=!reviewNeedsMessage;
