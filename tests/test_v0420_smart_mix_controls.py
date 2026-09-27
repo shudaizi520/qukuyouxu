@@ -237,6 +237,36 @@ class SmartMixControlsV0420Tests(unittest.TestCase):
         self.assertEqual(managed["id"], result["playlist_id"])
         self.assertEqual(current_ids, [row["id"] for row in self.plex.states[managed["id"]]["items"]])
 
+    def test_concurrent_prewrite_change_cancels_snapshot_instead_of_locking_future_updates(self):
+        from helper.engine import SafetyError
+        from helper.smart_mix_web import preview_smart_mix, publish_smart_mix
+
+        self.publish()
+        plan = preview_smart_mix(
+            self.engine, "weekly", {"size": 11, "recent_days": 30}, now=NOW + 2,
+        )
+        original = self.plex.playlist_state
+        reads = 0
+
+        def changed_between_checks(pid):
+            nonlocal reads
+            reads += 1
+            if reads == 2:
+                self.plex.states[str(pid)]["items"].append({"id": "30", "item_id": "999"})
+            return original(pid)
+
+        self.plex.playlist_state = changed_between_checks
+        with self.assertRaisesRegex(SafetyError, "写入前.*变化"):
+            publish_smart_mix(self.engine, plan["id"], now=NOW + 3)
+
+        snapshot = self.store.get("snapshots")[-1]
+        self.assertEqual("cancelled", snapshot["status"])
+        self.assertNotEqual("uncertain", snapshot["status"])
+        retry_plan = preview_smart_mix(
+            self.engine, "weekly", {"size": 11, "recent_days": 30}, now=NOW + 4,
+        )
+        self.assertFalse(any("写入结果待核对" in reason for reason in retry_plan["blocked"]))
+
     def test_restore_accepts_plex_membership_when_server_keeps_its_own_order(self):
         from helper.engine import fingerprint
 

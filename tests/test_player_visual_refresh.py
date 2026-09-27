@@ -1,5 +1,6 @@
 from html.parser import HTMLParser
 import os
+import base64
 from pathlib import Path
 import re
 
@@ -87,6 +88,85 @@ def test_player_mode_and_refresh_controls_use_line_svg_icons():
     assert "setAttribute('href',MODE_ICON_IDS[playbackMode])" in player
 
 
+def test_playlist_heading_icons_are_large_click_targets_with_color_only_hover():
+    document = re.sub(
+        r"<script\b.*?</script>|<link\b[^>]*>",
+        "",
+        (STATIC / "playlists.html").read_text(encoding="utf-8"),
+        flags=re.I | re.S,
+    )
+
+    prepare_playwright_environment(ROOT)
+    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(ROOT / ".playwright"))
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.set_content(document)
+        page.add_style_tag(content=page_css("playlists"))
+        page.evaluate("""() => {
+          document.querySelector('#bootScreen')?.remove();
+          document.querySelector('#workspace').hidden = false;
+          document.body.style.setProperty('--playlist-muted', 'rgb(120, 130, 140)');
+          document.body.style.setProperty('--playlist-accent', 'rgb(25, 199, 131)');
+          document.body.style.setProperty('--app-accent', 'rgb(25, 199, 131)');
+          document.body.style.setProperty('--icon-default', 'rgb(120, 130, 140)');
+          document.body.style.setProperty('--icon-hover', 'rgb(25, 199, 131)');
+        }""")
+
+        for selector in ("#customPlaylistCreate", "#importHubButton", "#customPlaylistRefresh"):
+            control = page.locator(selector)
+            icon = control.locator(".sidebar-control-icon")
+            assert icon.count() == 1
+            size = control.evaluate(
+                "node => [getComputedStyle(node).width, getComputedStyle(node).height]"
+            )
+            assert size == ["36px", "36px"]
+            before = control.evaluate("node => getComputedStyle(node).color")
+            before_icon = icon.evaluate("node => getComputedStyle(node).color")
+            control.hover()
+            hovered = control.evaluate("""node => {
+              const style = getComputedStyle(node);
+              return {
+                color: style.color,
+                background: style.backgroundColor,
+                border: style.borderStyle,
+                shadow: style.boxShadow,
+                outline: style.outlineStyle,
+              };
+            }""")
+            assert before == "rgb(120, 130, 140)"
+            assert before_icon == "rgb(120, 130, 140)"
+            assert hovered == {
+                "color": "rgb(25, 199, 131)",
+                "background": "rgba(0, 0, 0, 0)",
+                "border": "none",
+                "shadow": "none",
+                "outline": "none",
+            }
+            assert icon.evaluate("node => getComputedStyle(node).color") == "rgb(25, 199, 131)"
+            assert icon.evaluate(
+                "node => [getComputedStyle(node).width, getComputedStyle(node).height]"
+            ) == ["20px", "20px"]
+
+        assert page.locator(".playlist-side-heading-actions .sidebar-control-icon").count() == 3
+
+        page.mouse.move(500, 400)
+        page.locator("#customPlaylistRefresh").focus()
+        assert page.locator("#customPlaylistRefresh").evaluate(
+            "node => getComputedStyle(node).outlineStyle"
+        ) == "solid"
+
+        refresh = page.locator("#customPlaylistRefresh")
+        refresh.evaluate("node => node.classList.add('pch-pending')")
+        assert refresh.evaluate(
+            "node => getComputedStyle(node, '::before').content"
+        ) == "none"
+        assert refresh.locator(".sidebar-control-icon").evaluate(
+            "node => getComputedStyle(node).animationName"
+        ) == "pch-spin"
+        browser.close()
+
+
 def test_fullscreen_player_has_qq_like_proportions_and_a_play_state_visualizer():
     page = (STATIC / "playlists.html").read_text(encoding="utf-8")
     script = (STATIC / "playlist-now-playing.js").read_text(encoding="utf-8")
@@ -106,27 +186,88 @@ def test_fullscreen_player_has_qq_like_proportions_and_a_play_state_visualizer()
     assert "createMediaElementSource(media)" in visualizer
     assert "createAnalyser()" in visualizer
     assert "getByteFrequencyData" in visualizer
+    assert "getByteTimeDomainData" not in visualizer
     assert "Math.sin" not in visualizer
     assert "Math.cos" not in visualizer
     assert "media:byId('playerAudio')" in script
     assert _rule(css, ".now-playing-artwork")["width"] == "min(430px,35vw)"
     assert _rule(css, ".now-playing-lyric-line")["font-size"] == "clamp(14px,.9vw,17px)"
     assert _rule(css, ".now-playing-lyric-line.active")["font-size"] == "clamp(16px,1.05vw,19px)"
-    assert ".now-playing-visualizer{position:absolute;z-index:1;left:50%;bottom:var(--app-player-height,68px);width:min(700px,46vw);height:68px" in css
+    assert ".now-playing-visualizer{position:absolute;z-index:1;left:50%;bottom:var(--app-player-height,68px);width:min(900px,60vw);height:64px" in css
     assert "buildVisualizerLevels" in visualizer
     assert "smoothVisualizerLevels" in visualizer
     assert "analyser.smoothingTimeConstant=.38" in visualizer
-    assert "level*height*.76" in visualizer
+    assert "level*height*.86" in visualizer
     assert "paintGlow" in visualizer
-    assert "context.filter='blur(8px)'" in visualizer
-    assert "barWidth=4,gap=4" in visualizer
-    assert "Math.min(100" in visualizer
+    assert "context.filter='blur(5px)'" in visualizer
+    assert "visualizerGeometry(width)" in visualizer
     assert "context.beginPath()" not in visualizer
     assert visualizer.count("context.fillRect") >= 2
     assert ".now-playing-visualizer-bar" not in css
 
 
-def test_player_identity_has_breathing_room_and_visualizer_peaks_at_center():
+def test_visualizer_uses_whitened_frequency_bands_without_a_fixed_middle_spike():
+    source = (STATIC / "playlist-visualizer.js").read_text(encoding="utf-8")
+    module_url = "data:text/javascript;base64," + base64.b64encode(source.encode()).decode()
+    prepare_playwright_environment(ROOT)
+    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(ROOT / ".playwright"))
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        metrics = page.evaluate("""async url => {
+          const module = await import(url);
+          const makeSpectrum = (peakBin,peakStrength=70) => {
+            const bins = new Uint8Array(2048);
+            let seed=17;
+            for (let index=2; index<bins.length; index++) {
+              seed=(seed*48271)%2147483647;
+              const jitter=(seed/2147483647-.5)*30;
+              const tilt=196-31*Math.log10(index+1);
+              const peak=peakStrength*Math.exp(-Math.pow((Math.log(index)-Math.log(peakBin))/.12,2));
+              bins[index]=Math.max(0,Math.min(255,Math.round(tilt+jitter+peak)));
+            }
+            return bins;
+          };
+          const levels = module.buildVisualizerLevels(makeSpectrum(180),104);
+          const ordered = [...levels].sort((a,b)=>a-b);
+          const median = ordered[Math.floor(ordered.length/2)];
+          const peaks = levels.filter((value,index) => index>1 && index<levels.length-2
+            && value>levels[index-1] && value>=levels[index+1]
+            && value>(levels[index-2]+levels[index+2])*.5+0.018).length;
+          const half=Math.floor(levels.length/2);
+          const average = values => values.reduce((sum,value)=>sum+value,0)/values.length;
+          const firstDynamic=module.buildVisualizerLevels(makeSpectrum(25,90),104);
+          const secondDynamic=module.buildVisualizerLevels(makeSpectrum(280,90),104);
+          const firstMean=average(firstDynamic),secondMean=average(secondDynamic);
+          let covariance=0,firstVariance=0,secondVariance=0;
+          for(let index=0;index<firstDynamic.length;index++){
+            const first=firstDynamic[index]-firstMean,second=secondDynamic[index]-secondMean;
+            covariance+=first*second;firstVariance+=first*first;secondVariance+=second*second;
+          }
+          return {
+            max:Math.max(...levels),median,peaks,geometry:module.visualizerGeometry(900),
+            active:levels.filter(value=>value>.025).length,
+            leftAverage:average(levels.slice(0,half)),
+            rightAverage:average(levels.slice(-half)),
+            centerAverage:average(levels.slice(half-12,half+12)),
+            edgeAverage:average([...levels.slice(0,12),...levels.slice(-12)]),
+            dynamicCorrelation:covariance/Math.sqrt(firstVariance*secondVariance),
+          };
+        }""", module_url)
+        browser.close()
+
+    assert 1.1 <= metrics["max"] / metrics["median"] <= 2.8
+    assert 5 <= metrics["peaks"] <= 18
+    assert metrics["active"] >= 88
+    assert 0.9 <= metrics["leftAverage"] / metrics["rightAverage"] <= 1.1
+    assert metrics["centerAverage"] > metrics["edgeAverage"] * 1.15
+    assert metrics["dynamicCorrelation"] <= 0.9
+    assert 76 <= metrics["geometry"]["count"] <= 92
+    assert 3 <= metrics["geometry"]["barWidth"] <= 4
+    assert 5.5 <= metrics["geometry"]["gap"] <= 7
+
+
+def test_player_identity_has_breathing_room_and_visualizer_keeps_independent_frequency_detail():
     foundation = (STATIC / "design-system.css").read_text(encoding="utf-8")
     visualizer = (STATIC / "playlist-visualizer.js").read_text(encoding="utf-8")
     css = (STATIC / "playlist-now-playing.css").read_text(encoding="utf-8")
@@ -134,10 +275,13 @@ def test_player_identity_has_breathing_room_and_visualizer_peaks_at_center():
     player = _rule(foundation, "body[data-view=playlists] .playlist-player")
     assert player["padding"] == "0 22px 4px calc(var(--app-rail-width) + 40px)"
     assert _rule(foundation, "body[data-view=playlists] .playlist-now").get("padding-left", "0") == "0"
-    assert "width:min(700px,46vw);height:68px" in css
-    assert "groupPosition" not in visualizer
-    assert "continuousSweep" in visualizer
-    assert "edgeWindow=Math.min(1,position/.08,(1-position)/.08)" in visualizer
+    assert "width:min(900px,60vw);height:64px" in css
+    assert "frequencyData" in visualizer
+    assert "spectralEnvelope" in visualizer
+    assert "whitened" in visualizer
+    assert "smoothSpectrum" in visualizer
+    assert "centeredSpectrum" in visualizer
+    assert "edgeWindow=Math.min(1,position/.16,(1-position)/.16)" in visualizer
     assert "context.fillRect" in visualizer
 
 
@@ -187,7 +331,7 @@ def test_fullscreen_collapse_is_a_bare_chevron_and_extra_controls_are_hidden():
     protected_hover = _rule(css, "body[data-view=playlists] .now-playing .now-playing-close:hover:not(:disabled)")
     assert protected_hover["background"] == "transparent!important"
     assert protected_hover["box-shadow"] == "none!important"
-    assert _rule(css, ".now-playing-open .playlist-mode-control")["display"] == "none"
+    assert _rule(css, ".now-playing-open .playlist-mode-control")["display"] == "flex"
     assert _rule(css, ".now-playing-open .playlist-player-queue")["display"] == "none"
 
 

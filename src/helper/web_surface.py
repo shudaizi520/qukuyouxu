@@ -27,7 +27,7 @@ def attach_web_surface(app, static_root: Path, version: str) -> None:
     def page(name: str, *, library: bool = False) -> HTMLResponse:
         source = (static_root / name).read_text(encoding="utf-8")
         renderer = render_library_html if library else render_versioned_html
-        return HTMLResponse(renderer(source, version))
+        return HTMLResponse(renderer(source, version, static_root=static_root))
 
     @app.get("/")
     def index():

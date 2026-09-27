@@ -67,7 +67,7 @@ class UISimplificationV103Tests(unittest.TestCase):
         self.assertNotIn('id="autoToggle"', html)
         self.assertNotIn("workflow-path", html)
         self.assertNotIn("<th>说明</th>", html)
-        self.assertTrue(page.by_id("taskMessage")["hidden"])
+        self.assertNotIn('id="taskMessage"', html)
         self.assertTrue(page.by_id("progressDetail")["hidden"])
         self.assertNotIn('id="nextStep"', html)
 

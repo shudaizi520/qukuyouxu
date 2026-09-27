@@ -187,6 +187,63 @@ def test_library_and_status_content_stays_inside_the_shared_capped_rows():
     assert disclosure["max-width"] == "none"
 
 
+def test_management_disclosures_align_with_their_left_labels_and_status_details_stack_cleanly():
+    css = _text("management-shell.css")
+    disclosure_shell = _rule(
+        css,
+        "body[data-management-page] .management-inline-disclosure>.management-preference-content>details",
+    )
+    disclosure_summary = _rule(
+        css,
+        "body[data-management-page] .management-inline-disclosure>.management-preference-content>details>summary",
+    )
+    disclosure_marker = _rule(
+        css,
+        "body[data-management-page] .management-inline-disclosure>.management-preference-content>details>summary::-webkit-details-marker",
+    )
+    status_body = _rule(
+        css, "body[data-management-page=status] .page-disclosure-body"
+    )
+    status_grid = _rule(
+        css, "body[data-management-page=status] .status-detail-grid"
+    )
+    detail_row = _rule(
+        css, "body[data-management-page=status] .status-detail-grid .detail-row"
+    )
+    diagnostics = _rule(
+        css, "body[data-management-page=status] .daily-diagnostics"
+    )
+    inline_row = _rule(
+        css, "body[data-management-page] .management-preference-row.management-inline-disclosure"
+    )
+    inline_label = _rule(
+        css, "body[data-management-page] .management-inline-disclosure .management-preference-label"
+    )
+
+    assert disclosure_shell["width"] == "100%"
+    assert disclosure_shell["margin"] == "0!important"
+    assert disclosure_shell["overflow"] == "visible"
+    assert disclosure_summary["min-height"] == "30px"
+    assert disclosure_summary["padding"] == "0 0 12px 2px"
+    assert disclosure_summary["align-items"] == "flex-start"
+    assert disclosure_summary["list-style"] == "none"
+    assert disclosure_marker["display"] == "none"
+    assert inline_row["grid-template-columns"] == "minmax(88px,120px) minmax(0,1fr)"
+    assert inline_row["gap"] == "clamp(12px,3vw,24px)"
+    assert inline_label["padding-top"] == "0"
+    assert status_body["padding"] == "0"
+    assert status_grid["display"] == "block"
+    assert detail_row["grid-template-columns"] == "120px minmax(0,1fr)"
+    assert diagnostics["justify-items"] == "start"
+    assert diagnostics["text-align"] == "left"
+    status = _text("status.html")
+    library = _text("home.html")
+    mixes = _text("mixes.html")
+    assert status.count("management-inline-disclosure") == 2
+    assert library.count("management-inline-disclosure") == 1
+    assert mixes.count("management-inline-disclosure") == 1
+
+
 def test_appearance_tiles_use_a_thin_selected_outline_without_a_green_badge():
     css = _text("management-shell.css")
     card = _rule(
@@ -272,7 +329,8 @@ def test_library_status_text_is_neutral_and_fixed_labels_do_not_change():
     assert '<div class="management-preference-label"><h2>整理任务</h2></div>' in html
     assert 'id="themeEvidence" class="song-preview-drawer"' in html
     assert '<span class="song-preview-eyebrow">歌曲预览</span>' in html
-    assert html.index('<h2>整理任务</h2>') < html.index('id="taskTitle"')
+    assert 'id="taskTitle"' not in html
+    assert html.index('<h2>整理任务</h2>') < html.index('id="taskBadge"')
     assert html.index('song-preview-eyebrow') < html.index('id="themeEvidenceTitle"')
     assert auth["color"] == "var(--management-text)"
     assert dot["display"] == "none"

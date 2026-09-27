@@ -21,16 +21,17 @@ def _library_page_without_assets() -> str:
     return re.sub(r"<script\b.*?</script>|<link\b[^>]*>", "", html, flags=re.I | re.S)
 
 
-def test_review_distinguishes_new_updates_and_unchanged_playlists():
+def test_review_is_compact_aligned_and_distinguishes_playlist_changes():
     """A no-op managed playlist must never look like another playlist to create."""
     _prepare_browser()
+    long_title = "KTV" + "A" * 120
     review = {
         "id": "theme-plan|base-plan",
         "expired": False,
         "groups": [
             {
                 "id": "ktv",
-                "title": "KTV金曲",
+                "title": long_title,
                 "kind": "theme",
                 "dimension": "主题精选",
                 "count": 737,
@@ -45,9 +46,9 @@ def test_review_distinguishes_new_updates_and_unchanged_playlists():
                 "title": "工作陪伴",
                 "kind": "theme",
                 "dimension": "场景",
-                "count": 500,
+                "count": 100000000000,
                 "existing_count": 481,
-                "add_count": 19,
+                "add_count": 99999999519,
                 "action": "append",
                 "blocked": [],
                 "default_selected": True,
@@ -78,12 +79,26 @@ def test_review_distinguishes_new_updates_and_unchanged_playlists():
         page.locator("#workspace").evaluate("node => node.hidden = false")
         page.evaluate("review => renderReview(review, false)", review)
 
-        assert page.locator("#reviewTitle").inner_text() == "本次整理预览"
+        assert page.locator("#taskTitle").count() == 0
+        assert page.locator("#taskMessage").count() == 0
+        assert page.locator("#reviewTitle").count() == 0
+        assert page.locator(".review-intro").count() == 0
+        assert page.locator(".review-table thead").count() == 1
+        assert page.locator(".review-table thead th").all_inner_texts() == [
+            "选择",
+            "歌单",
+            "变化",
+            "操作",
+        ]
+        assert page.locator(".review-table thead").evaluate(
+            "node => getComputedStyle(node).position"
+        ) == "absolute"
+        assert page.locator("#selectAll").locator("xpath=..").inner_text() == "全选"
         assert page.locator('[data-review-kind="create"] input[type=checkbox]').count() == 1
         assert page.locator('[data-review-kind="update"] input[type=checkbox]').count() == 1
         assert page.locator('[data-review-kind="unchanged"] input[type=checkbox]').count() == 0
         assert "新建 · 737 首" in page.locator('[data-review-kind="create"]').inner_text()
-        assert "现有 481 首 · 新增 19 首" in page.locator('[data-review-kind="update"]').inner_text()
+        assert "现有 481 首 · 新增 99,999,999,519 首" in page.locator('[data-review-kind="update"]').inner_text()
         assert "现有 20 首 · 无需变化" in page.locator('[data-review-kind="unchanged"]').inner_text()
         assert page.locator("#selectedCount").inner_text() == "已选择：新建 1 个，更新 1 个"
         assert page.locator("#confirmReview").inner_text() == "创建 1 个新歌单并更新 1 个已有歌单"
@@ -93,9 +108,6 @@ def test_review_distinguishes_new_updates_and_unchanged_playlists():
         )
         assert page.locator("#confirmReview").is_disabled()
         assert page.locator("#selectedCount").inner_text() == "尚未选择要执行的变化"
-        assert page.locator(".review-table th:nth-child(3)").evaluate(
-            "node => getComputedStyle(node).width"
-        ) == "220px"
         assert page.locator('[data-review-kind="create"] td:nth-child(2) small').evaluate(
             "node => getComputedStyle(node).display"
         ) == "block"
@@ -104,7 +116,42 @@ def test_review_distinguishes_new_updates_and_unchanged_playlists():
         ) == "0.68"
         assert page.locator('[data-review-kind="update"] .review-change').evaluate(
             "node => getComputedStyle(node).whiteSpace"
-        ) == "nowrap"
+        ) == "normal"
+        assert page.locator('[data-review-kind="create"] .evidence-button').get_attribute(
+            "aria-label"
+        ) == f"查看{long_title}的歌曲"
+        assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
+
+        select_all_x = page.locator("#selectAll").bounding_box()["x"]
+        first_row_x = page.locator(
+            '[data-review-kind="create"] input[type=checkbox]'
+        ).bounding_box()["x"]
+        first_name_x = page.locator(
+            '[data-review-kind="create"] td:nth-child(2)'
+        ).bounding_box()["x"]
+        assert abs(select_all_x - first_row_x) < 0.5
+        assert 30 <= first_name_x - first_row_x <= 50
+        assert page.locator(".review-group-row th").first.evaluate(
+            "node => getComputedStyle(node).textAlign"
+        ) == "left"
+
+        page.set_viewport_size({"width": 390, "height": 844})
+        assert page.locator(".table-scroll").evaluate(
+            "node => node.scrollWidth <= node.clientWidth"
+        )
+        assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
+        assert page.locator('[data-review-kind="update"] .review-change').evaluate(
+            "node => getComputedStyle(node).whiteSpace"
+        ) == "normal"
+        mobile_select_all_x = page.locator("#selectAll").bounding_box()["x"]
+        mobile_first_row_x = page.locator(
+            '[data-review-kind="create"] input[type=checkbox]'
+        ).bounding_box()["x"]
+        mobile_first_name_x = page.locator(
+            '[data-review-kind="create"] td:nth-child(2)'
+        ).bounding_box()["x"]
+        assert abs(mobile_select_all_x - mobile_first_row_x) < 0.5
+        assert 30 <= mobile_first_name_x - mobile_first_row_x <= 50
         browser.close()
 
 

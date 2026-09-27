@@ -112,6 +112,48 @@ class SmartMixAutoV0424Tests(unittest.TestCase):
         self.assertEqual([], smart_mix_auto_due(self.engine, monday + 900 + 3599))
         self.assertEqual(["time_capsule"], smart_mix_auto_due(self.engine, monday + 900 + 3600))
 
+    def test_no_eligible_tracks_is_a_normal_noop_without_retry(self):
+        from helper.smart_mix_web import run_smart_mix_auto, set_smart_mix_schedule, smart_mix_auto_due
+
+        self.publish("recent_additions", {"size": 10, "added_days": 90})
+        enabled_at = datetime(2027, 1, 6, 12, tzinfo=BEIJING).timestamp()
+        set_smart_mix_schedule(self.engine, True, now=enabled_at)
+        monday = datetime(2027, 1, 11, 3, tzinfo=BEIJING).timestamp()
+        for row in self.plex.rows:
+            row["added_at"] = monday - 400 * 86400
+
+        result = run_smart_mix_auto(
+            self.engine, monday, due_kinds=["recent_additions"], slot=monday,
+        )
+
+        self.assertEqual("unchanged", result["items"]["recent_additions"]["status"])
+        settings = self.store.get("smart_mix_settings")
+        self.assertNotIn("recent_additions", settings["auto_retry_state"])
+        self.assertNotIn("recent_additions", settings["auto_paused_reasons"])
+        self.assertNotIn("recent_additions", smart_mix_auto_due(self.engine, monday + 900))
+
+    def test_safety_block_needs_attention_but_does_not_retry(self):
+        from helper.smart_mix_web import run_smart_mix_auto, set_smart_mix_schedule, smart_mix_auto_due
+
+        self.publish("weekly", {"size": 10, "recent_days": 30})
+        managed = self.store.get("smart_mix_managed")["weekly"]
+        self.engine._save_snapshot({
+            "id": "unresolved-weekly", "kind": "smart_mix", "category_id": "smart:weekly",
+            "title": "每周常听", "created_at": NOW + 10, "status": "uncertain",
+            "before": self.plex.playlist_state(managed["id"]), "after": None,
+        })
+        enabled_at = datetime(2027, 1, 6, 12, tzinfo=BEIJING).timestamp()
+        set_smart_mix_schedule(self.engine, True, now=enabled_at)
+        monday = datetime(2027, 1, 11, 3, tzinfo=BEIJING).timestamp()
+
+        result = run_smart_mix_auto(self.engine, monday, due_kinds=["weekly"], slot=monday)
+
+        self.assertEqual("needs_attention", result["items"]["weekly"]["status"])
+        settings = self.store.get("smart_mix_settings")
+        self.assertNotIn("weekly", settings["auto_retry_state"])
+        self.assertIn("写入结果待核对", settings["auto_paused_reasons"]["weekly"])
+        self.assertNotIn("weekly", smart_mix_auto_due(self.engine, monday + 900))
+
 
 if __name__ == "__main__":
     unittest.main()
