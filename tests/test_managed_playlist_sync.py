@@ -266,6 +266,27 @@ def test_reconcile_discovers_created_playlist_after_response_is_lost():
     assert [call[0] for call in plex.calls] == ["create"]
 
 
+def test_reconcile_can_create_a_separate_copy_beside_an_owned_sibling():
+    plex = MemoryPlex([state("44")])
+
+    result = reconcile_managed_playlist(plex, target(), None, adopt_existing=False)
+
+    assert result.status == "created"
+    assert result.playlist["id"] == "100"
+    assert set(plex.states) == {"44", "100"}
+
+
+def test_lost_create_response_discovers_only_the_new_copy_beside_a_sibling():
+    plex = MemoryPlex([state("44")])
+    plex.lose_create_response = True
+
+    result = reconcile_managed_playlist(plex, target(), None, adopt_existing=False)
+
+    assert result.status == "created"
+    assert result.playlist["id"] == "100"
+    assert [call[0] for call in plex.calls] == ["create"]
+
+
 def test_reconcile_uses_latest_state_when_members_change_before_write():
     plex = MemoryPlex([state(ids=("11", "22"))])
     plex.second_read_state = state(ids=("11", "22", "33"))

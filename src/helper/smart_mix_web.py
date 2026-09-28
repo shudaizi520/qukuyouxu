@@ -8,8 +8,10 @@ from datetime import datetime, time as datetime_time, timedelta, timezone
 from fastapi import Request
 
 from .behavior import profile_behavior_subject
+from .clients import PlexNotFound
 from .engine import SafetyError, fingerprint, safe_error, state_ids, track_fingerprint
-from .playlist_sync import PlaylistPreconditionChanged, has_exact_members, sync_owned_items
+from .playlist_sync import (has_exact_members, has_unresolved_snapshots,
+                            supersede_unresolved_snapshots, sync_owned_items)
 from .smart_mixes import KINDS, select_smart_mix
 
 
@@ -240,18 +242,13 @@ def preview_smart_mix(engine, kind, options=None, now=None):
         managed = managed_all.get(kind)
         blocked = []
         before = None
-        if any(
-            row.get("category_id") == cid and row.get("status") in ("prepared", "uncertain", "restoring")
-            for row in engine.store.get("snapshots", [])
-        ):
-            blocked.append("上一次智能歌单写入结果待核对，禁止重复写入")
         if managed:
             try:
                 if managed.get("scope") != engine.daily_scope() or managed.get("machine") != identity["machine"]:
                     raise SafetyError("智能歌单所属账户、服务器或资料库已变化")
                 before = plex.playlist_state(managed["id"])
-                if marker not in before.get("summary", ""):
-                    raise SafetyError("歌单被手动修改或管理标记变化，不会覆盖")
+            except PlexNotFound:
+                before = None
             except Exception as exc:
                 blocked.append(safe_error(exc))
         elif _unsafe_same_title(engine, plex, kind, selected["title"], identity["machine"]):
@@ -316,16 +313,9 @@ def publish_smart_mix(engine, plan_id, now=None):
         managed_all = engine.store.get(MANAGED_KEY, {}) or {}
         managed = managed_all.get(kind)
         before = plan.get("before")
-        if before:
-            current = plex.playlist_state(before["id"])
-            if (
-                not managed or managed.get("id") != before["id"]
-                or fingerprint(current) != fingerprint(before)
-                or marker not in current.get("summary", "")
-            ):
-                raise SafetyError("歌单在预览后被手动修改，不会覆盖")
-        elif managed or _unsafe_same_title(engine, plex, kind, plan["title"], plan["machine"]):
-            raise SafetyError("预览后出现同名歌单或托管状态变化，请重新生成")
+        if (not managed and not before
+                and _unsafe_same_title(engine, plex, kind, plan["title"], plan["machine"])):
+            raise SafetyError("预览后出现无法验证归属的同名歌单，不会接管")
 
         snapshot = {
             "id": uuid.uuid4().hex, "kind": "smart_mix", "category_id": cid,
@@ -336,35 +326,21 @@ def publish_smart_mix(engine, plan_id, now=None):
         }
         engine._save_snapshot(snapshot)
         try:
-            if before:
-                current = before
-                if current.get("title") != plan["title"]:
-                    previous_ids = state_ids(current)
-                    plex.rename(current["id"], plan["title"])
-                    predicate = lambda row: (
-                        row.get("title") == plan["title"]
-                        and state_ids(row) == previous_ids
-                        and marker in row.get("summary", "")
-                    )
-                    if hasattr(plex, "read_playlist_until"):
-                        current = plex.read_playlist_until(
-                            current["id"], predicate,
-                        )
-                    else:
-                        current = plex.playlist_state(current["id"])
-                    if not current or not predicate(current):
-                        raise SafetyError("智能歌单改名后回读未确认，停止更新成员")
-                after = sync_owned_items(plex, current, ids)
-            else:
-                after = plex.create(
-                    plan["title"], ids, marker,
-                    description="由曲库有序管理；只使用当前 Plex 音乐资料库，发布前必须预览确认。",
-                )
-            if (after["title"] != plan["title"] or marker not in after.get("summary", "")
-                    or not has_exact_members(after, ids)):
-                raise SafetyError("写入后回读与预览不一致，停止自动维护")
+            from .managed_playlist_sync import ManagedPlaylistTarget, reconcile_managed_playlist
+            target = ManagedPlaylistTarget(
+                category_id=cid, title=plan["title"], marker=marker,
+                member_ids=tuple(ids), machine=plan["machine"], scope=plan["scope"],
+                description="由曲库有序管理；只使用当前 Plex 音乐资料库，发布前必须预览确认。",
+            )
+            trusted = managed or ({"id": before["id"], "machine": plan["machine"],
+                                   "scope": plan["scope"]} if before else None)
+            reconciled = reconcile_managed_playlist(
+                plex, target, trusted, adopt_existing=bool(trusted),
+            )
+            after = reconciled.playlist
             snapshot.update(status="applied", after=after)
             engine._save_snapshot(snapshot)
+            supersede_unresolved_snapshots(engine.store, cid, snapshot["id"])
             managed_all[kind] = {
                 "id": after["id"], "title": after["title"], "fingerprint": fingerprint(after),
                 "snapshot_id": snapshot["id"], "machine": plan["machine"], "scope": plan["scope"],
@@ -379,14 +355,14 @@ def publish_smart_mix(engine, plan_id, now=None):
             engine.store.set_many({MANAGED_KEY: managed_all, PLANS_KEY: plans, REMOVED_KEY: removed})
             engine.store.log(f"智能歌单已发布：{plan['title']}，{len(ids)}首")
             return plan["result"]
-        except PlaylistPreconditionChanged as exc:
-            snapshot.update(status="cancelled", error=str(exc)[:300])
-            engine._save_snapshot(snapshot)
-            raise SafetyError(str(exc)) from None
         except Exception as exc:
-            snapshot.update(status="uncertain", error=safe_error(exc))
+            from .managed_playlist_sync import ReconcileConflict
+            snapshot.update(status="conflict" if isinstance(exc, ReconcileConflict) else "retryable",
+                            error=safe_error(exc))
             engine._save_snapshot(snapshot)
-            raise SafetyError("智能歌单写入结果待核对，不会自动重试：" + safe_error(exc)) from None
+            if isinstance(exc, ReconcileConflict):
+                raise SafetyError("智能歌单归属冲突：" + safe_error(exc)) from None
+            raise
 
 
 def remove_smart_mix(engine, kind, confirm_title, now=None):
@@ -580,7 +556,7 @@ def run_smart_mix_auto(engine, now=None, due_kinds=None, slot=None):
                 continue
             desired = [str(row["id"]) for row in plan.get("items", [])]
             current = [str(row.get("id")) for row in (plan.get("before") or {}).get("items", [])]
-            if desired == current:
+            if desired == current and not has_unresolved_snapshots(engine.store, "smart:" + kind):
                 plans = _plan_map(engine.store)
                 plans.pop(kind, None)
                 engine.store.set(PLANS_KEY, plans)

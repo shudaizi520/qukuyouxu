@@ -132,7 +132,7 @@ class SmartMixAutoV0424Tests(unittest.TestCase):
         self.assertNotIn("recent_additions", settings["auto_paused_reasons"])
         self.assertNotIn("recent_additions", smart_mix_auto_due(self.engine, monday + 900))
 
-    def test_safety_block_needs_attention_but_does_not_retry(self):
+    def test_old_uncertain_snapshot_is_superseded_by_verified_update(self):
         from helper.smart_mix_web import run_smart_mix_auto, set_smart_mix_schedule, smart_mix_auto_due
 
         self.publish("weekly", {"size": 10, "recent_days": 30})
@@ -144,14 +144,21 @@ class SmartMixAutoV0424Tests(unittest.TestCase):
         })
         enabled_at = datetime(2027, 1, 6, 12, tzinfo=BEIJING).timestamp()
         set_smart_mix_schedule(self.engine, True, now=enabled_at)
+        settings = self.store.get("smart_mix_settings")
+        settings["auto_paused_reasons"] = {"weekly": "写入结果待核对"}
+        settings["auto_retry_state"] = {"weekly": {"failures": 1, "next_retry_at": 0}}
+        self.store.set("smart_mix_settings", settings)
         monday = datetime(2027, 1, 11, 3, tzinfo=BEIJING).timestamp()
 
         result = run_smart_mix_auto(self.engine, monday, due_kinds=["weekly"], slot=monday)
 
-        self.assertEqual("needs_attention", result["items"]["weekly"]["status"])
+        self.assertIn(result["items"]["weekly"]["status"], ("unchanged", "published"))
         settings = self.store.get("smart_mix_settings")
         self.assertNotIn("weekly", settings["auto_retry_state"])
-        self.assertIn("写入结果待核对", settings["auto_paused_reasons"]["weekly"])
+        self.assertNotIn("weekly", settings["auto_paused_reasons"])
+        snapshot = next(row for row in self.store.get("snapshots") if row["id"] == "unresolved-weekly")
+        self.assertEqual("superseded", snapshot["status"])
+        self.assertTrue(snapshot["superseded_by"])
         self.assertNotIn("weekly", smart_mix_auto_due(self.engine, monday + 900))
 
 

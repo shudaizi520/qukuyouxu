@@ -53,7 +53,15 @@ class _DailyPlex:
     def playlists(self):
         return [copy.deepcopy(row) for row in self.playlists_by_id.values()]
 
+    def owned_playlists(self, marker):
+        return [row for row in self.playlists()
+                if marker in str(row.get("summary") or "").splitlines()]
+
     def playlist_state(self, playlist_id):
+        from helper.clients import PlexNotFound
+
+        if str(playlist_id) not in self.playlists_by_id:
+            raise PlexNotFound("missing")
         return copy.deepcopy(self.playlists_by_id[str(playlist_id)])
 
     def read_playlist_until(self, playlist_id, predicate, attempts=8, delay=0.25):
@@ -237,6 +245,7 @@ class DailyFixedPlaylistTests(unittest.TestCase):
         plex.playlists_by_id["900"]["items"] = [
             {"id": "5", "item_id": "5005"},
         ]
+        plex.playlists_by_id["900"]["summary"] = "人工说明"
 
         with patch("helper.daily.recommend_rotating", side_effect=_next_recommendation):
             second = engine.preview_daily(now=1_800_086_400)
@@ -245,10 +254,9 @@ class DailyFixedPlaylistTests(unittest.TestCase):
         restored = plex.playlist_state(result["playlist_id"])
         self.assertEqual("每日推荐", restored["title"])
         self.assertEqual({"3", "4"}, {row["id"] for row in restored["items"]})
+        self.assertIn(engine.marker("daily"), restored["summary"])
 
-    def test_unconfirmed_rename_never_starts_membership_replacement(self):
-        from helper.engine import SafetyError
-
+    def test_summary_changed_during_rename_is_restored_before_membership_replacement(self):
         plex = _UnconfirmedRenameDailyPlex()
         _store, engine = self.make_engine(plex)
         with patch("helper.daily.recommend_rotating", side_effect=_recommendation):
@@ -259,10 +267,28 @@ class DailyFixedPlaylistTests(unittest.TestCase):
 
         with patch("helper.daily.recommend_rotating", side_effect=_next_recommendation):
             second = engine.preview_daily(now=1_800_086_400)
-        with self.assertRaises(SafetyError):
-            engine.publish_daily(second["id"], now=1_800_086_410)
+        result = engine.publish_daily(second["id"], now=1_800_086_410)
 
-        self.assertEqual(0, plex.membership_mutations)
+        restored = plex.playlist_state(result["playlist_id"])
+        self.assertEqual({"3", "4"}, {row["id"] for row in restored["items"]})
+        self.assertIn(engine.marker("daily"), restored["summary"])
+        self.assertGreater(plex.membership_mutations, 0)
+
+    def test_deleted_daily_playlist_is_recreated_on_next_update(self):
+        plex = _DailyPlex(existing=True)
+        store, engine = self.make_engine(plex)
+        with patch("helper.daily.recommend_rotating", side_effect=_recommendation):
+            first = engine.preview_daily(now=1_800_000_000)
+        engine.publish_daily(first["id"], now=1_800_000_010)
+        del plex.playlists_by_id["900"]
+
+        with patch("helper.daily.recommend_rotating", side_effect=_next_recommendation):
+            second = engine.preview_daily(now=1_800_086_400)
+        result = engine.publish_daily(second["id"], now=1_800_086_410)
+
+        self.assertEqual("901", result["playlist_id"])
+        self.assertEqual("901", store.get("daily_managed")["id"])
+        self.assertEqual({"3", "4"}, {row["id"] for row in plex.playlist_state("901")["items"]})
 
     def test_new_profile_uses_own_daily_title_when_another_library_owns_default(self):
         from helper.profiles import ProfileRegistry

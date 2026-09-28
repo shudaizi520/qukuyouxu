@@ -17,6 +17,30 @@ class PlaylistPreconditionChanged(RuntimeError):
     """The playlist changed after preview but before the first mutation."""
 
 
+def has_unresolved_snapshots(store, category_id):
+    return any(
+        row.get('category_id') == category_id
+        and row.get('status') in ('prepared', 'uncertain', 'restoring')
+        for row in store.get('snapshots', [])
+    )
+
+
+def supersede_unresolved_snapshots(store, category_id, success_snapshot_id):
+    """Retire old incomplete writes only after a newer write was verified."""
+    rows = store.get('snapshots', [])
+    changed = False
+    for row in rows:
+        if (row.get('id') != success_snapshot_id
+                and row.get('category_id') == category_id
+                and row.get('status') in ('prepared', 'uncertain', 'restoring')):
+            row['status'] = 'superseded'
+            row['superseded_by'] = success_snapshot_id
+            changed = True
+    if changed:
+        store.set('snapshots', rows)
+    return changed
+
+
 def has_exact_members(state, desired):
     """Return true when Plex has exactly the requested unique members, regardless of order."""
     from .engine import state_ids

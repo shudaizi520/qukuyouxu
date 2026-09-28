@@ -46,7 +46,12 @@ class FakePlex:
         return [dict(row) for row in self.rows]
 
     def playlists(self):
-        return [{"ratingKey": key, "title": state["title"]} for key, state in self.states.items()]
+        return [{"ratingKey": key, "title": state["title"], "summary": state.get("summary", "")}
+                for key, state in self.states.items()]
+
+    def owned_playlists(self, marker):
+        return [row for row in self.playlists()
+                if marker in str(row.get("summary") or "").splitlines()]
 
     def create(self, title, ids, marker, description=None):
         self.created += 1
@@ -58,8 +63,16 @@ class FakePlex:
         return self.playlist_state(pid)
 
     def playlist_state(self, pid):
+        from helper.clients import PlexNotFound
+
+        if str(pid) not in self.states:
+            raise PlexNotFound("missing")
         state = self.states[str(pid)]
         return {**state, "items": [dict(row) for row in state["items"]]}
+
+    def read_playlist_until(self, pid, predicate, attempts=8, delay=0.25):
+        state = self.playlist_state(pid)
+        return state
 
     def delete_playlist(self, pid):
         del self.states[str(pid)]
@@ -79,6 +92,9 @@ class FakePlex:
 
     def rename(self, pid, title):
         self.states[str(pid)]["title"] = str(title)
+
+    def update_playlist_summary(self, pid, summary):
+        self.states[str(pid)]["summary"] = str(summary)
 
     def move_item(self, pid, item_id, after_item_id):
         rows = self.states[str(pid)]["items"]
@@ -206,6 +222,7 @@ class SmartMixControlsV0420Tests(unittest.TestCase):
         self.plex.states[managed["id"]]["items"] = [
             {"id": "30", "item_id": "999"},
         ]
+        self.plex.states[managed["id"]]["summary"] = "人工说明"
 
         plan = preview_smart_mix(
             self.engine, "weekly", {"size": 10, "recent_days": 30}, now=NOW + 2
@@ -219,6 +236,7 @@ class SmartMixControlsV0420Tests(unittest.TestCase):
             {str(row["id"]) for row in plan["items"]},
             {row["id"] for row in restored["items"]},
         )
+        self.assertIn(self.engine.marker("smart:weekly"), restored["summary"])
 
     def test_publish_accepts_plex_membership_when_server_keeps_its_own_order(self):
         from helper.smart_mix_web import preview_smart_mix, publish_smart_mix
@@ -237,8 +255,7 @@ class SmartMixControlsV0420Tests(unittest.TestCase):
         self.assertEqual(managed["id"], result["playlist_id"])
         self.assertEqual(current_ids, [row["id"] for row in self.plex.states[managed["id"]]["items"]])
 
-    def test_concurrent_prewrite_change_cancels_snapshot_instead_of_locking_future_updates(self):
-        from helper.engine import SafetyError
+    def test_concurrent_prewrite_change_is_absorbed_by_the_same_update(self):
         from helper.smart_mix_web import preview_smart_mix, publish_smart_mix
 
         self.publish()
@@ -256,16 +273,29 @@ class SmartMixControlsV0420Tests(unittest.TestCase):
             return original(pid)
 
         self.plex.playlist_state = changed_between_checks
-        with self.assertRaisesRegex(SafetyError, "写入前.*变化"):
-            publish_smart_mix(self.engine, plan["id"], now=NOW + 3)
+        result = publish_smart_mix(self.engine, plan["id"], now=NOW + 3)
 
         snapshot = self.store.get("snapshots")[-1]
-        self.assertEqual("cancelled", snapshot["status"])
-        self.assertNotEqual("uncertain", snapshot["status"])
-        retry_plan = preview_smart_mix(
-            self.engine, "weekly", {"size": 11, "recent_days": 30}, now=NOW + 4,
+        self.assertEqual("applied", snapshot["status"])
+        restored = self.plex.playlist_state(result["playlist_id"])
+        self.assertEqual(
+            {str(row["id"]) for row in plan["items"]},
+            {row["id"] for row in restored["items"]},
         )
-        self.assertFalse(any("写入结果待核对" in reason for reason in retry_plan["blocked"]))
+
+    def test_deleted_smart_playlist_is_recreated_on_next_update(self):
+        from helper.smart_mix_web import preview_smart_mix, publish_smart_mix
+
+        managed = self.publish()
+        del self.plex.states[managed["id"]]
+
+        plan = preview_smart_mix(
+            self.engine, "weekly", {"size": 10, "recent_days": 30}, now=NOW + 2,
+        )
+        result = publish_smart_mix(self.engine, plan["id"], now=NOW + 3)
+
+        self.assertNotEqual(managed["id"], result["playlist_id"])
+        self.assertEqual(result["playlist_id"], self.store.get("smart_mix_managed")["weekly"]["id"])
 
     def test_restore_accepts_plex_membership_when_server_keeps_its_own_order(self):
         from helper.engine import fingerprint

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+import time
 from typing import Mapping
 
 
@@ -92,33 +93,52 @@ def _matches(state: Mapping[str, object], target: ManagedPlaylistTarget) -> bool
 
 def _read_verified(plex, playlist_id: str, target: ManagedPlaylistTarget):
     predicate = lambda row: _matches(row, target)
-    if hasattr(plex, "read_playlist_until"):
-        state = plex.read_playlist_until(playlist_id, predicate)
-    else:
+    state = None
+    for attempt in range(8):
         state = plex.playlist_state(playlist_id)
+        if predicate(state):
+            return state
+        if attempt < 7:
+            time.sleep(0.25 * (attempt + 1))
     if not state or not predicate(state):
         from .clients import PlexError
 
         raise PlexError("Plex 托管歌单写入后回读不一致")
-    return state
 
 
 def _owned_candidates(plex, target: ManagedPlaylistTarget) -> list[Mapping[str, object]]:
-    candidates = list(plex.owned_playlists(target.marker))
+    if hasattr(plex, "owned_playlists"):
+        candidates = list(plex.owned_playlists(target.marker))
+    else:
+        candidates = [
+            row for row in plex.playlists()
+            if target.marker in str(row.get("summary") or "").splitlines()
+        ]
     if len(candidates) > 1:
         raise ReconcileConflict("发现多个带有相同管理标记的 Plex 歌单")
     return candidates
 
 
-def _discover_or_create(plex, target: ManagedPlaylistTarget):
-    candidates = _owned_candidates(plex, target)
-    if candidates:
+def _discover_or_create(plex, target: ManagedPlaylistTarget, adopt_existing: bool):
+    if hasattr(plex, "owned_playlists"):
+        candidates = list(plex.owned_playlists(target.marker))
+    else:
+        candidates = [row for row in plex.playlists()
+                      if target.marker in str(row.get("summary") or "").splitlines()]
+    if adopt_existing and len(candidates) > 1:
+        raise ReconcileConflict("发现多个带有相同管理标记的 Plex 歌单")
+    if adopt_existing and candidates:
         playlist_id = _playlist_id(candidates[0])
         if not playlist_id:
             raise ReconcileConflict("托管歌单候选缺少 Plex ID")
         return plex.playlist_state(playlist_id), False
-    if any(str(row.get("title") or "") == target.title for row in plex.playlists()):
+    if any(
+        str(row.get("title") or "") == target.title
+        and target.marker not in str(row.get("summary") or "").splitlines()
+        for row in plex.playlists()
+    ):
         raise ReconcileConflict("Plex 中存在同名但没有本应用管理标记的歌单")
+    previous_ids = {_playlist_id(row) for row in candidates}
     try:
         return plex.create(
             target.title,
@@ -129,9 +149,15 @@ def _discover_or_create(plex, target: ManagedPlaylistTarget):
     except Exception:
         # A create response can be lost after Plex committed it. Discover the
         # unique marker before allowing the caller's retry policy to run.
-        candidates = _owned_candidates(plex, target)
+        candidates = [row for row in (
+            plex.owned_playlists(target.marker) if hasattr(plex, "owned_playlists")
+            else [row for row in plex.playlists()
+                  if target.marker in str(row.get("summary") or "").splitlines()]
+        ) if _playlist_id(row) not in previous_ids]
         if not candidates:
             raise
+        if len(candidates) > 1:
+            raise ReconcileConflict("创建后发现多个新的同标记 Plex 歌单")
         playlist_id = _playlist_id(candidates[0])
         return plex.playlist_state(playlist_id), True
 
@@ -140,6 +166,8 @@ def reconcile_managed_playlist(
     plex,
     target: ManagedPlaylistTarget,
     managed_record: Mapping[str, object] | None,
+    *,
+    adopt_existing: bool = True,
 ) -> ManagedPlaylistResult:
     """Converge one ordinary Plex playlist without adopting unowned names."""
     from .clients import PlexNotFound
@@ -160,7 +188,7 @@ def reconcile_managed_playlist(
         except PlexNotFound:
             current = None
     if current is None:
-        current, created = _discover_or_create(plex, target)
+        current, created = _discover_or_create(plex, target, adopt_existing)
         playlist_id = _playlist_id(current)
     if not playlist_id:
         raise ReconcileConflict("托管歌单缺少 Plex ID")
@@ -176,10 +204,12 @@ def reconcile_managed_playlist(
     if str(current.get("title") or "") != target.title:
         plex.rename(playlist_id, target.title)
         changed = True
+        current = plex.playlist_state(playlist_id)
     expected_summary = _expected_summary(target)
     if str(current.get("summary") or "") != expected_summary:
         plex.update_playlist_summary(playlist_id, expected_summary)
         changed = True
+        current = plex.playlist_state(playlist_id)
 
     desired = set(target.member_ids)
     seen = set()

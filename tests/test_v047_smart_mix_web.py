@@ -42,7 +42,10 @@ class FakePlex:
         return [dict(row) for row in self.rows]
 
     def playlists(self):
-        rows = [{"ratingKey": key, "title": state["title"]} for key, state in self.states.items()]
+        rows = [
+            {"ratingKey": key, "title": state["title"], "summary": state.get("summary", "")}
+            for key, state in self.states.items()
+        ]
         if self.foreign_title:
             rows.append({"ratingKey": "999", "title": self.foreign_title})
         return rows
