@@ -200,14 +200,6 @@ def restore_category(runtime, recipient_id, category_id):
     raise ValueError("同曲库分类歌单会自动同步，无需单独恢复")
 
 
-def _confirmed_state(plex, playlist_id, expected):
-    reader = getattr(plex, "read_playlist_until", None)
-    state = reader(playlist_id, lambda row: state_ids(row) == expected) if callable(reader) else plex.playlist_state(playlist_id)
-    if state_ids(state) != expected:
-        raise ValueError("分享歌单写入后回读不一致，停止自动重试")
-    return state
-
-
 def sync_recipient(runtime, owner_id, recipient_id, *, now=None):
     """Synchronize only verified owner categories; never replace personal playlists."""
     owner, recipient = _profiles(runtime, owner_id, recipient_id)
@@ -284,7 +276,6 @@ def sync_recipient(runtime, owner_id, recipient_id, *, now=None):
             managed.pop(category_id, None)
             child_store.set("managed", managed)
             _mark_revision_done(owner_store, category_id, revision["generation"], recipient_id)
-    existing = {str(row.get("title") or "") for row in child_plex.playlists()}
     for category_id, record in list(managed.items()):
         if category_id in blocked_categories:
             continue
@@ -337,74 +328,29 @@ def sync_recipient(runtime, owner_id, recipient_id, *, now=None):
             if not desired:
                 result["skipped"] += 1
                 continue
-            if record:
-                try:
-                    before = child_plex.playlist_state(record["id"])
-                except PlexNotFound:
-                    managed.pop(category_id, None)
-                    child_store.set("managed", managed)
-                    record = None
-                if record and child_engine.marker(category_id) not in before.get("summary", ""):
-                    result["skipped"] += 1
-                    continue
-            if record:
-                if state_ids(before) == desired:
-                    if before.get("title") == original["title"]:
-                        result["unchanged"] += 1
-                        for revision in _pending_revisions(owner_store, category_id, recipient_id):
-                            if revision.get("action") == "publish" and revision.get("confirmed") and str(source["id"]) == revision["source_id"]:
-                                _mark_revision_done(owner_store, category_id, revision["generation"], recipient_id)
-                        continue
-                current = before
-                desired_set = set(desired)
-
-                def remember(fresh):
-                    managed[category_id] = {
-                        "id": fresh["id"], "title": fresh["title"],
-                        "fingerprint": fingerprint(fresh), "count": len(fresh.get("items", [])),
-                        "shared_from": owner_id, "shared_source_id": str(source["id"]),
-                    }
-                    child_store.set("managed", managed)
-
-                if not desired_set.intersection(state_ids(current)):
-                    anchor = desired[0]
-                    child_plex.append(current["id"], [anchor])
-                    current = _confirmed_state(child_plex, current["id"], state_ids(current) + [anchor])
-                    remember(current)
-                for item in list(current.get("items", [])):
-                    if str(item.get("id")) in desired_set:
-                        continue
-                    item_id = str(item.get("item_id") or "")
-                    if not item_id.isdigit():
-                        raise ValueError("分享歌单条目标识异常，停止修改")
-                    expected = [row["id"] for row in current["items"] if str(row.get("item_id")) != item_id]
-                    child_plex.remove_items(current["id"], [item_id])
-                    current = _confirmed_state(child_plex, current["id"], expected)
-                    remember(current)
-                missing = [value for value in desired if value not in set(state_ids(current))]
-                if missing:
-                    child_plex.append(current["id"], missing)
-                    current = _confirmed_state(child_plex, current["id"], state_ids(current) + missing)
-                    remember(current)
-                if current.get("title") != original["title"]:
-                    child_plex.rename(current["id"], original["title"])
-                    current = child_plex.playlist_state(current["id"])
-                after = current
-                result["updated"] += 1
-            if not record:
-                if original["title"] in existing:
-                    result["skipped"] += 1
-                    continue
-                after = child_plex.create(original["title"], desired, child_engine.marker(category_id))
-                if (after.get("title") != original["title"] or state_ids(after) != desired
-                        or child_engine.marker(category_id) not in after.get("summary", "")):
-                    raise ValueError("分享歌单创建后回读不一致，停止自动重试")
-                existing.add(original["title"])
-                result["created"] += 1
+            from .managed_playlist_sync import ManagedPlaylistTarget, reconcile_managed_playlist
+            scope=child_engine.daily_scope();trusted=dict(record or {})
+            if trusted:
+                trusted.setdefault("machine",machine);trusted.setdefault("scope",scope)
+            target=ManagedPlaylistTarget(
+                category_id=category_id,title=original["title"],
+                marker=child_engine.marker(category_id),member_ids=tuple(desired),
+                machine=machine,scope=scope,
+                description="由曲库有序管理；内容与主账户已确认的曲库分类保持一致。",
+            )
+            reconciled=reconcile_managed_playlist(
+                child_plex,target,trusted or None,adopt_existing=bool(trusted),
+            )
+            after=dict(reconciled.playlist)
+            if reconciled.status=="created":result["created"]+=1
+            elif reconciled.status=="updated":result["updated"]+=1
+            else:result["unchanged"]+=1
             managed[category_id] = {
                 "id": after["id"], "title": after["title"],
                 "fingerprint": fingerprint(after), "count": len(after.get("items", [])),
                 "shared_from": owner_id, "shared_source_id": str(source["id"]),
+                "machine": machine, "scope": scope,
+                "marker": child_engine.marker(category_id),
             }
             child_store.set("managed", managed)
             for revision in _pending_revisions(owner_store, category_id, recipient_id):

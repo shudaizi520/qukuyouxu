@@ -39,7 +39,8 @@ class FakePlex:
         playlist_id = str(self.data["next"])
         self.data["next"] += 1
         row = {
-            "id": playlist_id, "title": title, "summary": marker,
+            "id": playlist_id, "title": title,
+            "summary": marker + ("\n" + description if description else ""),
             "items": [{"id": str(value), "item_id": f"{playlist_id}{index+1}"} for index, value in enumerate(ids)],
         }
         self.data["playlists"][playlist_id] = row
@@ -58,6 +59,13 @@ class FakePlex:
 
     def rename(self, playlist_id, title):
         self.data["playlists"][str(playlist_id)]["title"] = title
+
+    def update_playlist_summary(self, playlist_id, summary):
+        self.data["playlists"][str(playlist_id)]["summary"] = str(summary)
+
+    def owned_playlists(self, marker):
+        return [row for row in self.playlists()
+                if marker in str(row.get("summary") or "").splitlines()]
 
     def remove_items(self, playlist_id, item_ids):
         row = self.data["playlists"][str(playlist_id)]
@@ -292,6 +300,11 @@ def test_owner_update_reconciles_recipient_edited_copy_with_marker(shared_librar
     child = ScopedStore(base, "friend")
     playlist_id = child.get("managed")["qq:pop"]["id"]
     data["friend-token"]["playlists"][playlist_id]["title"] = "我自己改的"
+    data["friend-token"]["playlists"][playlist_id]["summary"] = "人工说明"
+    data["friend-token"]["playlists"][playlist_id]["items"] = [
+        {"id": "1", "item_id": "1001"},
+        {"id": "3", "item_id": "1003"},
+    ]
     owner = data["owner-token"]["playlists"]["100"]
     owner["items"].append({"id": "3", "item_id": "100-2"})
     from helper.engine import fingerprint
@@ -303,8 +316,49 @@ def test_owner_update_reconciles_recipient_edited_copy_with_marker(shared_librar
     result = sync_recipient(runtime, "default", "friend")
 
     assert result["updated"] == 1
-    assert [row["id"] for row in data["friend-token"]["playlists"][playlist_id]["items"]] == ["1", "2", "3"]
+    copied_ids = [row["id"] for row in data["friend-token"]["playlists"][playlist_id]["items"]]
+    assert len(copied_ids) == 3
+    assert set(copied_ids) == {"1", "2", "3"}
+    assert data["friend-token"]["playlists"][playlist_id]["title"] == "流行精选"
+    assert data["friend-token"]["playlists"][playlist_id]["summary"].splitlines()[0] == runtime.engine("friend").marker("qq:pop")
     assert managed != child.get("managed")
+
+
+def test_transient_recipient_read_does_not_create_a_duplicate(shared_library):
+    from helper.clients import PlexError
+    from helper.library_sharing import sync_recipient
+    from helper.scoped_store import ScopedStore
+
+    base, _registry, runtime, data = shared_library
+    sync_recipient(runtime, "default", "friend")
+    child = ScopedStore(base, "friend")
+    playlist_id = child.get("managed")["qq:pop"]["id"]
+
+    class ReadTimeoutPlex(FakePlex):
+        def playlist_state(self, candidate):
+            if str(candidate) == playlist_id:
+                raise PlexError("temporary read timeout")
+            return super().playlist_state(candidate)
+
+    runtime.engine("friend").plex_factory = lambda cfg: ReadTimeoutPlex(cfg["plex_token"], data)
+    result = sync_recipient(runtime, "default", "friend")
+
+    assert result["created"] == 0
+    assert result["errors"]
+    assert len(data["friend-token"]["playlists"]) == 1
+
+
+def test_recipient_sync_never_recalculates_owner_categories(shared_library):
+    from helper.library_sharing import sync_recipient
+
+    _base, _registry, runtime, _data = shared_library
+    owner = runtime.engine("default")
+    owner._preview = lambda *_args, **_kwargs: (_ for _ in ()).throw(
+        AssertionError("recipient sync must not run QQ/category discovery")
+    )
+    owner._preview_base = owner._preview
+
+    assert sync_recipient(runtime, "default", "friend")["created"] == 1
 
 
 def test_deleting_recipient_copy_from_app_does_not_opt_out(shared_library):
