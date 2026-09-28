@@ -1,3 +1,5 @@
+import hashlib
+
 import pytest
 
 from helper.managed_playlist_sync import (
@@ -182,11 +184,20 @@ class MemoryPlex:
         )
 
 
-def state(playlist_id="9", title="每周常听", summary="[PCH:installation:smart:weekly]\n由曲库有序管理", ids=("11", "22")):
+def scoped_summary(scope="profile:library", description="由曲库有序管理"):
+    digest = hashlib.sha256(f"plex-machine\0{scope}".encode()).hexdigest()
+    return "\n".join(filter(None, (
+        "[PCH:installation:smart:weekly]",
+        f"[QKYX-SCOPE:{digest}]",
+        description,
+    )))
+
+
+def state(playlist_id="9", title="每周常听", summary=None, ids=("11", "22")):
     return {
         "id": str(playlist_id),
         "title": title,
-        "summary": summary,
+        "summary": scoped_summary() if summary is None else summary,
         "items": [
             {"id": str(track_id), "item_id": str(index + 1)}
             for index, track_id in enumerate(ids)
@@ -216,7 +227,7 @@ def test_reconcile_restores_title_and_program_summary():
 
     assert result.status == "updated"
     assert result.playlist["title"] == "每周常听"
-    assert result.playlist["summary"] == "[PCH:installation:smart:weekly]\n由曲库有序管理"
+    assert result.playlist["summary"] == scoped_summary()
 
 
 def test_reconcile_recreates_only_after_confirmed_not_found():
@@ -274,6 +285,28 @@ def test_reconcile_can_create_a_separate_copy_beside_an_owned_sibling():
     assert result.status == "created"
     assert result.playlist["id"] == "100"
     assert set(plex.states) == {"44", "100"}
+
+
+def test_missing_record_never_adopts_same_marker_from_another_scope():
+    sibling = state("44", summary=scoped_summary("other-profile:other-library"))
+    plex = MemoryPlex([sibling])
+
+    result = reconcile_managed_playlist(plex, target(), managed("9"))
+
+    assert result.status == "created"
+    assert result.playlist["id"] == "100"
+    assert plex.states["44"] == sibling
+
+
+def test_known_record_never_overwrites_a_playlist_marked_for_another_scope():
+    sibling = state("44", summary=scoped_summary("other-profile:other-library"))
+    plex = MemoryPlex([sibling])
+
+    with pytest.raises(ReconcileConflict, match="其他档案或曲库"):
+        reconcile_managed_playlist(plex, target(), managed("44"))
+
+    assert plex.calls == []
+    assert plex.states["44"] == sibling
 
 
 def test_lost_create_response_discovers_only_the_new_copy_beside_a_sibling():

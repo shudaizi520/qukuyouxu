@@ -420,13 +420,60 @@ class DailyFixedPlaylistTests(unittest.TestCase):
         now = 1_800_000_000
         with patch.object(engine, "_preview_daily", return_value={
             "id": "auto", "blocked": [], "rolling": {"unchanged": True},
-        }) as preview:
+        }) as preview, patch.object(engine, "_publish_daily", return_value={
+            "message": "每日推荐已核对", "unchanged": True,
+        }) as publish:
             result = engine.daily_auto(
                 schedule={"enabled": True, "hour": 23}, scheduled=True, now=now,
             )
 
         preview.assert_called_once_with(now, origin="auto")
+        publish.assert_called_once_with("auto", now)
         self.assertTrue(result["unchanged"])
+
+    def test_scheduled_daily_reconciles_metadata_even_when_members_are_unchanged(self):
+        plex = _DailyPlex(existing=True)
+        store, engine = self.make_engine(plex)
+        store.set("daily_settings", {"enabled": True, "hour": 6})
+        with patch("helper.daily.recommend_rotating", side_effect=_recommendation):
+            plan = engine.preview_daily(now=1_800_000_000)
+        engine.publish_daily(plan["id"], now=1_800_000_010)
+        plex.playlists_by_id["900"]["title"] = "Plex 手工改名"
+        plex.playlists_by_id["900"]["summary"] = "人工说明"
+
+        with patch("helper.daily.recommend_rotating", side_effect=_recommendation):
+            engine.daily_auto(
+                schedule={"enabled": True, "hour": 0}, scheduled=True,
+                now=1_800_086_400,
+            )
+
+        self.assertEqual("每日推荐", plex.playlists_by_id["900"]["title"])
+        self.assertIn(engine.marker("daily"), plex.playlists_by_id["900"]["summary"])
+
+    def test_scheduled_daily_retries_a_transient_managed_playlist_read(self):
+        from helper.clients import PlexError
+        from helper.scheduler_retry import TransientScheduleError
+
+        class TimeoutPlex(_DailyPlex):
+            def playlist_state(self, playlist_id):
+                raise PlexError("temporary read timeout")
+
+        plex = TimeoutPlex(existing=True)
+        store, engine = self.make_engine(plex)
+        store.set("daily_settings", {"enabled": True, "hour": 6})
+        store.set("daily_managed", {
+            "id": "900", "machine": "machine-a", "scope": engine.daily_scope(),
+        })
+        now = 1_800_000_000
+
+        with self.assertRaises(TransientScheduleError):
+            engine.daily_auto(
+                schedule={"enabled": True, "hour": 0}, scheduled=True, now=now,
+            )
+
+        self.assertIsNone(store.get("daily_auto_checked_date"))
+        self.assertIsNone(store.get("daily_auto_suspension"))
+        self.assertTrue(store.get("daily_settings")["enabled"])
 
     def test_recovery_suspension_overrides_global_daily_switch(self):
         plex = _DailyPlex(existing=True)

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import time
 
-from .clients import PlexNotFound
+from .clients import PlexError, PlexNotFound
 from .engine import fingerprint, state_ids
 
 
@@ -122,6 +122,24 @@ def _mark_revision_done(owner_store, category_id, generation, recipient_id):
     owner_store.set(REVISIONS_KEY, revisions)
 
 
+def _category_enabled(owner_store, category_id):
+    disabled = set(owner_store.get("managed_disabled_categories", []) or [])
+    if category_id in disabled:
+        return False
+    source = next((row for row in owner_store.get("sources", []) or []
+                   if str(row.get("id") or "") == str(category_id)), None)
+    return source is None or source.get("enabled") is not False
+
+
+def _record_error(result, label, exc):
+    from .engine import safe_error
+
+    message = str(label) + "：" + safe_error(exc)
+    result["errors"].append(message)
+    bucket = "retryable_errors" if isinstance(exc, PlexError) else "conflicts"
+    result[bucket].append(message)
+
+
 def reconcile_owner_revision(runtime, owner_id):
     """Retry only unfinished same-library targets; others continue independently."""
     store = runtime.engine(owner_id).store
@@ -193,6 +211,8 @@ def share_status(runtime, recipient_id):
         items.append({"id": category_id, "title": source.get("title") or category_id, "status": status})
     return {"recipient": True, "owner_id": owner_id, "items": items,
             "checked_at": share.get("checked_at"),
+            "status": share.get("status") or "normal",
+            "retry_at": share.get("retry_at"),
             "last_result": share.get("last_result") or {}}
 
 
@@ -231,12 +251,14 @@ def sync_recipient(runtime, owner_id, recipient_id, *, now=None):
     state.pop("excluded", None)
     managed = dict(child_store.get("managed", {}) or {})
     result = {"created": 0, "updated": 0, "removed": 0, "unchanged": 0, "opted_out": 0,
-              "skipped": 0, "errors": []}
+              "skipped": 0, "errors": [], "retryable_errors": [], "conflicts": []}
 
     owner_managed = owner_store.get("managed", {}) or {}
     blocked_categories = set()
     revisions = owner_store.get(REVISIONS_KEY, {}) or {}
     for category_id in revisions:
+        if not _category_enabled(owner_store, category_id):
+            continue
         for revision in _pending_revisions(owner_store, category_id, recipient_id):
             if not revision.get("confirmed"):
                 blocked_categories.add(category_id)
@@ -254,8 +276,7 @@ def sync_recipient(runtime, owner_id, recipient_id, *, now=None):
             except PlexNotFound:
                 current = None
             except Exception as exc:
-                from .engine import safe_error
-                result["errors"].append(category_id + "：" + safe_error(exc))
+                _record_error(result, category_id, exc)
                 blocked_categories.add(category_id)
                 break
             if current and child_engine.marker(category_id) not in current.get("summary", ""):
@@ -269,8 +290,7 @@ def sync_recipient(runtime, owner_id, recipient_id, *, now=None):
                         raise ValueError("Plex 尚未确认旧歌单删除")
                     result["removed"] += 1
                 except Exception as exc:
-                    from .engine import safe_error
-                    result["errors"].append(category_id + "：" + safe_error(exc))
+                    _record_error(result, category_id, exc)
                     blocked_categories.add(category_id)
                     break
             managed.pop(category_id, None)
@@ -288,8 +308,7 @@ def sync_recipient(runtime, owner_id, recipient_id, *, now=None):
             child_store.set("managed", managed)
             continue
         except Exception as exc:
-            from .engine import safe_error
-            result["errors"].append(str(record.get("title") or category_id) + "：" + safe_error(exc))
+            _record_error(result, str(record.get("title") or category_id), exc)
             continue
         if child_engine.marker(category_id) not in current.get("summary", ""):
             result["skipped"] += 1
@@ -306,11 +325,10 @@ def sync_recipient(runtime, owner_id, recipient_id, *, now=None):
             child_store.set("managed", managed)
             result["removed"] += 1
         except Exception as exc:
-            from .engine import safe_error
-            result["errors"].append(str(record.get("title") or category_id) + "：" + safe_error(exc))
+            _record_error(result, str(record.get("title") or category_id), exc)
 
     for category_id, source in owner_managed.items():
-        if category_id in blocked_categories:
+        if category_id in blocked_categories or not _category_enabled(owner_store, category_id):
             continue
         if not isinstance(source, dict) or not source.get("id") or not source.get("title"):
             continue
@@ -358,8 +376,7 @@ def sync_recipient(runtime, owner_id, recipient_id, *, now=None):
                     if str(source["id"]) == revision["source_id"]:
                         _mark_revision_done(owner_store, category_id, revision["generation"], recipient_id)
         except Exception as exc:
-            from .engine import safe_error
-            result["errors"].append(str(source.get("title") or category_id) + "：" + safe_error(exc))
+            _record_error(result, str(source.get("title") or category_id), exc)
 
     state.update(checked_at=time.time() if now is None else float(now))
     child_store.set(STATE_KEY, state)

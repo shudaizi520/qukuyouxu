@@ -230,13 +230,15 @@ class ProfileRuntime:
                         scheduled["next_at"] = advance_slot(scheduled.get("slot"), now, task, settings)
                         scheduled["slot"] = scheduled["next_at"]
                     engine.store.set(PROFILE_STATE_KEY, state)
-        self.sync_library_shares_due(now)
+        if settings["library"]["enabled"]:
+            self.sync_library_shares_due(now)
         return results
 
     def sync_library_shares_due(self, now):
         """Default same-library category copies, independent of QQ/scan schedules."""
         from .engine import digest, safe_error
         from .library_sharing import REVISIONS_KEY, STATE_KEY, owner_for_recipient, recover_owner_revisions, sync_recipient
+        from .scheduler_retry import clear_retry, schedule_retry
 
         if self.job_gate.locked() or self.operation_gate.locked():
             return
@@ -272,6 +274,11 @@ class ProfileRuntime:
             revision = digest([manifest, revisions])
             share = child_store.get(STATE_KEY, {}) or {}
             checked_at = float(share.get("checked_at") or 0)
+            if (share.get("status") == "waiting_retry"
+                    and float(share.get("retry_at") or 0) > now):
+                continue
+            if share.get("status") == "needs_attention" and share.get("owner_digest") == revision:
+                continue
             if not pending_revision and share.get("owner_digest") == revision and 0 <= now - checked_at < 900:
                 continue
             pairs.append((owner_id, profile["id"], revision, child_store))
@@ -287,14 +294,38 @@ class ProfileRuntime:
                 try:
                     outcome = sync_recipient(self, owner_id, recipient_id, now=now)
                     share = dict(store.get(STATE_KEY, {}) or {})
-                    share["owner_digest"] = revision
                     share["last_result"] = outcome
+                    share["checked_at"] = now
+                    if outcome.get("retryable_errors"):
+                        share["status"] = "waiting_retry"
+                        if not schedule_retry(share, now):
+                            clear_retry(share)
+                            share["status"] = "needs_attention"
+                            share["owner_digest"] = revision
+                    elif outcome.get("conflicts") or outcome.get("errors"):
+                        clear_retry(share)
+                        share.pop("next_at", None)
+                        share["status"] = "needs_attention"
+                        share["owner_digest"] = revision
+                    else:
+                        clear_retry(share)
+                        share.pop("next_at", None)
+                        share["status"] = "normal"
+                        share["owner_digest"] = revision
                     store.set(STATE_KEY, share)
                 except Exception as exc:
                     store.log("同库歌单同步已暂停：" + safe_error(exc), "error")
                     share = dict(store.get(STATE_KEY, {}) or {})
-                    share.update(checked_at=now, owner_digest=revision,
+                    share.update(checked_at=now,
                                  last_result={"errors": [safe_error(exc)]})
+                    from .clients import PlexError
+                    if isinstance(exc, PlexError) and schedule_retry(share, now):
+                        share["status"] = "waiting_retry"
+                    else:
+                        clear_retry(share)
+                        share.pop("next_at", None)
+                        share["status"] = "needs_attention"
+                        share["owner_digest"] = revision
                     store.set(STATE_KEY, share)
         finally:
             self.operation_gate.release()

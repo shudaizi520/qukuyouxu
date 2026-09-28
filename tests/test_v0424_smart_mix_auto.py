@@ -132,6 +132,51 @@ class SmartMixAutoV0424Tests(unittest.TestCase):
         self.assertNotIn("recent_additions", settings["auto_paused_reasons"])
         self.assertNotIn("recent_additions", smart_mix_auto_due(self.engine, monday + 900))
 
+    def test_unchanged_members_still_restore_managed_title_and_summary(self):
+        from helper.smart_mix_web import run_smart_mix_auto, set_smart_mix_schedule
+
+        self.publish("weekly", {"size": 10, "recent_days": 30})
+        managed = self.store.get("smart_mix_managed")["weekly"]
+        self.plex.states[managed["id"]]["title"] = "Plex 手工改名"
+        self.plex.states[managed["id"]]["summary"] = "人工说明"
+        enabled_at = datetime(2027, 1, 6, 12, tzinfo=BEIJING).timestamp()
+        set_smart_mix_schedule(self.engine, True, now=enabled_at)
+        monday = datetime(2027, 1, 11, 3, tzinfo=BEIJING).timestamp()
+
+        result = run_smart_mix_auto(
+            self.engine, monday, due_kinds=["weekly"], slot=monday,
+        )
+
+        self.assertEqual("published", result["items"]["weekly"]["status"])
+        self.assertEqual("每周常听", self.plex.states[managed["id"]]["title"])
+        self.assertIn(self.engine.marker("smart:weekly"), self.plex.states[managed["id"]]["summary"])
+
+    def test_transient_managed_playlist_read_is_retried_instead_of_paused(self):
+        from helper.clients import PlexError
+        from helper.smart_mix_web import run_smart_mix_auto, set_smart_mix_schedule
+
+        self.publish("weekly", {"size": 10, "recent_days": 30})
+        managed = self.store.get("smart_mix_managed")["weekly"]
+        enabled_at = datetime(2027, 1, 6, 12, tzinfo=BEIJING).timestamp()
+        set_smart_mix_schedule(self.engine, True, now=enabled_at)
+        monday = datetime(2027, 1, 11, 3, tzinfo=BEIJING).timestamp()
+        original = self.plex.playlist_state
+
+        def timeout(playlist_id):
+            if str(playlist_id) == managed["id"]:
+                raise PlexError("temporary read timeout")
+            return original(playlist_id)
+
+        with patch.object(self.plex, "playlist_state", side_effect=timeout):
+            result = run_smart_mix_auto(
+                self.engine, monday, due_kinds=["weekly"], slot=monday,
+            )
+
+        self.assertEqual("error", result["items"]["weekly"]["status"])
+        settings = self.store.get("smart_mix_settings")
+        self.assertIn("weekly", settings["auto_retry_state"])
+        self.assertNotIn("weekly", settings["auto_paused_reasons"])
+
     def test_old_uncertain_snapshot_is_superseded_by_verified_update(self):
         from helper.smart_mix_web import run_smart_mix_auto, set_smart_mix_schedule, smart_mix_auto_due
 

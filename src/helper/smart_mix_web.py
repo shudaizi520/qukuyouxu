@@ -8,10 +8,10 @@ from datetime import datetime, time as datetime_time, timedelta, timezone
 from fastapi import Request
 
 from .behavior import profile_behavior_subject
-from .clients import PlexNotFound
+from .clients import PlexError, PlexNotFound
 from .engine import SafetyError, fingerprint, safe_error, state_ids, track_fingerprint
-from .playlist_sync import (has_exact_members, has_unresolved_snapshots,
-                            supersede_unresolved_snapshots, sync_owned_items)
+from .playlist_sync import (has_exact_members, supersede_unresolved_snapshots,
+                            sync_owned_items)
 from .smart_mixes import KINDS, select_smart_mix
 
 
@@ -247,6 +247,8 @@ def preview_smart_mix(engine, kind, options=None, now=None):
                 before = plex.playlist_state(managed["id"])
             except PlexNotFound:
                 before = None
+            except PlexError:
+                raise
             except Exception as exc:
                 blocked.append(safe_error(exc))
         elif _unsafe_same_title(engine, plex, kind, selected["title"], identity["machine"]):
@@ -552,16 +554,8 @@ def run_smart_mix_auto(engine, now=None, due_kinds=None, slot=None):
                 settings["auto_paused_reasons"].pop(kind, None)
                 settings["auto_retry_state"].pop(kind, None)
                 continue
-            desired = [str(row["id"]) for row in plan.get("items", [])]
-            current = [str(row.get("id")) for row in (plan.get("before") or {}).get("items", [])]
-            if desired == current and not has_unresolved_snapshots(engine.store, "smart:" + kind):
-                plans = _plan_map(engine.store)
-                plans.pop(kind, None)
-                engine.store.set(PLANS_KEY, plans)
-                results[kind] = {"status": "unchanged", "count": len(desired)}
-            else:
-                published = publish_smart_mix(engine, plan["id"], now=now + 1)
-                results[kind] = {"status": "published", "result": published}
+            published = publish_smart_mix(engine, plan["id"], now=now + 1)
+            results[kind] = {"status": "published", "result": published}
             settings["auto_last_success_at"][kind] = now
             settings["auto_paused_reasons"].pop(kind, None)
             settings["auto_retry_state"].pop(kind, None)
@@ -572,7 +566,7 @@ def run_smart_mix_auto(engine, now=None, due_kinds=None, slot=None):
             results[kind] = {"status": "needs_attention", "error": message}
         except Exception as exc:
             message = safe_error(exc)[:300]
-            settings["auto_paused_reasons"][kind] = message
+            settings["auto_paused_reasons"].pop(kind, None)
             previous = settings["auto_retry_state"].get(kind) or {}
             failures = int(previous.get("failures") or 0) + 1
             delay = AUTO_RETRY_DELAYS[min(failures - 1, len(AUTO_RETRY_DELAYS) - 1)]

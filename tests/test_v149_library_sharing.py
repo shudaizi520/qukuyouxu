@@ -97,6 +97,12 @@ def shared_library():
         )
         data = {}
         runtime = ProfileRuntime(base, registry)
+        from helper.automation import save_automation_settings
+        save_automation_settings(base, {
+            "daily": {"enabled": True, "hour": 6},
+            "smart": {"enabled": False, "hour": 3, "interval_days": 7},
+            "library": {"enabled": True, "hour": 0},
+        })
         for profile_id in ("default", "friend"):
             engine = runtime.engine(profile_id)
             engine.plex_factory = lambda cfg, data=data: FakePlex(cfg["plex_token"], data)
@@ -126,7 +132,7 @@ def test_owner_categories_default_to_recipient_without_qq_login(shared_library):
     assert child.get("qq_auth_credentials") is None
 
 
-def test_existing_owner_playlist_is_shared_even_when_future_maintenance_is_off(shared_library):
+def test_disabled_owner_category_is_handed_off_without_creating_a_recipient_copy(shared_library):
     from helper.library_sharing import sync_recipient
     from helper.scoped_store import ScopedStore
 
@@ -137,8 +143,27 @@ def test_existing_owner_playlist_is_shared_even_when_future_maintenance_is_off(s
 
     result = sync_recipient(runtime, "default", "friend")
 
-    assert result["created"] == 1
-    assert len(data["friend-token"]["playlists"]) == 1
+    assert result["created"] == 0
+    assert len(data["friend-token"]["playlists"]) == 0
+
+
+def test_disabling_owner_category_leaves_an_existing_recipient_copy_untouched(shared_library):
+    from helper.library_sharing import sync_recipient
+    from helper.scoped_store import ScopedStore
+
+    base, _registry, runtime, data = shared_library
+    sync_recipient(runtime, "default", "friend")
+    child = ScopedStore(base, "friend")
+    playlist_id = child.get("managed")["qq:pop"]["id"]
+    data["friend-token"]["playlists"][playlist_id]["title"] = "朋友暂时改名"
+    ScopedStore(base, "default").set("sources", [
+        {"id": "qq:pop", "name": "流行精选", "enabled": False},
+    ])
+
+    result = sync_recipient(runtime, "default", "friend")
+
+    assert result["updated"] == 0
+    assert data["friend-token"]["playlists"][playlist_id]["title"] == "朋友暂时改名"
 
 
 def test_confirmed_recipient_deletion_recreates_the_owner_copy(shared_library):
@@ -345,7 +370,60 @@ def test_transient_recipient_read_does_not_create_a_duplicate(shared_library):
 
     assert result["created"] == 0
     assert result["errors"]
+    assert result["retryable_errors"]
+    assert result["conflicts"] == []
     assert len(data["friend-token"]["playlists"]) == 1
+
+
+def test_scheduler_retries_transient_share_failure_without_consuming_revision(shared_library):
+    from helper.clients import PlexError
+    from helper.library_sharing import STATE_KEY, sync_recipient
+    from helper.scoped_store import ScopedStore
+
+    base, _registry, runtime, data = shared_library
+    sync_recipient(runtime, "default", "friend")
+    child = ScopedStore(base, "friend")
+    playlist_id = child.get("managed")["qq:pop"]["id"]
+    data["friend-token"]["playlists"][playlist_id]["title"] = "等待恢复"
+
+    class ReadTimeoutPlex(FakePlex):
+        def playlist_state(self, candidate):
+            if str(candidate) == playlist_id:
+                raise PlexError("temporary read timeout")
+            return super().playlist_state(candidate)
+
+    runtime.engine("friend").plex_factory = lambda cfg: ReadTimeoutPlex(cfg["plex_token"], data)
+    runtime.sync_library_shares_due(now=1000)
+    waiting = child.get(STATE_KEY)
+
+    assert waiting["status"] == "waiting_retry"
+    assert waiting["retry_at"] == 1300
+    assert "owner_digest" not in waiting
+
+    runtime.engine("friend").plex_factory = lambda cfg: FakePlex(cfg["plex_token"], data)
+    runtime.sync_library_shares_due(now=1200)
+    assert data["friend-token"]["playlists"][playlist_id]["title"] == "等待恢复"
+    runtime.sync_library_shares_due(now=1300)
+
+    completed = child.get(STATE_KEY)
+    assert completed["status"] == "normal"
+    assert completed.get("retry_at") is None
+    assert data["friend-token"]["playlists"][playlist_id]["title"] == "流行精选"
+
+
+def test_scheduler_marks_ownership_conflict_for_attention_without_retry(shared_library):
+    from helper.library_sharing import STATE_KEY
+    from helper.scoped_store import ScopedStore
+
+    base, _registry, runtime, data = shared_library
+    FakePlex("friend-token", data).create("流行精选", ["3"], "个人说明")
+
+    runtime.sync_library_shares_due(now=1000)
+
+    state = ScopedStore(base, "friend").get(STATE_KEY)
+    assert state["status"] == "needs_attention"
+    assert state.get("retry_at") is None
+    assert state["last_result"]["conflicts"]
 
 
 def test_recipient_sync_never_recalculates_owner_categories(shared_library):
@@ -389,6 +467,21 @@ def test_scheduler_propagates_owner_categories_without_separate_automation(share
     assert len(data["friend-token"]["playlists"]) == 1
     runtime.run_due(now=1060)
     assert len(data["friend-token"]["playlists"]) == 1
+
+
+def test_global_library_switch_off_hands_shared_copies_back_to_plex(shared_library):
+    from helper.automation import save_automation_settings
+
+    base, _registry, runtime, data = shared_library
+    save_automation_settings(base, {
+        "daily": {"enabled": True, "hour": 6},
+        "smart": {"enabled": False, "hour": 3, "interval_days": 7},
+        "library": {"enabled": False, "hour": 0},
+    })
+
+    runtime.run_due(now=1000)
+
+    assert data.get("friend-token", {}).get("playlists", {}) == {}
 
 
 def test_scheduler_propagates_owner_category_removal(shared_library):

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+import hashlib
 import time
 from typing import Mapping
 
@@ -78,7 +79,29 @@ def _member_ids(state: Mapping[str, object]) -> list[str]:
 
 
 def _expected_summary(target: ManagedPlaylistTarget) -> str:
-    return target.marker + ("\n" + target.description if target.description else "")
+    return "\n".join(filter(None, (
+        target.marker,
+        _scope_marker(target),
+        target.description,
+    )))
+
+
+def _scope_marker(target: ManagedPlaylistTarget) -> str:
+    """Return a non-secret, stable discriminator for one server/scope pair."""
+    value = f"{target.machine}\0{target.scope}".encode("utf-8")
+    return "[QKYX-SCOPE:" + hashlib.sha256(value).hexdigest() + "]"
+
+
+def _is_target_candidate(row: Mapping[str, object], target: ManagedPlaylistTarget) -> bool:
+    lines = str(row.get("summary") or "").splitlines()
+    return target.marker in lines and _scope_marker(target) in lines
+
+
+def _assert_scope_compatible(state: Mapping[str, object], target: ManagedPlaylistTarget) -> None:
+    lines = str(state.get("summary") or "").splitlines()
+    scope_lines = [line for line in lines if line.startswith("[QKYX-SCOPE:")]
+    if scope_lines and _scope_marker(target) not in scope_lines:
+        raise ReconcileConflict("Plex 歌单已由其他档案或曲库管理")
 
 
 def _matches(state: Mapping[str, object], target: ManagedPlaylistTarget) -> bool:
@@ -114,6 +137,7 @@ def _owned_candidates(plex, target: ManagedPlaylistTarget) -> list[Mapping[str, 
             row for row in plex.playlists()
             if target.marker in str(row.get("summary") or "").splitlines()
         ]
+    candidates = [row for row in candidates if _is_target_candidate(row, target)]
     if len(candidates) > 1:
         raise ReconcileConflict("发现多个带有相同管理标记的 Plex 歌单")
     return candidates
@@ -125,6 +149,7 @@ def _discover_or_create(plex, target: ManagedPlaylistTarget, adopt_existing: boo
     else:
         candidates = [row for row in plex.playlists()
                       if target.marker in str(row.get("summary") or "").splitlines()]
+    candidates = [row for row in candidates if _is_target_candidate(row, target)]
     if adopt_existing and len(candidates) > 1:
         raise ReconcileConflict("发现多个带有相同管理标记的 Plex 歌单")
     if adopt_existing and candidates:
@@ -139,12 +164,13 @@ def _discover_or_create(plex, target: ManagedPlaylistTarget, adopt_existing: boo
     ):
         raise ReconcileConflict("Plex 中存在同名但没有本应用管理标记的歌单")
     previous_ids = {_playlist_id(row) for row in candidates}
+    description = "\n".join(filter(None, (_scope_marker(target), target.description)))
     try:
         return plex.create(
             target.title,
             list(target.member_ids),
             target.marker,
-            description=target.description,
+            description=description,
         ), True
     except Exception:
         # A create response can be lost after Plex committed it. Discover the
@@ -153,7 +179,7 @@ def _discover_or_create(plex, target: ManagedPlaylistTarget, adopt_existing: boo
             plex.owned_playlists(target.marker) if hasattr(plex, "owned_playlists")
             else [row for row in plex.playlists()
                   if target.marker in str(row.get("summary") or "").splitlines()]
-        ) if _playlist_id(row) not in previous_ids]
+        ) if _playlist_id(row) not in previous_ids and _is_target_candidate(row, target)]
         if not candidates:
             raise
         if len(candidates) > 1:
@@ -192,6 +218,7 @@ def reconcile_managed_playlist(
         playlist_id = _playlist_id(current)
     if not playlist_id:
         raise ReconcileConflict("托管歌单缺少 Plex ID")
+    _assert_scope_compatible(current, target)
 
     if created:
         verified = _read_verified(plex, playlist_id, target)

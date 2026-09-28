@@ -6,7 +6,7 @@ from .metadata import prepare_catalog
 from .recommend import recommend, DEFAULT_DAILY, DAILY_POLICY, song_key
 from .behavior import behavior_profile
 from .behavior_store import BehaviorRepository
-from .clients import PlexNotFound
+from .clients import PlexError, PlexNotFound
 from .plex_webhook import load_behavior_snapshot
 from .playlist_sync import has_exact_members, supersede_unresolved_snapshots, sync_owned_items
 from .playlist_ownership import legacy_pch_marker, replace_marker
@@ -187,6 +187,8 @@ class DailyMixin:
                 before = p.playlist_state(managed['id'])
             except PlexNotFound:
                 before = None
+            except PlexError:
+                raise
             except Exception as exc:
                 blocked.append(safe_error(exc))
         else:
@@ -518,7 +520,6 @@ class DailyMixin:
                     raise
                 from .scheduler_retry import TransientScheduleError
                 raise TransientScheduleError('每日推荐只读预览暂时不可用') from exc
-            self.store.set('daily_auto_checked_date', day_at(now))
             if plan['blocked']:
                 daily = self.store.get('daily_settings')
                 daily['enabled'] = False
@@ -527,9 +528,8 @@ class DailyMixin:
                 }})
                 from .engine import SafetyError
                 raise SafetyError('每日推荐存在阻止项，已暂停自动更新：' + '；'.join(plan['blocked']))
-            if plan.get('rolling', {}).get('unchanged'):
-                self.store.set('daily_plan', None)
-                return {'message': '没有新的播放进度，今日推荐保持不变', 'unchanged': True}
-            return self._publish_daily(plan['id'], now)
+            result = self._publish_daily(plan['id'], now)
+            self.store.set('daily_auto_checked_date', day_at(now))
+            return result
 from .restart import daily_target_title, validate_daily_target
 from .rotation import recommend_rotating, save_rotating_plan
