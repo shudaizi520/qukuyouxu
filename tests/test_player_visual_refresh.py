@@ -4,6 +4,8 @@ import base64
 from pathlib import Path
 import re
 
+from PIL import Image
+
 from playwright.sync_api import sync_playwright
 
 from tools.playwright_runtime import prepare_playwright_environment
@@ -20,14 +22,18 @@ class _PlayerMarkup(HTMLParser):
         self.ids = {}
         self.stack = []
         self.parents = {}
+        self.class_parents = {}
 
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
         node_id = attrs.get("id")
+        classes = attrs.get("class", "").split()
         if node_id:
             self.ids[node_id] = (tag, attrs)
             self.parents[node_id] = self.stack[-1] if self.stack else None
-        self.stack.append(node_id or tag)
+        for class_name in classes:
+            self.class_parents[class_name] = self.stack[-1] if self.stack else None
+        self.stack.append(node_id or (classes[0] if classes else tag))
 
     def handle_endtag(self, _tag):
         if self.stack:
@@ -190,7 +196,7 @@ def test_fullscreen_player_has_qq_like_proportions_and_a_play_state_visualizer()
     assert "Math.sin" not in visualizer
     assert "Math.cos" not in visualizer
     assert "media:byId('playerAudio')" in script
-    assert _rule(css, ".now-playing-artwork")["width"] == "min(430px,35vw)"
+    assert _rule(css, ".now-playing-turntable")["width"] == "min(500px,38vw)"
     assert _rule(css, ".now-playing-lyric-line")["font-size"] == "clamp(14px,.9vw,17px)"
     assert _rule(css, ".now-playing-lyric-line.active")["font-size"] == "clamp(16px,1.05vw,19px)"
     assert ".now-playing-visualizer{position:absolute;z-index:1;left:50%;bottom:var(--app-player-height,68px);width:min(680px,48vw);height:64px" in css
@@ -204,6 +210,210 @@ def test_fullscreen_player_has_qq_like_proportions_and_a_play_state_visualizer()
     assert "context.beginPath()" not in visualizer
     assert visualizer.count("context.fillRect") >= 2
     assert ".now-playing-visualizer-bar" not in css
+
+
+def test_fullscreen_artwork_is_a_playback_driven_turntable():
+    source = (STATIC / "playlists.html").read_text(encoding="utf-8")
+    css = (STATIC / "playlist-now-playing.css").read_text(encoding="utf-8")
+    start = source.index('<section id="nowPlaying"')
+    end = source.index("</section>", start) + len("</section>")
+    document = f'<style>{css}</style><body data-view="playlists">{source[start:end]}</body>'
+
+    prepare_playwright_environment(ROOT)
+    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(ROOT / ".playwright"))
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page(viewport={"width": 1600, "height": 900})
+        page.set_content(document)
+        page.locator("#nowPlaying").evaluate("node => node.hidden=false")
+
+        assert page.locator(".now-playing-turntable").count() == 1
+        assert page.locator(".now-playing-platter").count() == 1
+        assert page.locator(".now-playing-vinyl").count() == 1
+        assert page.locator(".now-playing-tonearm").count() == 1
+        assert page.locator(".now-playing-tonearm-asset").count() == 1
+        assert page.locator(".now-playing-vinyl #nowPlayingArtwork").count() == 1
+
+        geometry = page.evaluate(
+            """() => {
+              const rect = selector => document.querySelector(selector).getBoundingClientRect();
+              const deck=rect('.now-playing-turntable'),platter=rect('.now-playing-platter');
+              const artwork=rect('#nowPlayingArtwork'),tonearmNode=document.querySelector('.now-playing-tonearm');
+              const tonearmAssetNode=document.querySelector('.now-playing-tonearm-asset');
+              const tonearmStyle=getComputedStyle(document.querySelector('.now-playing-tonearm'));
+              const assetStyle=getComputedStyle(document.querySelector('.now-playing-tonearm-asset'));
+              return {
+                deck:[deck.width,deck.height],platter:[platter.width,platter.height],
+                artwork:[artwork.width,artwork.height],tonearm:[tonearmNode.offsetWidth,tonearmNode.offsetHeight],
+                tonearmAsset:[tonearmAssetNode.offsetWidth,tonearmAssetNode.offsetHeight],
+                tonearmImage:assetStyle.backgroundImage,
+                platterCenterOffset:Math.abs((platter.left+platter.width/2)-(deck.left+deck.width/2)),
+                platterVerticalCenter:(platter.top+platter.height/2-deck.top)/deck.height,
+                platterBottom:(platter.bottom-deck.top)/deck.height,
+                tonearmTransition:parseFloat(tonearmStyle.transitionDuration),
+                deckRadius:getComputedStyle(document.querySelector('.now-playing-turntable')).borderRadius,
+                platterRadius:getComputedStyle(document.querySelector('.now-playing-platter')).borderRadius,
+                artworkRadius:getComputedStyle(document.querySelector('#nowPlayingArtwork')).borderRadius,
+              };
+            }"""
+        )
+        assert 410 <= geometry["deck"][0] <= 500
+        assert abs(geometry["deck"][0] - geometry["deck"][1]) <= 1
+        assert geometry["deck"][0] * 0.63 <= geometry["platter"][0] <= geometry["deck"][0] * 0.67
+        assert geometry["platterCenterOffset"] <= geometry["deck"][0] * 0.012
+        assert 0.465 <= geometry["platterVerticalCenter"] <= 0.49
+        assert geometry["platterBottom"] <= 0.82
+        assert geometry["platter"][0] * 0.66 <= geometry["artwork"][0] <= geometry["platter"][0] * 0.70
+        assert geometry["deck"][0] * 0.22 <= geometry["tonearm"][0] <= geometry["deck"][0] * 0.34
+        assert geometry["tonearmAsset"] == geometry["tonearm"]
+        assert "turntable-tonearm.png" in geometry["tonearmImage"]
+        assert geometry["tonearmTransition"] >= 1.2
+        assert geometry["deckRadius"] != "0px"
+        assert geometry["platterRadius"] == "50%"
+        assert geometry["artworkRadius"] == "50%"
+
+        vinyl = page.locator(".now-playing-vinyl")
+        assert vinyl.evaluate("node => getComputedStyle(node).animationName") != "none"
+        assert vinyl.evaluate("node => getComputedStyle(node).animationPlayState") == "paused"
+        paused_tonearm = page.locator(".now-playing-tonearm").evaluate(
+            "node => getComputedStyle(node).transform"
+        )
+        page.locator("#nowPlaying").evaluate("node => node.dataset.playing='true'")
+        page.wait_for_timeout(420)
+        assert vinyl.evaluate("node => getComputedStyle(node).animationPlayState") == "running"
+        entering_tonearm = page.locator(".now-playing-tonearm").evaluate(
+            "node => getComputedStyle(node).transform"
+        )
+        assert entering_tonearm != paused_tonearm
+        page.wait_for_timeout(1600)
+        playing_tonearm = page.locator(".now-playing-tonearm").evaluate(
+            "node => getComputedStyle(node).transform"
+        )
+        assert playing_tonearm != entering_tonearm
+        page.locator("#nowPlaying").evaluate("node => node.dataset.playing='false'")
+        page.wait_for_timeout(350)
+        leaving_tonearm = page.locator(".now-playing-tonearm").evaluate(
+            "node => getComputedStyle(node).transform"
+        )
+        assert leaving_tonearm not in (playing_tonearm, paused_tonearm)
+        page.wait_for_timeout(1350)
+        stopped_tonearm = page.locator(".now-playing-tonearm").evaluate(
+            "node => getComputedStyle(node).transform"
+        )
+        assert stopped_tonearm == paused_tonearm
+
+        page.set_viewport_size({"width": 390, "height": 844})
+        mobile_width = page.locator(".now-playing-turntable").evaluate(
+            "node => node.getBoundingClientRect().width"
+        )
+        assert mobile_width <= 300
+        assert mobile_width <= 390 - 36
+        browser.close()
+
+
+def test_turntable_uses_a_realistic_project_asset_without_duplicate_deck_controls():
+    source = (STATIC / "playlists.html").read_text(encoding="utf-8")
+    css = (STATIC / "playlist-now-playing.css").read_text(encoding="utf-8")
+    asset = STATIC / "turntable-chassis.png"
+
+    assert asset.is_file()
+    assert asset.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+    assert 'url("turntable-chassis.png")' in css
+    assert "now-playing-deck-mark" not in source
+    assert "now-playing-power" not in source
+    assert "now-playing-speed" not in source
+
+
+def test_tonearm_uses_one_optimized_transparent_project_asset():
+    source = (STATIC / "playlists.html").read_text(encoding="utf-8")
+    css = (STATIC / "playlist-now-playing.css").read_text(encoding="utf-8")
+    asset = STATIC / "turntable-tonearm.png"
+
+    assert asset.is_file()
+    assert asset.stat().st_size < 500_000
+    with Image.open(asset) as image:
+        assert image.format == "PNG"
+        assert image.mode == "RGBA"
+        assert image.height <= 800
+        assert image.width <= 320
+        assert image.getchannel("A").getextrema() == (0, 255)
+
+    start = source.index('<section id="nowPlaying"')
+    end = source.index("</section>", start) + len("</section>")
+    document = f'<style>{css}</style><body data-view="playlists">{source[start:end]}</body>'
+
+    prepare_playwright_environment(ROOT)
+    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(ROOT / ".playwright"))
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page(viewport={"width": 1600, "height": 900})
+        page.set_content(document)
+        tonearm = page.locator(".now-playing-tonearm")
+        asset_layer = page.locator(".now-playing-tonearm-asset")
+
+        assert tonearm.locator(":scope > *").count() == 1
+        assert asset_layer.count() == 1
+        assert "turntable-tonearm.png" in asset_layer.evaluate(
+            "node => getComputedStyle(node).backgroundImage"
+        )
+        browser.close()
+
+
+def test_tonearm_drifts_gently_only_while_music_is_playing():
+    source = (STATIC / "playlists.html").read_text(encoding="utf-8")
+    css = (STATIC / "playlist-now-playing.css").read_text(encoding="utf-8")
+    start = source.index('<section id="nowPlaying"')
+    end = source.index("</section>", start) + len("</section>")
+    document = f'<style>{css}</style><body data-view="playlists">{source[start:end]}</body>'
+
+    prepare_playwright_environment(ROOT)
+    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(ROOT / ".playwright"))
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page(viewport={"width": 1600, "height": 900})
+        page.set_content(document)
+        page.locator("#nowPlaying").evaluate("node => node.hidden=false")
+        arm = page.locator(".now-playing-tonearm-asset")
+
+        assert arm.evaluate("node => getComputedStyle(node).animationName") == "none"
+        page.locator("#nowPlaying").evaluate("node => node.dataset.playing='true'")
+        animation = arm.evaluate(
+            """node => ({
+              name:getComputedStyle(node).animationName,
+              duration:parseFloat(getComputedStyle(node).animationDuration),
+              delay:parseFloat(getComputedStyle(node).animationDelay),
+            })"""
+        )
+        assert animation["name"] == "now-playing-tonearm-drift"
+        assert 4 <= animation["duration"] <= 6
+        assert animation["delay"] >= 1.2
+
+        page.wait_for_timeout(1750)
+        first = arm.evaluate("node => getComputedStyle(node).transform")
+        page.wait_for_timeout(900)
+        second = arm.evaluate("node => getComputedStyle(node).transform")
+        assert first != second
+
+        page.locator("#nowPlaying").evaluate("node => node.dataset.playing='false'")
+        assert arm.evaluate("node => getComputedStyle(node).animationName") == "none"
+
+        page.emulate_media(reduced_motion="reduce")
+        page.locator("#nowPlaying").evaluate("node => node.dataset.playing='true'")
+        assert arm.evaluate("node => getComputedStyle(node).animationName") == "none"
+        browser.close()
+
+
+def test_rotating_vinyl_fits_the_chassis_platter_instead_of_leaking_below_it():
+    css = (STATIC / "playlist-now-playing.css").read_text(encoding="utf-8")
+    platter = _rule(css, ".now-playing-platter")
+    vinyl = _rule(css, ".now-playing-vinyl")
+    artwork = _rule(css, ".now-playing-artwork")
+
+    assert platter["left"] == "17.2%"
+    assert platter["top"] == "15.2%"
+    assert platter["width"] == "65.4%"
+    assert vinyl["inset"] == "0"
+    assert artwork["width"] == "68%"
 
 
 def test_visualizer_uses_distinct_frequency_bands_without_a_fixed_middle_spike():

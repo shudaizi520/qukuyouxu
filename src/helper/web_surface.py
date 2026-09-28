@@ -18,6 +18,7 @@ STATIC_ASSETS = frozenset({
     "settings-page.css", "daily-page.css", "mixes-page.css", "external-page.css",
     "ui-components.css", "design-system.css", "management-shell.css",
     "theme-background.css", "playlist-visualizer.js", "management-shell.js",
+    "turntable-chassis.png", "turntable-tonearm.png",
 })
 
 
@@ -73,5 +74,9 @@ def attach_web_surface(app, static_root: Path, version: str) -> None:
     def static(name: str):
         if name not in STATIC_ASSETS:
             return Response(status_code=404)
-        media_type = "text/javascript" if name.endswith(".js") else "text/css"
+        media_type = {
+            ".css": "text/css",
+            ".js": "text/javascript",
+            ".png": "image/png",
+        }[Path(name).suffix]
         return FileResponse(static_root / name, media_type=media_type)

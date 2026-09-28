@@ -2,7 +2,7 @@
 <html class="playlist-shell" lang="zh-CN">
 <head>
  <meta charset="utf-8">
- <meta name="app-version" content="2.0.19">
+ <meta name="app-version" content="2.0.20">
  <meta name="viewport" content="width=device-width,initial-scale=1">
  <title>曲库有序 · 我的歌单</title>
  <script src="/static/appearance.js?v=app"></script><link rel="stylesheet" href="/static/product.css?v=app"><link rel="stylesheet" href="/static/product-refinements.css?v=app"><link rel="stylesheet" href="/static/playlist-now-playing.css?v=app"><link rel="stylesheet" href="/static/theme-tokens.css?v=app"><link rel="stylesheet" href="/static/theme-background.css?v=app"><link rel="stylesheet" href="/static/ui-components.css?v=app"><link rel="stylesheet" href="/static/design-system.css?v=app">
@@ -104,7 +104,17 @@
   <button id="nowPlayingClose" class="now-playing-close" type="button" aria-label="收起播放详情"><svg id="nowPlayingCloseIcon" class="ui-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></button>
   <div class="now-playing-stage">
    <div class="now-playing-record">
-    <div id="nowPlayingArtwork" class="now-playing-artwork" aria-hidden="true">♫</div>
+    <div class="now-playing-turntable" aria-hidden="true">
+     <div class="now-playing-platter">
+      <div class="now-playing-vinyl">
+       <div id="nowPlayingArtwork" class="now-playing-artwork">♫</div>
+       <span class="now-playing-spindle"></span>
+      </div>
+     </div>
+     <div class="now-playing-tonearm">
+      <span class="now-playing-tonearm-asset"></span>
+     </div>
+    </div>
    </div>
    <div id="nowPlayingContent" class="now-playing-content">
     <div class="now-playing-copy"><h1 id="nowPlayingTitle">未播放</h1><p id="nowPlayingMeta">请选择歌曲</p></div>
