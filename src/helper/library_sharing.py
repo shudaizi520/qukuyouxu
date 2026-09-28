@@ -6,6 +6,7 @@ profile receives a verified app-owned copy; it has no independent opt-out.
 from __future__ import annotations
 
 import time
+from urllib.parse import urlsplit
 
 from .clients import PlexError, PlexNotFound
 from .engine import fingerprint, state_ids
@@ -13,6 +14,47 @@ from .engine import fingerprint, state_ids
 
 STATE_KEY = "library_share_v1"
 REVISIONS_KEY = "library_share_revisions_v2"
+
+
+def _is_qq_toplist(source):
+    """Only QQ rankings are shared; ordinary imported playlists stay personal."""
+    if source.get("provider") != "qq":
+        return False
+    parsed = urlsplit(str(source.get("source_url") or ""))
+    parts = parsed.path.rstrip("/").split("/")
+    return (
+        parsed.hostname == "y.qq.com"
+        and len(parts) == 5
+        and parts[1:4] == ["n", "ryqq", "toplist"]
+        and parts[4].isdigit()
+    )
+
+
+def owner_shared_playlists(owner_engine):
+    """Return category playlists plus published QQ charts from the owner."""
+    shared = {
+        key: dict(record)
+        for key, record in (owner_engine.store.get("managed", {}) or {}).items()
+        if isinstance(record, dict)
+    }
+    from .external_playlist_sync import external_marker
+    from .external_store import ExternalRepository
+
+    profile_id = str(owner_engine.store.profile_id)
+    repository = ExternalRepository(owner_engine.store)
+    installation_id = owner_engine.store.get("installation_id")
+    for source in repository.list_sources(profile_id):
+        if not _is_qq_toplist(source):
+            continue
+        record = repository.get_managed(profile_id, source["id"])
+        if not record:
+            continue
+        category_id = "external:" + source["id"]
+        shared[category_id] = {
+            **record,
+            "marker": external_marker(installation_id, source["id"]),
+        }
+    return shared
 
 
 def same_server_library(owner, recipient):
@@ -203,7 +245,7 @@ def share_status(runtime, recipient_id):
     share = child_store.get(STATE_KEY, {}) or {}
     child_managed = child_store.get("managed", {}) or {}
     items = []
-    for category_id, source in (owner_store.get("managed", {}) or {}).items():
+    for category_id, source in owner_shared_playlists(runtime.engine(owner_id)).items():
         if not isinstance(source, dict) or not source.get("id"):
             continue
         record = child_managed.get(category_id) or {}
@@ -253,7 +295,7 @@ def sync_recipient(runtime, owner_id, recipient_id, *, now=None):
     result = {"created": 0, "updated": 0, "removed": 0, "unchanged": 0, "opted_out": 0,
               "skipped": 0, "errors": [], "retryable_errors": [], "conflicts": []}
 
-    owner_managed = owner_store.get("managed", {}) or {}
+    owner_managed = owner_shared_playlists(owner_engine)
     blocked_categories = set()
     revisions = owner_store.get(REVISIONS_KEY, {}) or {}
     for category_id in revisions:
@@ -338,7 +380,7 @@ def sync_recipient(runtime, owner_id, recipient_id, *, now=None):
             continue
         try:
             original = owner_plex.playlist_state(source["id"])
-            if (owner_engine.marker(category_id) not in original.get("summary", "")
+            if ((source.get("marker") or owner_engine.marker(category_id)) not in original.get("summary", "")
                     or fingerprint(original) != source.get("fingerprint")):
                 result["skipped"] += 1
                 continue

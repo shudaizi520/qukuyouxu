@@ -132,6 +132,73 @@ def test_owner_categories_default_to_recipient_without_qq_login(shared_library):
     assert child.get("qq_auth_credentials") is None
 
 
+def test_owner_qq_toplist_is_copied_to_every_same_library_recipient(shared_library):
+    from helper.engine import fingerprint
+    from helper.external_playlist_sync import external_marker
+    from helper.external_sources import make_track
+    from helper.external_store import ExternalRepository
+    from helper.scoped_store import ScopedStore
+
+    base, _registry, runtime, data = shared_library
+    owner = ScopedStore(base, "default")
+    repository = ExternalRepository(owner)
+    source = repository.upsert_source("default", {
+        "provider": "qq", "external_id": "62",
+        "url": "https://y.qq.com/n/ryqq/toplist/62",
+        "title": "飙升榜", "revision": "chart-r1",
+        "tracks": [
+            make_track(0, "歌曲一", ["歌手甲"], source_id="qq-1"),
+            make_track(1, "歌曲二", ["歌手乙"], source_id="qq-2"),
+        ],
+    }, 2_000_000_000)
+    marker = external_marker(owner.get("installation_id"), source["id"])
+    playlist = FakePlex("owner-token", data).create("QQ飙升榜", ["1", "2"], marker)
+    repository.save_managed("default", source["id"], {
+        "id": playlist["id"], "title": playlist["title"],
+        "fingerprint": fingerprint(playlist), "count": 2, "marker": marker,
+    })
+
+    runtime.sync_library_shares_due(now=2_000_000_100)
+
+    category_id = "external:" + source["id"]
+    child = ScopedStore(base, "friend")
+    record = child.get("managed")[category_id]
+    copied = data["friend-token"]["playlists"][record["id"]]
+    assert len(data["friend-token"]["playlists"]) == 2
+    assert copied["title"] == "QQ飙升榜"
+    assert [item["id"] for item in copied["items"]] == ["1", "2"]
+
+
+def test_owner_ordinary_qq_import_stays_personal(shared_library):
+    from helper.engine import fingerprint
+    from helper.external_playlist_sync import external_marker
+    from helper.external_sources import make_track
+    from helper.external_store import ExternalRepository
+    from helper.library_sharing import sync_recipient
+    from helper.scoped_store import ScopedStore
+
+    base, _registry, runtime, data = shared_library
+    owner = ScopedStore(base, "default")
+    repository = ExternalRepository(owner)
+    source = repository.upsert_source("default", {
+        "provider": "qq", "external_id": "personal-123",
+        "url": "https://y.qq.com/n/ryqq/playlist/123",
+        "title": "私人导入歌单", "revision": "personal-r1",
+        "tracks": [make_track(0, "歌曲一", ["歌手甲"], source_id="qq-1")],
+    }, 2_000_000_000)
+    marker = external_marker(owner.get("installation_id"), source["id"])
+    playlist = FakePlex("owner-token", data).create("私人导入歌单", ["1"], marker)
+    repository.save_managed("default", source["id"], {
+        "id": playlist["id"], "title": playlist["title"],
+        "fingerprint": fingerprint(playlist), "count": 1, "marker": marker,
+    })
+
+    sync_recipient(runtime, "default", "friend")
+
+    child = ScopedStore(base, "friend")
+    assert "external:" + source["id"] not in child.get("managed")
+
+
 def test_disabled_owner_category_is_handed_off_without_creating_a_recipient_copy(shared_library):
     from helper.library_sharing import sync_recipient
     from helper.scoped_store import ScopedStore

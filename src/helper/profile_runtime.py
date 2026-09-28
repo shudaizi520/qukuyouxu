@@ -237,7 +237,10 @@ class ProfileRuntime:
     def sync_library_shares_due(self, now):
         """Default same-library category copies, independent of QQ/scan schedules."""
         from .engine import digest, safe_error
-        from .library_sharing import REVISIONS_KEY, STATE_KEY, owner_for_recipient, recover_owner_revisions, sync_recipient
+        from .library_sharing import (
+            REVISIONS_KEY, STATE_KEY, owner_for_recipient, owner_shared_playlists,
+            recover_owner_revisions, sync_recipient,
+        )
         from .scheduler_retry import clear_retry, schedule_retry
 
         if self.job_gate.locked() or self.operation_gate.locked():
@@ -252,7 +255,7 @@ class ProfileRuntime:
             owner_engine = self.engine(owner_id)
             if not callable(getattr(owner_engine, "plex_factory", None)):
                 continue
-            managed = owner_engine.store.get("managed", {}) or {}
+            managed = owner_shared_playlists(owner_engine)
             revisions = owner_engine.store.get(REVISIONS_KEY, {}) or {}
             pending_revision = any(
                 (row.get("targets") or {}).get(profile["id"]) == "pending"

@@ -27,6 +27,14 @@ class FakeQQ:
         return copy.deepcopy(self.toplist_result)
 
 
+class FakeRawToplistQQ:
+    def __init__(self, payload):
+        self.payload = payload
+
+    def _rpc(self, module, method, param, key="req"):
+        return copy.deepcopy(self.payload)
+
+
 class FakeHttp:
     def __init__(self, responses=None, error=None):
         self.responses = list(responses or [])
@@ -65,6 +73,36 @@ class ExternalPlatformsV130Tests(unittest.TestCase):
         self.assertEqual("热歌榜", result["title"])
         self.assertEqual(["歌手乙", "歌手丙"], result["tracks"][1]["artists"])
         self.assertEqual("https://y.qq.com/n/ryqq/toplist/26", result["url"])
+
+    def test_qq_toplist_reads_full_tracks_from_current_outer_response(self):
+        from helper.external_qq import QQPublicPlaylistSource
+
+        payload = {
+            "data": {
+                "title": "热歌榜",
+                "totalNum": 2,
+                "song": [
+                    {"title": "摘要一", "singerName": "歌手甲", "songId": 1},
+                    {"title": "摘要二", "singerName": "歌手乙", "songId": 2},
+                ],
+            },
+            "songInfoList": [
+                {
+                    "title": "完整一", "mid": "mid-1", "interval": 181,
+                    "singer": [{"name": "歌手甲"}], "album": {"name": "专辑甲"},
+                },
+                {
+                    "title": "完整二", "mid": "mid-2", "interval": 202,
+                    "singer": [{"name": "歌手乙"}], "album": {"name": "专辑乙"},
+                },
+            ],
+        }
+
+        result = QQPublicPlaylistSource(FakeRawToplistQQ(payload)).fetch(QQ_TOP)
+
+        self.assertEqual("热歌榜", result["title"])
+        self.assertEqual(["mid-1", "mid-2"], [row["source_track_id"] for row in result["tracks"]])
+        self.assertEqual(["完整一", "完整二"], [row["title"] for row in result["tracks"]])
 
     def test_qq_adapter_rejects_empty_duplicate_or_structurally_bad_results(self):
         from helper.external_qq import QQPublicPlaylistSource

@@ -51,15 +51,21 @@ class QQPublicPlaylistSource:
             )
         if not isinstance(data, dict):
             raise ExternalSourceError("QQ 榜单返回结构不完整", kind="protocol")
-        nested = data.get("data") if isinstance(data.get("data"), dict) else data
-        tracks = nested.get("songInfoList") or nested.get("songlist") or nested.get("song") or []
-        total = nested.get("totalNum", nested.get("total", len(tracks)))
+        metadata = data.get("data") if isinstance(data.get("data"), dict) else data
+        tracks = (
+            data.get("songInfoList") or data.get("songlist")
+            or metadata.get("songInfoList") or metadata.get("songlist")
+            or metadata.get("song") or []
+        )
+        total = metadata.get(
+            "totalNum", metadata.get("total", data.get("totalNum", data.get("total", len(tracks))))
+        )
         try:
             parsed = parse_qq_tracks(tracks, int(total))
         except SourceError as exc:
             raise ExternalSourceError(str(exc), retryable=False, kind="upstream") from None
         return {
-            "title": nested.get("title") or (nested.get("topInfo") or {}).get("title") or "QQ榜单",
+            "title": metadata.get("title") or (metadata.get("topInfo") or {}).get("title") or "QQ榜单",
             "url": f"https://y.qq.com/n/ryqq/toplist/{top_id}",
             "tracks": parsed,
             "total": int(total),
