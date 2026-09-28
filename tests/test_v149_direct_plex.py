@@ -7,6 +7,9 @@ from types import SimpleNamespace
 from unittest.mock import patch
 from xml.etree import ElementTree as ET
 
+import pytest
+import requests
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
@@ -30,6 +33,47 @@ class _Store:
 
 
 class DirectPlexTests(unittest.TestCase):
+    def test_playlist_read_errors_distinguish_missing_from_retryable_failures(self):
+        from helper.clients import PlexClient, PlexError, PlexNotFound
+
+        class Response:
+            def __init__(self, status):
+                self.status_code = status
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def iter_content(self, _size):
+                return iter((b"<MediaContainer/>",))
+
+        class Session:
+            def __init__(self, response=None, error=None):
+                self.response = response
+                self.error = error
+
+            def request(self, *_args, **_kwargs):
+                if self.error:
+                    raise self.error
+                return self.response
+
+        client = object.__new__(PlexClient)
+        client.base = "http://plex"
+        for status, error_type in ((404, PlexNotFound), (401, PlexError), (403, PlexError),
+                                   (429, PlexError), (500, PlexError)):
+            client.session = Session(Response(status))
+            with pytest.raises(error_type) as captured:
+                client._xml("/playlists/9")
+            if status != 404:
+                assert not isinstance(captured.value, PlexNotFound)
+
+        client.session = Session(error=requests.Timeout())
+        with pytest.raises(PlexError) as captured:
+            client._xml("/playlists/9")
+        assert not isinstance(captured.value, PlexNotFound)
+
     def test_search_can_find_plex_tracks_without_catalog(self):
         from helper.playlist_hub import search_library_live
 

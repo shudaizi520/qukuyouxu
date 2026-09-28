@@ -489,6 +489,15 @@ class PlexClient:
     def playlists(self):
         return [dict(e.attrib) for e in self._page('/playlists','Playlist',{'playlistType':'audio'})]
 
+    def owned_playlists(self,marker):
+        """Return ordinary audio playlists containing one exact ownership-marker line."""
+        if (not isinstance(marker,str) or not marker.strip() or len(marker)>512
+                or any(ord(char)<32 for char in marker)):
+            raise ValueError('Plex 歌单管理标记无效')
+        marker=marker.strip()
+        return [row for row in self.playlists()
+                if marker in str(row.get('summary') or '').splitlines()]
+
     def playlist_source_section(self, pid):
         if not str(pid).isdigit():raise PlexError('歌单ID无效')
         rows=self._xml(f'/playlists/{pid}').findall('Playlist')

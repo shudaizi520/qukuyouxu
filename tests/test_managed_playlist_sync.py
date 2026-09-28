@@ -69,3 +69,35 @@ def test_reconcile_conflict_is_a_distinct_error_type():
     error = ReconcileConflict("同名歌单没有管理标记")
 
     assert isinstance(error, RuntimeError)
+
+
+@pytest.mark.parametrize(
+    ("rows", "expected"),
+    [
+        ([], []),
+        ([{"ratingKey": "1", "summary": "owner-marker\ntext"}], ["1"]),
+        ([
+            {"ratingKey": "1", "summary": "owner-marker\ntext"},
+            {"ratingKey": "2", "summary": "text\nowner-marker"},
+            {"ratingKey": "3", "summary": "someone-else"},
+        ], ["1", "2"]),
+    ],
+)
+def test_plex_owned_playlist_lookup_returns_all_exact_marker_matches(rows, expected):
+    from helper.clients import PlexClient
+
+    client = object.__new__(PlexClient)
+    client.playlists = lambda: rows
+
+    assert [row["ratingKey"] for row in client.owned_playlists("owner-marker")] == expected
+
+
+def test_plex_owned_playlist_lookup_rejects_empty_or_overlong_markers():
+    from helper.clients import PlexClient
+
+    client = object.__new__(PlexClient)
+    client.playlists = lambda: []
+    with pytest.raises(ValueError, match="管理标记"):
+        client.owned_playlists("")
+    with pytest.raises(ValueError, match="管理标记"):
+        client.owned_playlists("x" * 513)
