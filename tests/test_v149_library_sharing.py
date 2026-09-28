@@ -169,6 +169,99 @@ def test_owner_qq_toplist_is_copied_to_every_same_library_recipient(shared_libra
     assert [item["id"] for item in copied["items"]] == ["1", "2"]
 
 
+def test_qq_toplist_is_rematched_into_every_other_library_and_drops_qq_prefix(shared_library):
+    from helper.engine import fingerprint
+    from helper.external_playlist_sync import external_marker
+    from helper.external_sources import make_track
+    from helper.external_store import ExternalRepository
+    from helper.scoped_store import ScopedStore
+
+    base, registry, runtime, data = shared_library
+    registry.create(
+        name="经典音乐", kind="shared", profile_id="classic",
+        account={"id": "owner"},
+        server={"machine": "server-a", "url": "http://plex"},
+        library={"id": "12", "name": "经典音乐"}, token="classic-token",
+    )
+
+    catalogs = {
+        "owner-token": [
+            {"id": "1", "title": "歌曲一", "artist": "歌手甲", "album": "专辑", "duration": 180},
+            {"id": "2", "title": "歌曲二", "artist": "歌手乙", "album": "专辑", "duration": 200},
+        ],
+        "friend-token": [
+            {"id": "1", "title": "歌曲一", "artist": "歌手甲", "album": "专辑", "duration": 180},
+            {"id": "2", "title": "歌曲二", "artist": "歌手乙", "album": "专辑", "duration": 200},
+        ],
+        "classic-token": [
+            {"id": "101", "title": "歌曲一", "artist": "歌手甲", "album": "专辑", "duration": 180},
+            {"id": "102", "title": "歌曲二", "artist": "歌手乙", "album": "专辑", "duration": 200},
+        ],
+    }
+    sections = {"owner-token": "11", "friend-token": "11", "classic-token": "12"}
+
+    class LibraryPlex(FakePlex):
+        def sections(self):
+            return [{"id": sections[self.token], "title": "音乐"}]
+
+        def tracks(self, section):
+            assert str(section) == sections[self.token]
+            return copy.deepcopy(catalogs[self.token])
+
+    for profile_id in ("default", "friend", "classic"):
+        factory = lambda cfg, data=data: LibraryPlex(cfg["plex_token"], data)
+        runtime.engine(profile_id).plex_factory = factory
+        runtime.engine(profile_id).external.plex_factory = factory
+    owner = ScopedStore(base, "default")
+    repository = ExternalRepository(owner)
+    source = repository.upsert_source("default", {
+        "provider": "qq", "external_id": "62",
+        "url": "https://y.qq.com/n/ryqq/toplist/62",
+        "title": "飙升榜", "revision": "chart-r1",
+        "tracks": [
+            make_track(0, "歌曲一", ["歌手甲"], album="专辑", duration_ms=180_000, source_id="qq-1"),
+            make_track(1, "歌曲二", ["歌手乙"], album="专辑", duration_ms=200_000, source_id="qq-2"),
+        ],
+    }, 2_000_000_000)
+    repository.set_follow_updates("default", source["id"], True)
+    marker = external_marker(owner.get("installation_id"), source["id"])
+    playlist = LibraryPlex("owner-token", data).create("QQ飙升榜", ["1", "2"], marker)
+    repository.save_managed("default", source["id"], {
+        "id": playlist["id"], "title": playlist["title"],
+        "fingerprint": fingerprint(playlist), "count": 2, "marker": marker,
+    })
+
+    from helper.automation import automation_settings, ensure_profile_schedule, PROFILE_STATE_KEY
+
+    now = 2_000_000_100
+    settings = automation_settings(base, registry, runtime, now=now)
+    for profile_id in ("default", "friend", "classic"):
+        scoped = ScopedStore(base, profile_id)
+        state = ensure_profile_schedule(scoped, settings, now)
+        for task in state["tasks"].values():
+            task["next_at"] = now + 86_400
+            task["slot"] = now + 86_400
+        scoped.set(PROFILE_STATE_KEY, state)
+    state = ScopedStore(base, "default").get(PROFILE_STATE_KEY)
+    state["tasks"]["library"].update(next_at=now, slot=now)
+    ScopedStore(base, "default").set(PROFILE_STATE_KEY, state)
+    runtime.engine("default").refresh_new_tracks = lambda: {"status": "completed"}
+
+    scheduled = runtime.run_due(now=now)
+    result = next(row["result"]["charts"] for row in scheduled if row["kind"] == "library")
+
+    assert result["updated"] == 1, result
+    assert data["owner-token"]["playlists"][playlist["id"]]["title"] == "飙升榜"
+    target_repository = ExternalRepository(ScopedStore(base, "classic"))
+    target_source = target_repository.list_sources("classic")[0]
+    target_managed = target_repository.get_managed("classic", target_source["id"])
+    target_playlist = data["classic-token"]["playlists"][target_managed["id"]]
+    assert target_source["follow_updates"] is False
+    assert target_playlist["title"] == "飙升榜"
+    assert [item["id"] for item in target_playlist["items"]] == ["101", "102"]
+    assert ExternalRepository(ScopedStore(base, "friend")).list_sources("friend") == []
+
+
 def test_owner_ordinary_qq_import_stays_personal(shared_library):
     from helper.engine import fingerprint
     from helper.external_playlist_sync import external_marker

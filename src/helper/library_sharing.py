@@ -14,6 +14,7 @@ from .engine import fingerprint, state_ids
 
 STATE_KEY = "library_share_v1"
 REVISIONS_KEY = "library_share_revisions_v2"
+MIRRORED_TOPLISTS_KEY = "mirrored_qq_toplists_v1"
 
 
 def _is_qq_toplist(source):
@@ -28,6 +29,104 @@ def _is_qq_toplist(source):
         and parts[1:4] == ["n", "ryqq", "toplist"]
         and parts[4].isdigit()
     )
+
+
+def _qq_toplist_title(source, managed=None):
+    """Use a clean playlist title while keeping QQ as the internal provider."""
+    title = str((managed or {}).get("title") or source.get("title") or "").strip()
+    if title[:2].upper() == "QQ":
+        title = title[2:].lstrip(" -·：:")
+    return title or "排行榜"
+
+
+def sync_qq_toplists_across_libraries(runtime, source_profile_id):
+    """Rematch public QQ charts into every other library on the same Plex server.
+
+    The imported source profile remains the only remote updater. Other profiles
+    receive a local snapshot and match it against their own Plex library IDs.
+    """
+    from .external_store import ExternalRepository
+    from .playlist_hub import rename_playlist
+
+    source_profile = runtime.registry.get(source_profile_id)
+    source_engine = runtime.engine(source_profile_id)
+    source_repository = ExternalRepository(source_engine.store)
+    mirrored = source_engine.store.get(MIRRORED_TOPLISTS_KEY, {}) or {}
+    sources = []
+    for source in source_repository.list_sources(source_profile_id):
+        if source["id"] in mirrored or not _is_qq_toplist(source):
+            continue
+        managed = source_repository.get_managed(source_profile_id, source["id"])
+        if managed:
+            sources.append((source, managed))
+    result = {"updated": 0, "skipped": 0, "errors": []}
+    if not sources:
+        return result
+
+    # Existing installations used names such as “QQ飙升榜”. Rename only a
+    # verified app-owned playlist; the guarded helper refuses foreign content.
+    normalized = []
+    for source, managed in sources:
+        title = _qq_toplist_title(source, managed)
+        if managed.get("title") != title:
+            try:
+                rename_playlist(source_engine, "external", source["id"], title)
+                managed = source_repository.get_managed(source_profile_id, source["id"])
+            except Exception as exc:
+                result["errors"].append({
+                    "profile_id": source_profile_id,
+                    "source_id": source["id"],
+                    "error": type(exc).__name__,
+                })
+        normalized.append((source, managed, title))
+
+    source_machine = str((source_profile.get("server") or {}).get("machine") or "")
+    source_library = str((source_profile.get("library") or {}).get("id") or "")
+    for target_profile in runtime.registry.list_public(enabled_only=True):
+        target_id = target_profile["id"]
+        target_machine = str((target_profile.get("server") or {}).get("machine") or "")
+        target_library = str((target_profile.get("library") or {}).get("id") or "")
+        if (target_id == source_profile_id or target_machine != source_machine
+                or not target_library or target_library == source_library):
+            continue
+        target_engine = runtime.engine(target_id)
+        target_repository = ExternalRepository(target_engine.store)
+        target_mirrored = dict(target_engine.store.get(MIRRORED_TOPLISTS_KEY, {}) or {})
+        for source, managed, title in normalized:
+            try:
+                snapshot = {
+                    "provider": source["provider"],
+                    "external_id": source["external_id"],
+                    "url": source["source_url"],
+                    "title": source["title"],
+                    "revision": source["revision"],
+                    "tracks": source_repository.list_tracks(source_profile_id, source["id"]),
+                }
+                target_source = target_repository.upsert_source(target_id, snapshot, time.time())
+                target_repository.set_follow_updates(target_id, target_source["id"], False)
+                target_mirrored[target_source["id"]] = {
+                    "source_profile_id": source_profile_id,
+                    "source_id": source["id"],
+                }
+                target_engine.store.set(MIRRORED_TOPLISTS_KEY, target_mirrored)
+                target_managed = target_repository.get_managed(target_id, target_source["id"])
+                if target_managed and target_managed.get("title") != title:
+                    rename_playlist(target_engine, "external", target_source["id"], title)
+                matched = target_engine.external.match(target_source["id"])
+                if int((matched.get("counts") or {}).get("matched") or 0) == 0:
+                    result["skipped"] += 1
+                    continue
+                target_engine.external.publish(
+                    target_source["id"], title, target_source["revision"],
+                )
+                result["updated"] += 1
+            except Exception as exc:
+                result["errors"].append({
+                    "profile_id": target_id,
+                    "source_id": source["id"],
+                    "error": type(exc).__name__,
+                })
+    return result
 
 
 def owner_shared_playlists(owner_engine):

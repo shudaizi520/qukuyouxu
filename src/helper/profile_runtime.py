@@ -176,6 +176,17 @@ class ProfileRuntime:
                 try:
                     operation = self._scheduled_operation(engine, task, scheduled, settings, now)
                     result = self._run_job(engine, kind, operation, now)
+                    if task == "library":
+                        from .library_sharing import sync_qq_toplists_across_libraries
+
+                        def sync_charts():
+                            with self.operation_gate:
+                                return sync_qq_toplists_across_libraries(
+                                    self, profile["id"],
+                                )
+
+                        charts = self._run_job(engine, "library_charts", sync_charts, now)
+                        result = {**(result if isinstance(result, dict) else {}), "charts": charts}
                     results.append({"profile_id": profile["id"], "kind": kind, "result": result})
                 except Exception as exc:
                     failure = exc
