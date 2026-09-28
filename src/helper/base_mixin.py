@@ -144,7 +144,7 @@ class BaseMixin:
         fresh_tracks,fresh_enriched,_=self._read_base_catalog(p,cfg['section'])
         fresh={t['id']:track_fingerprint(t) for t in fresh_tracks}
         fresh_evidence={t['id']:base_track_fingerprint(t) for t in fresh_enriched}
-        managed=self.store.get('managed');result={'written':0,'unchanged':0,'skipped':0,'errors':[],'retryable_errors':[],'conflicts':[]}
+        managed=self.store.get('managed');result={'written':0,'unchanged':0,'skipped':0,'errors':[],'retryable_errors':[],'conflicts':[],'added_ids':[]}
         disabled={str(value) for value in (self.store.get('managed_disabled_categories',[]) or [])}
         fresh_effective,_=prepare_catalog(fresh_enriched,self.store.get('metadata_overrides',{}))
         from .engine import digest
@@ -199,6 +199,7 @@ class BaseMixin:
                 supersede_unresolved_snapshots(self.store,cid,snap['id'])
                 if reconciled.status=='unchanged':result['unchanged']+=1
                 else:result['written']+=1
+                result['added_ids'].extend(reconciled.added_member_ids)
                 runtime=getattr(self,'profile_runtime',None)
                 if reconciled.status!='unchanged' and runtime is not None and runtime.registry.get(self.store.profile_id).get('kind')=='owner':
                     from .library_sharing import queue_owner_revision
@@ -212,6 +213,7 @@ class BaseMixin:
                 result['errors'].append(message)
                 result['retryable_errors' if retryable else 'conflicts'].append(message)
         settings=self.store.get('base_settings',dict(DEFAULT_BASE))
+        result['added_ids']=list(dict.fromkeys(result['added_ids']))
         if not automatic and not result['errors']:
             settings['approved']=True;settings['approved_policy']=BASE_POLICY;self.store.set('base_settings',settings)
         plan['applied']=True;plan['result']=result;self.store.set('base_plan',plan)

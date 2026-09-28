@@ -18,14 +18,31 @@ def eligible_discovery_groups(plan: dict | None, managed: dict | None) -> list[d
     plan = plan or {}
     managed = managed or {}
     threshold = discovery_min_tracks(plan.get("library_count", 0))
+    review_ids = (
+        {str(value) for value in plan.get("review_group_ids", [])}
+        if "review_group_ids" in plan else None
+    )
     return [
         row
         for row in (plan.get("groups", []) or [])
-        if str(row.get("id") or "") in managed
-        or (
-            not row.get("blocked")
-            and len(row.get("desired", []) or []) >= threshold
+        if (review_ids is None or str(row.get("id") or "") in review_ids)
+        and (
+            str(row.get("id") or "") in managed
+            or (
+                not row.get("blocked")
+                and len(row.get("desired", []) or []) >= threshold
+            )
         )
+    ]
+
+
+def new_discovery_groups(plan: dict | None, managed: dict | None) -> list[dict]:
+    """Return only useful, unmanaged playlists that still need confirmation."""
+    managed = managed or {}
+    return [
+        row for row in eligible_discovery_groups(plan, managed)
+        if str(row.get("id") or "") not in managed
+        and str(row.get("action") or "create") == "create"
     ]
 
 

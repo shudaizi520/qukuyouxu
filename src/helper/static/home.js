@@ -25,7 +25,7 @@ function renderQQAuth(auth,running){
 }
 async function refresh(skipPlexLink=false){
  if(polling)return;polling=true;
- try{const wasActive=workflowIsActive(),next=await(await request('/api/workflow/status?release=2.0.22')).json();current=next;if(wasActive&&!workflowDataIsActive(next))PCHAuth.invalidateCache(['library-summary','playlists']);render(current);if(!libraryNavigationReady){libraryNavigationReady=true;revealLibraryTarget();}if(!skipPlexLink||!lastPlexLinkRefresh||Date.now()-lastPlexLinkRefresh>=PLEX_LINK_TTL_MS)await refreshPlexLink();return true;}finally{polling=false;}
+ try{const wasActive=workflowIsActive(),next=await(await request('/api/workflow/status?release=2.0.23')).json();current=next;if(wasActive&&!workflowDataIsActive(next))PCHAuth.invalidateCache(['library-summary','playlists']);render(current);if(!libraryNavigationReady){libraryNavigationReady=true;revealLibraryTarget();}if(!skipPlexLink||!lastPlexLinkRefresh||Date.now()-lastPlexLinkRefresh>=PLEX_LINK_TTL_MS)await refreshPlexLink();return true;}finally{polling=false;}
 }
 function render(data){
  const w=data.workflow,s=w.state||{},sum=w.summary||{},job=w.job||{},running=!!job.running,discovery=w.discovery||{};
@@ -111,7 +111,7 @@ const REVIEW_THEME_DIMENSIONS={
  '伤感情歌':'心情','治愈陪伴':'心情','甜蜜情歌':'心情'
 };
 function reviewGroupLabel(group){
- const labels={track_year:'歌曲年代',album_year:'专辑年代',language:'语种',genre:'曲风',version:'版本',主题:'主题精选',场景:'场景',心情:'心情'};
+ const labels={track_year:'歌曲年代',album_year:'专辑年代',language:'语种',genre:'曲风',audience:'人群',version:'版本',主题:'主题精选',场景:'场景',心情:'心情'};
  return labels[group.dimension]||REVIEW_THEME_DIMENSIONS[group.title]||(group.kind==='theme'?'主题精选':'其他');
 }
 function reviewActionKind(group){

@@ -43,14 +43,25 @@ class Store:
 
     def _upgrade_daily_policy(self):
         from .recommend import DAILY_POLICY,DEFAULT_DAILY
-        if self.get('daily_policy')==DAILY_POLICY:return
+        previous_policy=self.get('daily_policy')
+        if previous_policy==DAILY_POLICY:return
         old=self.get('daily_settings') or {};cfg={**DEFAULT_DAILY,**old}
-        # Migrate only the old built-in diversity defaults; preserve explicit size/hour/favorite selections.
-        if old.get('artist_cap',3)==3:cfg['artist_cap']=2
-        if old.get('album_cap',2)==2:cfg['album_cap']=1
+        additive_upgrade=(previous_policy,DAILY_POLICY)==(
+            'v0.2.3-childrens-isolation','v0.2.4-verified-childrens-isolation')
+        # Only pre-v0.2.3 states still carry the historical built-in defaults.
+        # Values on v0.2.3 are explicit user choices and must survive this
+        # additive audience-evidence upgrade unchanged.
+        if not additive_upgrade:
+            if old.get('artist_cap',3)==3:cfg['artist_cap']=2
+            if old.get('album_cap',2)==2:cfg['album_cap']=1
         cfg.setdefault('favorite_cap',4);cfg.setdefault('repeat_days',21)
+        notice=(
+            '每日推荐已接入核对过的儿童音乐分类；只隔离明确证据，不会按歌名猜测，原有推荐设置保持不变。'
+            if additive_upgrade else
+            '每日推荐策略已更新：星标/收藏仍最多少量出现，并会与其它歌曲稳定打散；手动生成只生成预览，确认后才发布。'
+        )
         changes={'daily_policy':DAILY_POLICY,'daily_settings':cfg,'daily_plan':None,
-                 'daily_notice':'每日推荐策略已更新：星标/收藏仍最多少量出现，并会与其它歌曲稳定打散；手动生成只生成预览，确认后才发布。'}
+                 'daily_notice':notice}
         old_plan=self.get('daily_plan')
         if old_plan and not old_plan.get('applied'):changes['daily_previous_plan']=old_plan
         self.set_many(changes)
@@ -59,12 +70,26 @@ class Store:
         # Application state only. Never deletes playlists, files, user feedback,
         # or the theme/daily plans. Reconfirm only the corrected base subsystem.
         from .base import BASE_POLICY
-        if self.get('base_policy')==BASE_POLICY:return
+        previous_policy=self.get('base_policy')
+        if previous_policy==BASE_POLICY:return
         cfg=self.get('base_settings',{})
         old=self.get('base_plan')
         had_base=bool(old or cfg.get('enabled') or cfg.get('approved') or
                       any(k.startswith('base:') for k in self.get('managed',{})))
         changes={'base_policy':BASE_POLICY}
+        additive_upgrade=(previous_policy,BASE_POLICY)==(
+            'v0.1.7-single-provenance','v0.1.8-childrens-audience')
+        if additive_upgrade:
+            notice='新增儿歌共享分类：已有基础歌单的自动维护保持不变；旧预览已失效，儿歌歌单首次创建仍需确认。'
+            settings={**cfg}
+            if settings.get('approved') and settings.get('approved_policy')==previous_policy:
+                settings['approved_policy']=BASE_POLICY
+            changes.update(base_settings=settings,base_notice=notice)
+            if old:
+                changes['base_previous_policy_plan']=old
+                changes['base_plan']={**old,'invalidated_reason':notice}
+            self.set_many(changes)
+            return
         if had_base:
             notice='QQ单曲资料与语种证据规则已更新：旧基础预览已失效。请重新生成基础分类预览并确认；主题歌单和每日推荐保持不变。'
             changes.update(base_settings={**cfg,'enabled':False,'approved':False,'approved_policy':None},base_notice=notice)

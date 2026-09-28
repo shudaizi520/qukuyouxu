@@ -225,6 +225,29 @@ class DailyFixedPlaylistTests(unittest.TestCase):
         self.assertEqual([], plan["blocked"])
         self.assertEqual("900", plan["before"]["id"])
 
+    def test_preview_attaches_verified_single_evidence_before_audience_filtering(self):
+        plex = _DailyPlex(existing=True)
+        _store, engine = self.make_engine(plex)
+
+        with patch.object(engine, "single_attach", wraps=engine.single_attach) as attach, \
+                patch("helper.daily.recommend_rotating", side_effect=_recommendation):
+            engine.preview_daily(now=1_800_000_000)
+
+        attach.assert_called_once()
+        self.assertEqual("machine-a", attach.call_args.args[1])
+
+    def test_publish_rejects_preview_when_verified_single_evidence_changes(self):
+        from helper.engine import SafetyError
+
+        plex = _DailyPlex(existing=True)
+        store, engine = self.make_engine(plex)
+        with patch("helper.daily.recommend_rotating", side_effect=_recommendation):
+            plan = engine.preview_daily(now=1_800_000_000)
+        store.set("single_revision", int(store.get("single_revision", 0)) + 1)
+
+        with self.assertRaisesRegex(SafetyError, "变化"):
+            engine.publish_daily(plan["id"], now=1_800_000_010)
+
     def test_preview_blocks_an_unmarked_same_name_playlist(self):
         plex = _DailyPlex(existing=True, owned=False)
         _store, engine = self.make_engine(plex)

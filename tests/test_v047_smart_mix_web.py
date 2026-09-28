@@ -110,6 +110,58 @@ class SmartMixLifecycleV047Tests(unittest.TestCase):
         self.assertIn("recent_additions", managed)
         self.assertEqual("applied", self.store.get("snapshots")[-1]["status"])
 
+    def test_preview_uses_verified_single_evidence_before_selecting(self):
+        from helper.library_engine import LibraryEngine
+        from helper.metadata import identity_fingerprint, prepare_catalog
+        from helper.single import SINGLE_POLICY, match_fingerprint
+        from helper.smart_mix_web import preview_smart_mix
+
+        original = self.plex.rows[0]
+        corrected_title = "已纠正的儿歌标题"
+        self.store.set("metadata_overrides", {
+            "1": {"fingerprint": identity_fingerprint(original), "title": corrected_title},
+        })
+        effective = prepare_catalog(
+            [original], self.store.get("metadata_overrides"),
+        )[0][0]
+        engine = LibraryEngine(self.store, plex_factory=lambda _cfg: self.plex)
+        scope = engine._single_scope("machine-a")
+        self.store.set("single_result:" + scope + ":1", {
+            "id": "1", "status": "matched", "policy": SINGLE_POLICY,
+            "fingerprint": match_fingerprint(effective), "checked_at": NOW,
+            "detail": {"genre_values": ["儿童音乐"]},
+            "fields": {"genres": ["儿童音乐"], "languages": []},
+        })
+
+        plan = preview_smart_mix(engine, "recent_additions", {"size": 10}, now=NOW)
+
+        self.assertNotIn("1", [row["id"] for row in plan["items"]])
+        self.assertEqual(1, plan["stats"]["childrens_excluded_count"])
+
+    def test_publish_rejects_preview_when_verified_single_evidence_changes(self):
+        from helper.engine import SafetyError
+        from helper.smart_mix_web import preview_smart_mix, publish_smart_mix
+
+        plan = preview_smart_mix(self.engine, "recent_additions", {"size": 10}, now=NOW)
+        self.store.set("single_revision", int(self.store.get("single_revision", 0)) + 1)
+
+        with self.assertRaisesRegex(SafetyError, "单曲资料"):
+            publish_smart_mix(self.engine, plan["id"], now=NOW + 1)
+
+    def test_publish_rejects_preview_when_helper_metadata_corrections_change(self):
+        from helper.engine import SafetyError
+        from helper.metadata import identity_fingerprint
+        from helper.smart_mix_web import preview_smart_mix, publish_smart_mix
+
+        plan = preview_smart_mix(self.engine, "recent_additions", {"size": 10}, now=NOW)
+        original = self.plex.rows[0]
+        self.store.set("metadata_overrides", {
+            "1": {"fingerprint": identity_fingerprint(original), "album": "宝宝巴士儿歌大全"},
+        })
+
+        with self.assertRaisesRegex(SafetyError, "元数据"):
+            publish_smart_mix(self.engine, plan["id"], now=NOW + 1)
+
     def test_same_title_foreign_playlist_blocks_preview_and_publish(self):
         from helper.engine import SafetyError
         from helper.smart_mix_web import preview_smart_mix, publish_smart_mix

@@ -5,6 +5,7 @@ Unknown songs remain unclassified instead of being forced into a catch-all bucke
 """
 from collections import Counter, defaultdict
 import re
+from .audience import is_childrens_track
 from .match import normalize, artist_key, flags, title_key
 from .single import LANGUAGE_CATEGORIES
 
@@ -16,7 +17,7 @@ STABLE_QQ_GENRES={
 DIRECT_QQ_LABELS={
     '影视':'影视原声',
 }
-BASE_POLICY='v0.1.7-single-provenance'
+BASE_POLICY='v0.1.8-childrens-audience'
 ERA_CATEGORIES=('70年代及更早','80年代','90年代','00年代','10年代','20年代')
 ALBUM_ERA_CATEGORIES=('70前专辑','80年代专辑','90年代专辑','00年代专辑','10年代专辑','20年代专辑')
 ALBUM_YEAR_REASON='Plex所属专辑版本发行年（不是单曲首发年）'
@@ -41,7 +42,7 @@ GENRE_RULES=[
     ('流行全库',('pop','c-pop','mandopop','cantopop','j-pop','k-pop','pop rock','流行')),
 ]
 ORDER=['70年代及更早','80年代','90年代','00年代','10年代','20年代',
-       '粤语','国语','流行全库','摇滚全库','民谣全库','古风全库','电子全库','R&B全库','嘻哈全库',
+       '粤语','国语','儿歌','流行全库','摇滚全库','民谣全库','古风全库','电子全库','R&B全库','嘻哈全库',
        '古典全库','爵士全库','乡村全库','轻音乐全库','影视原声','蓝调全库','雷鬼全库','世界音乐',
        '现场Live','DJ混音','伴奏纯音乐']
 
@@ -150,6 +151,9 @@ def build_base_groups(tracks,theme_plan=None,min_tracks=5,diagnostics=None):
         album_era=_album_era(t)
         if album_era:add(album_era,tid,ALBUM_YEAR_REASON,field='album.year/originallyAvailableAt')
         q=t.get('_qq_single') or {};qfields=q.get('fields') or {}
+        child_features=(q.get('detail') or {}).get('genre_values') or []
+        if is_childrens_track(t,child_features):
+            add('儿歌',tid,'Plex标签、专辑、目录或QQ单曲资料明确标识儿歌',field='track.audience')
         direct_genres=qfields.get('genres') or _genre_categories(t)
         for cat in direct_genres:
             add(cat,tid,'QQ单曲详情流派（来源标签）' if qfields.get('genres') else 'Plex Genre/Style',
@@ -235,7 +239,8 @@ def build_base_groups(tracks,theme_plan=None,min_tracks=5,diagnostics=None):
         result.append({'id':'base:'+normalize(title),'title':title,'kind':'base','desired':desired,'matched':len(desired),
                        'evidence':dict(reasons[title]),'inferred_count':len(inferred[title]),'blocked':[],
                        'dimension':'track_year' if title in ERA_CATEGORIES else 'album_year' if title in ALBUM_ERA_CATEGORIES else
-                           'language' if title in LANGUAGE_CATEGORIES else 'version' if title in ('现场Live','DJ混音','伴奏纯音乐') else 'genre',
+                           'language' if title in LANGUAGE_CATEGORIES else 'audience' if title=='儿歌' else
+                           'version' if title in ('现场Live','DJ混音','伴奏纯音乐') else 'genre',
                        'evidence_rows':evidence_rows[title]})
     result.sort(key=lambda g:(order.get(g['title'],999),g['title']))
     return result

@@ -165,9 +165,21 @@ def build_workflow_status(store, engine, qq_status):
     saved_base_plan = store.get("base_plan") or None
     job = dict(getattr(engine, "job", {}) or {})
     incremental = dict(store.get("incremental_status", {}) or {})
+    maintenance_attention = dict(store.get("library_maintenance_attention", {}) or {})
     plan = current_review_plan(saved_plan, incremental)
     base_plan = current_review_plan(saved_base_plan, incremental)
-    incremental_current = incremental_is_current(saved_plan, incremental)
+    incremental_current = (
+        incremental_is_current(saved_plan, incremental)
+        and incremental_is_current(saved_base_plan, incremental)
+    )
+    attention_record = maintenance_attention or (
+        incremental if str(incremental.get("status") or "") in {"attention", "error"} else {}
+    )
+    incremental_attention = bool(attention_record)
+    pending_review = bool(
+        (plan and not plan.get("applied"))
+        or (base_plan and not base_plan.get("applied") and not base_plan.get("invalidated_reason"))
+    )
     running = bool(job.get("running"))
     error = str(job.get("error") or "")
     paused = dict(store.get("workflow_pause_state", {}) or {})
@@ -181,12 +193,17 @@ def build_workflow_status(store, engine, qq_status):
         phase, message = "error", error
     elif paused.get("active"):
         phase, message = "paused", str(paused.get("message") or "整理已暂停，进度已保留。")
+    elif pending_review:
+        phase, message = "review", "分类预览已准备好，请确认要同步的歌单。"
+        if incremental_attention:
+            message += " 部分已有歌单同步失败，详情保留在下方运行记录。"
+    elif incremental_attention:
+        phase = "attention"
+        message = str(attention_record.get("message") or "部分已有歌单同步失败，请查看运行记录。")
     elif incremental_current:
         status = str(incremental.get("status") or "completed")
-        phase = "paused" if status in {"paused", "blocked"} else "attention" if status in {"attention", "error"} else "ready"
+        phase = "paused" if status in {"paused", "blocked"} else "ready"
         message = str(incremental.get("message") or "新增歌曲检查完成。")
-    elif (plan and not plan.get("applied")) or (base_plan and not base_plan.get("applied") and not base_plan.get("invalidated_reason")):
-        phase, message = "review", "分类预览已准备好，请确认要同步的歌单。"
     elif plan and plan.get("applied"):
         phase, message = "ready", "最近一次同步已经完成。"
     else:
@@ -224,7 +241,15 @@ def build_workflow_status(store, engine, qq_status):
             "unavailable": list(store.get("theme_unavailable", []) or []),
             "skipped_references": [],
         }
-    result = (plan or {}).get("result")
+    result = maintenance_attention or (plan or {}).get("result")
+    if not result and str(incremental.get("status") or "") in {"attention", "error"}:
+        parts = [incremental.get(key) or {} for key in ("base", "theme")]
+        result = {
+            "written": sum(int(row.get("written") or 0) for row in parts),
+            "unchanged": sum(int(row.get("unchanged") or 0) for row in parts),
+            "skipped": sum(int(row.get("skipped") or 0) for row in parts),
+            "errors": [value for row in parts for value in (row.get("errors") or [])],
+        }
     if result:
         result = {
             "written": int(result.get("written") or 0), "unchanged": int(result.get("unchanged") or 0),

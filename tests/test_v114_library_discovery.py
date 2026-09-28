@@ -182,6 +182,36 @@ def test_base_only_preview_is_still_presented_for_confirmation():
         assert workflow["review"]["base_plan_id"] == "base-preview"
 
 
+def test_newer_base_candidate_is_not_hidden_by_completed_incremental_status():
+    """A missing theme plan must not hide a newer base-only discovery preview."""
+    from helper.store import Store
+    from helper.workflow_v0317 import build_workflow_status
+
+    with tempfile.TemporaryDirectory() as root:
+        store = Store(Path(root))
+        checked_at = time.time()
+        store.set("incremental_status", {
+            "status": "completed", "updated_at": checked_at,
+            "message": "新增歌曲检查完成。",
+        })
+        store.set("base_plan", {
+            "id": "base-after-incremental", "created_at": checked_at + 1,
+            "applied": False, "library_count": 100,
+            "groups": [{
+                "id": "base:children", "title": "儿歌", "kind": "base",
+                "dimension": "audience", "desired": [str(value) for value in range(20)],
+                "add": [str(value) for value in range(20)], "action": "create", "blocked": [],
+            }],
+        })
+
+        workflow = build_workflow_status(
+            store, _Engine(), {"logged_in": True, "phase": "ready"},
+        )["workflow"]
+
+        assert workflow["state"]["phase"] == "review"
+        assert [group["id"] for group in workflow["review"]["groups"]] == ["base:children"]
+
+
 def test_pending_candidates_take_priority_over_existing_managed_playlists():
     from helper.store import Store
     from helper.workflow_v0317 import build_workflow_status

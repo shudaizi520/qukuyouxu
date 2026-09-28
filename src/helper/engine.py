@@ -232,7 +232,7 @@ class Engine(RenamingMixin, DailyMixin):
         # Refresh real metadata before any mutation. Do not trust old ratingKeys blindly.
         fresh={t['id']:track_fingerprint(t) for t in p.tracks(cfg['section'])}
         sources=self.store.get('sources');source_map={s['id']:s for s in sources}
-        managed=self.store.get('managed');result={'written':0,'unchanged':0,'skipped':0,'errors':[],'retryable_errors':[],'conflicts':[]}
+        managed=self.store.get('managed');result={'written':0,'unchanged':0,'skipped':0,'errors':[],'retryable_errors':[],'conflicts':[],'added_ids':[]}
         minimum_tracks=discovery_min_tracks(plan.get('library_count',0))
         for g in plan['groups']:
             src=source_map.get(g['id']);cid=g['id']
@@ -273,6 +273,7 @@ class Engine(RenamingMixin, DailyMixin):
                 supersede_unresolved_snapshots(self.store,cid,snap['id'])
                 if reconciled.status=='unchanged':result['unchanged']+=1
                 else:result['written']+=1
+                result['added_ids'].extend(reconciled.added_member_ids)
                 runtime=getattr(self,'profile_runtime',None)
                 if reconciled.status!='unchanged' and runtime is not None and runtime.registry.get(self.store.profile_id).get('kind')=='owner':
                     from .library_sharing import queue_owner_revision
@@ -284,6 +285,7 @@ class Engine(RenamingMixin, DailyMixin):
                 snap.update(status='retryable' if retryable else 'conflict',error=safe_error(exc));self._save_snapshot(snap)
                 result['errors'].append(message)
                 result['retryable_errors' if retryable else 'conflicts'].append(message)
+        result['added_ids']=list(dict.fromkeys(result['added_ids']))
         self.store.set('sources',sources);plan['applied']=True;plan['result']=result;self.store.set('plan',plan)
         self.store.log(f"写入结果：成功{result['written']}项，不变{result['unchanged']}项，跳过{result['skipped']}项，失败{len(result['errors'])}项")
         return result

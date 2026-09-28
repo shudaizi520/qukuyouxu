@@ -331,6 +331,21 @@ def test_reconcile_uses_latest_state_when_members_change_before_write():
     assert ("remove", "9", ("3",)) in plex.calls
 
 
+def test_reconcile_reports_only_members_added_after_latest_pre_write_read():
+    plex = MemoryPlex([state(ids=("11",))])
+    # Another actor adds 22 after the first lookup but before reconciliation.
+    plex.second_read_state = state(ids=("11", "22"))
+
+    result = reconcile_managed_playlist(
+        plex,
+        target(member_ids=("11", "22", "33")),
+        managed(),
+    )
+
+    assert result.added_member_ids == ("33",)
+    assert ("append", "9", ("33",)) in plex.calls
+
+
 def test_reconcile_removes_duplicate_current_occurrences():
     plex = MemoryPlex([state(ids=("11", "11", "22"))])
 

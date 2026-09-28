@@ -7,6 +7,8 @@ separate a track from the owner's personal listening profile.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import PurePosixPath
 
 from .match import normalize
@@ -41,13 +43,34 @@ def is_childrens_track(track, features=()):
         return True
     if _explicit_label(track.get("album")) or _explicit_label(track.get("audience")):
         return True
-    if any(_explicit_label(value) for value in features or []):
+    qq_detail = ((track.get("_qq_single") or {}).get("detail") or {})
+    qq_features = list(qq_detail.get("genre_values") or [])
+    if any(_explicit_label(value) for value in list(features or []) + qq_features):
         return True
     for value in track.get("paths") or []:
         path = PurePosixPath(str(value).replace("\\", "/"))
         if any(normalize(part) in EXPLICIT_FOLDERS for part in path.parts[:-1]):
             return True
     return False
+
+
+def childrens_evidence_digest(tracks):
+    """Hash every explicit input that can change children's-audience isolation."""
+    rows = []
+    for track in tracks or []:
+        detail = ((track.get("_qq_single") or {}).get("detail") or {})
+        rows.append({
+            "id": str(track.get("id") or ""),
+            "genres": list(track.get("genres") or []),
+            "styles": list(track.get("styles") or []),
+            "moods": list(track.get("moods") or []),
+            "album": track.get("album"),
+            "audience": track.get("audience"),
+            "paths": list(track.get("paths") or []),
+            "qq_genres": list(detail.get("genre_values") or []),
+        })
+    payload = json.dumps(rows, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode()).hexdigest()
 
 
 def filter_childrens_context(tracks, features=None, events=None, seed_ids=None):

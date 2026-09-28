@@ -11,7 +11,7 @@ from .match import artist_key, title_key, normalize
 from .metadata import PLACEHOLDER_ARTISTS
 from .audience import is_childrens_track
 
-DAILY_POLICY='v0.2.3-childrens-isolation'
+DAILY_POLICY='v0.2.4-verified-childrens-isolation'
 DEFAULT_DAILY={'size':50,'artist_cap':2,'album_cap':1,'favorite_cap':4,'favorite_percent':20,'repeat_days':21,
                'cooldown_hours':24,'hour':6,'enabled':False,'seed_playlist_ids':[]}
 

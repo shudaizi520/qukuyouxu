@@ -78,8 +78,8 @@ class LibraryMaintenanceV0415Tests(unittest.TestCase):
             result = engine.refresh_new_tracks()
 
         self.assertEqual(
-            ["preview_base", ("apply_base", "base-plan", True),
-             ("preview_theme", False), ("apply_theme", "theme-plan", True)],
+            [("preview_theme", False), ("apply_theme", "theme-plan", True),
+             "preview_base", ("apply_base", "base-plan", True)],
             calls,
         )
         self.assertEqual("completed", result["status"])

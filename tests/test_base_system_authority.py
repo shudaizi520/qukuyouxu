@@ -1,4 +1,6 @@
 import copy
+import json
+import sqlite3
 import sys
 import tempfile
 import time
@@ -14,6 +16,72 @@ from helper.engine import fingerprint, track_fingerprint
 from helper.library_discovery import DISCOVERY_POLICY
 from helper.library_engine import LibraryEngine
 from helper.store import Store
+
+
+def test_additive_childrens_policy_upgrade_preserves_existing_automation_authority():
+    """An additive category must not silently turn off an approved maintenance switch."""
+    from helper.base import BASE_POLICY
+
+    with tempfile.TemporaryDirectory() as root:
+        database_path = Path(root) / "helper.sqlite3"
+        with sqlite3.connect(database_path) as database:
+            database.execute("CREATE TABLE state (k TEXT PRIMARY KEY, v TEXT NOT NULL)")
+            rows = {
+                "base_policy": "v0.1.7-single-provenance",
+                "base_settings": {
+                    "enabled": True, "approved": True,
+                    "approved_policy": "v0.1.7-single-provenance",
+                    "interval_hours": 24,
+                },
+                "base_plan": {"id": "old-plan", "applied": True},
+                "managed": {"base:国语": {"id": "playlist-1"}},
+            }
+            database.executemany(
+                "INSERT INTO state(k,v) VALUES(?,?)",
+                [(key, json.dumps(value, ensure_ascii=False)) for key, value in rows.items()],
+            )
+
+        store = Store(Path(root))
+
+        settings = store.get("base_settings")
+        self_plan = store.get("base_plan")
+        assert settings["enabled"] is True
+        assert settings["approved"] is True
+        assert settings["approved_policy"] == BASE_POLICY
+        assert self_plan["invalidated_reason"]
+        assert store.get("managed")["base:国语"]["id"] == "playlist-1"
+
+
+def test_verified_childrens_daily_policy_upgrade_preserves_user_diversity_settings():
+    from helper.recommend import DAILY_POLICY
+
+    with tempfile.TemporaryDirectory() as root:
+        database_path = Path(root) / "helper.sqlite3"
+        with sqlite3.connect(database_path) as database:
+            database.execute("CREATE TABLE state (k TEXT PRIMARY KEY, v TEXT NOT NULL)")
+            rows = {
+                "daily_policy": "v0.2.3-childrens-isolation",
+                "daily_settings": {
+                    "enabled": True, "size": 40, "hour": 7,
+                    "artist_cap": 3, "album_cap": 2,
+                },
+                "daily_plan": {"id": "old-plan", "applied": False},
+            }
+            database.executemany(
+                "INSERT INTO state(k,v) VALUES(?,?)",
+                [(key, json.dumps(value, ensure_ascii=False)) for key, value in rows.items()],
+            )
+
+        store = Store(Path(root))
+
+        settings = store.get("daily_settings")
+        assert store.get("daily_policy") == DAILY_POLICY
+        assert settings["enabled"] is True
+        assert settings["size"] == 40
+        assert settings["hour"] == 7
+        assert settings["artist_cap"] == 3
+        assert settings["album_cap"] == 2
+        assert store.get("daily_plan") is None
 
 
 class _BasePlex:
@@ -158,6 +226,7 @@ class BaseSystemAuthorityTests(unittest.TestCase):
             result = self.engine.apply_base(plan["id"])
 
         self.assertEqual([], result["errors"])
+        self.assertEqual(["2"], result["added_ids"])
         self.assertEqual("国语", self.plex.state["title"])
         self.assertEqual(["1", "2"], [row["id"] for row in self.plex.state["items"]])
         self.assertIn(self.engine.marker(self.cid), self.plex.state["summary"])
@@ -263,6 +332,7 @@ class BaseSystemAuthorityTests(unittest.TestCase):
         result = self.engine.apply(plan["id"])
 
         self.assertEqual([], result["errors"])
+        self.assertEqual(["2"], result["added_ids"])
         self.assertEqual("工作陪伴", self.plex.state["title"])
         self.assertEqual(["1", "2"], [row["id"] for row in self.plex.state["items"]])
 

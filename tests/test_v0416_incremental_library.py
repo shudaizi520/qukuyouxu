@@ -50,6 +50,348 @@ class IncrementalLibraryV0416Tests(unittest.TestCase):
             preview_base.assert_not_called()
             preview_theme.assert_not_called()
 
+    def test_incremental_refresh_reports_auto_additions_and_keeps_new_candidates_for_review(self):
+        """Applying managed lists must not consume newly discovered playlist candidates."""
+        from helper.library_engine import LibraryEngine
+        from helper.store import Store
+        from helper.workflow_v0317 import build_workflow_status
+
+        with tempfile.TemporaryDirectory() as root:
+            store = Store(Path(root))
+            store.set_many({
+                "managed": {
+                    "base:existing": {"id": "base-playlist"},
+                    "theme:existing": {"id": "theme-playlist"},
+                },
+                "sources": [
+                    {"id": "theme:existing", "enabled": True, "approved": True},
+                    {"id": "theme:new", "enabled": True, "approved": False},
+                ],
+            })
+            engine = object.__new__(LibraryEngine)
+            import threading
+            engine.store = store
+            engine.gate = threading.Lock()
+            engine.single_pause = threading.Event()
+            engine.workflow_pause = threading.Event()
+            engine.job = {}
+            engine.progress = lambda _message: None
+            engine.base_signature = lambda: "theme:" + ",".join(
+                row["id"] for row in (store.get("plan") or {}).get("groups", [])
+            )
+            engine._enrich_singles = lambda **_kwargs: {
+                "status": "completed", "new_count": 4, "processed": 100,
+            }
+            engine.external = type("External", (), {
+                "rematch_missing": lambda _self: {},
+                "auto_refresh": lambda _self: {},
+            })()
+
+            base_calls = 0
+            theme_calls = 0
+            base_theme_evidence_seen = set()
+
+            def base_preview():
+                nonlocal base_calls, base_theme_evidence_seen
+                base_calls += 1
+                if base_calls > 1:
+                    raise AssertionError("候选不应依赖第二次 Plex 读取才能保留")
+                base_theme_evidence_seen = {
+                    row["id"] for row in (store.get("plan") or {}).get("groups", [])
+                }
+                plan = {
+                    "id": f"base-{base_calls}", "created_at": time.time(),
+                    "applied": False, "library_count": 100,
+                    "signature": engine.base_signature(),
+                    "groups": [
+                        {"id": "base:existing", "title": "已有基础", "kind": "base",
+                         "dimension": "genre", "desired": ["101", "102"],
+                         "add": ["101", "102"], "action": "update", "blocked": []},
+                        {"id": "base:children", "title": "儿歌", "kind": "base",
+                         "dimension": "audience", "desired": [str(value) for value in range(20)],
+                         "add": [str(value) for value in range(20)], "action": "create", "blocked": []},
+                    ],
+                }
+                store.set("base_plan", plan)
+                return plan
+
+            def theme_preview(_force=False):
+                nonlocal theme_calls
+                theme_calls += 1
+                if theme_calls > 1:
+                    raise AssertionError("候选不应依赖第二次 Plex 读取才能保留")
+                plan = {
+                    "id": f"theme-{theme_calls}", "created_at": time.time(),
+                    "applied": False, "library_count": 100,
+                    "groups": [
+                        {"id": "theme:existing", "title": "已有主题", "kind": "qq_category",
+                         "desired": ["102", "103"],
+                         "add": ["102", "103"], "action": "update", "blocked": []},
+                        {"id": "theme:new", "title": "新主题", "kind": "qq_category",
+                         "desired": [str(value) for value in range(20, 30)],
+                         "add": [str(value) for value in range(20, 30)], "action": "create", "blocked": []},
+                    ],
+                }
+                store.set("plan", plan)
+                return plan
+
+            engine._preview_base = base_preview
+            engine._preview = theme_preview
+            engine._apply_base = lambda *_args, **_kwargs: {
+                "written": 1, "unchanged": 0, "skipped": 1, "errors": [],
+                "added_ids": ["101", "102"],
+            }
+            engine._apply = lambda *_args, **_kwargs: {
+                "written": 1, "unchanged": 0, "skipped": 1, "errors": [],
+                "added_ids": ["102", "103"],
+            }
+
+            result = engine.refresh_new_tracks()
+            workflow = build_workflow_status(
+                store, engine, {"logged_in": True, "phase": "ready"},
+            )["workflow"]
+            saved_base_plan = store.get("base_plan")
+            expected_base_signature = engine.base_signature()
+
+        self.assertEqual(3, result["auto_added_count"])
+        self.assertEqual(2, result["candidate_count"])
+        self.assertIn("3 首已自动加入已有歌单", result["message"])
+        self.assertIn("2 个新歌单等待确认", result["message"])
+        self.assertEqual(1, base_calls)
+        self.assertEqual(1, theme_calls)
+        self.assertEqual({"theme:existing", "theme:new"}, base_theme_evidence_seen)
+        self.assertEqual(expected_base_signature, saved_base_plan["signature"])
+        self.assertEqual("review", workflow["state"]["phase"])
+        self.assertEqual(
+            {"base:children", "theme:new"},
+            {group["id"] for group in workflow["review"]["groups"] if group["action"] == "create"},
+        )
+
+    def test_partial_maintenance_failure_keeps_candidates_and_counts_successful_additions(self):
+        """One failed managed list must not consume unrelated discovery work."""
+        from helper.library_engine import LibraryEngine
+        from helper.store import Store
+        from helper.workflow_v0317 import build_workflow_status
+
+        with tempfile.TemporaryDirectory() as root:
+            store = Store(Path(root))
+            store.set_many({
+                "managed": {"base:existing": {"id": "base-playlist"}},
+                "sources": [],
+            })
+            engine = object.__new__(LibraryEngine)
+            import threading
+            engine.store = store
+            engine.gate = threading.Lock()
+            engine.single_pause = threading.Event()
+            engine.workflow_pause = threading.Event()
+            engine.job = {}
+            engine.progress = lambda _message: None
+            engine._enrich_singles = lambda **_kwargs: {
+                "status": "completed", "new_count": 2, "processed": 2,
+            }
+            engine.external = type("External", (), {
+                "rematch_missing": lambda _self: {},
+                "auto_refresh": lambda _self: {},
+            })()
+            calls = 0
+
+            def base_preview():
+                nonlocal calls
+                calls += 1
+                if calls > 1:
+                    raise AssertionError("失败后不应再次依赖 Plex 才能恢复候选")
+                plan = {
+                    "id": f"base-{calls}", "created_at": time.time(),
+                    "applied": False, "library_count": 100,
+                    "groups": [
+                        {"id": "base:existing", "title": "已有基础", "kind": "base",
+                         "dimension": "genre", "desired": ["101"],
+                         "add": ["101"], "action": "update", "blocked": []},
+                        {"id": "base:children", "title": "儿歌", "kind": "base",
+                         "dimension": "audience", "desired": [str(value) for value in range(20)],
+                         "add": [str(value) for value in range(20)], "action": "create", "blocked": []},
+                    ],
+                }
+                store.set("base_plan", plan)
+                return plan
+
+            engine._preview_base = base_preview
+            engine._apply_base = lambda *_args, **_kwargs: {
+                "written": 1, "unchanged": 0, "skipped": 1,
+                "errors": ["另一个已有歌单同步失败"],
+                "retryable_errors": ["另一个已有歌单同步失败"],
+                "added_ids": ["101"],
+            }
+
+            from helper.scheduler_retry import TransientScheduleError
+            with self.assertRaises(TransientScheduleError):
+                engine.refresh_new_tracks()
+            result = store.get("incremental_status")
+            workflow = build_workflow_status(
+                store, engine, {"logged_in": True, "phase": "ready"},
+            )["workflow"]
+            saved_base_plan = store.get("base_plan")
+            confirmed_plan = dict(saved_base_plan)
+            confirmed_plan["applied"] = True
+            confirmed_plan["created_at"] = time.time() + 1
+            confirmed_plan["result"] = {"written": 1, "errors": []}
+            store.set("base_plan", confirmed_plan)
+            after_confirmation = build_workflow_status(
+                store, engine, {"logged_in": True, "phase": "ready"},
+            )["workflow"]
+
+        self.assertEqual("attention", result["status"])
+        self.assertEqual(1, result["auto_added_count"])
+        self.assertEqual(1, result["candidate_count"])
+        self.assertEqual(1, calls)
+        self.assertFalse(saved_base_plan["applied"])
+        self.assertEqual("review", workflow["state"]["phase"])
+        self.assertIn("base:children", {
+            row["id"] for row in workflow["review"]["groups"] if row["action"] == "create"
+        })
+        self.assertIn("1 首已自动加入", result["message"])
+        self.assertIn("1 个新歌单等待确认", result["message"])
+        self.assertEqual("attention", after_confirmation["state"]["phase"])
+        self.assertIn("另一个已有歌单同步失败", after_confirmation["state"]["result"]["errors"])
+
+    def test_paused_incremental_does_not_erase_unresolved_maintenance_attention(self):
+        from helper.library_engine import LibraryEngine
+        from helper.store import Store
+        from helper.workflow_v0317 import build_workflow_status
+
+        with tempfile.TemporaryDirectory() as root:
+            store = Store(Path(root))
+            prior = {
+                "status": "attention", "message": "国语歌单同步失败",
+                "errors": ["国语歌单同步失败"], "updated_at": time.time() - 10,
+            }
+            store.set("library_maintenance_attention", prior)
+            engine = LibraryEngine(store)
+            engine._enrich_singles = lambda **_kwargs: {
+                "status": "blocked", "new_count": 0, "processed": 0,
+                "message": "QQ 暂时不可用",
+            }
+
+            result = engine.refresh_new_tracks()
+            self.assertEqual("blocked", result["status"])
+            self.assertEqual(prior, store.get("library_maintenance_attention"))
+            store.set("workflow_pause_state", None)
+            workflow = build_workflow_status(
+                store, engine, {"logged_in": True, "phase": "ready"},
+            )["workflow"]
+
+        self.assertEqual("attention", workflow["state"]["phase"])
+        self.assertIn("国语歌单同步失败", workflow["state"]["result"]["errors"])
+
+    def test_theme_partial_failure_is_checkpointed_before_a_later_base_read_failure(self):
+        from helper.clients import PlexError
+        from helper.library_engine import LibraryEngine
+        from helper.scheduler_retry import TransientScheduleError
+        from helper.store import Store
+
+        with tempfile.TemporaryDirectory() as root:
+            store = Store(Path(root))
+            store.set_many({
+                "managed": {"base:existing": {"id": "base-playlist"}},
+                "sources": [
+                    {"id": "theme:existing", "enabled": True, "approved": True},
+                    {"id": "theme:new", "enabled": True, "approved": False},
+                ],
+            })
+            engine = LibraryEngine(store)
+            engine._enrich_singles = lambda **_kwargs: {
+                "status": "completed", "new_count": 1, "processed": 1,
+            }
+            engine.external = type("External", (), {
+                "rematch_missing": lambda _self: {},
+                "auto_refresh": lambda _self: {},
+            })()
+
+            def theme_preview(_force=False):
+                plan = {
+                    "id": "theme-plan", "created_at": time.time(), "applied": False,
+                    "library_count": 100, "groups": [
+                        {"id": "theme:existing", "title": "已有主题", "desired": ["1"],
+                         "add": ["1"], "action": "update", "blocked": []},
+                        {"id": "theme:new", "title": "新主题", "desired": [str(i) for i in range(20)],
+                         "add": [str(i) for i in range(20)], "action": "create", "blocked": []},
+                    ],
+                }
+                store.set("plan", plan)
+                return plan
+
+            engine._preview = theme_preview
+            engine._apply = lambda *_args, **_kwargs: {
+                "written": 0, "unchanged": 0, "skipped": 1,
+                "errors": ["主题歌单：Plex timeout"],
+                "retryable_errors": ["主题歌单：Plex timeout"], "added_ids": [],
+            }
+            engine._preview_base = lambda: (_ for _ in ()).throw(PlexError("still down"))
+
+            with self.assertRaises(TransientScheduleError):
+                engine.refresh_new_tracks()
+
+            attention = store.get("library_maintenance_attention")
+            incremental = store.get("incremental_status")
+            pending_theme = store.get("plan")
+
+        self.assertEqual("attention", attention["status"])
+        self.assertIn("主题歌单：Plex timeout", attention["errors"])
+        self.assertEqual("attention", incremental["status"])
+        self.assertEqual(1, incremental["candidate_count"])
+        self.assertFalse(pending_theme["applied"])
+        self.assertEqual(["theme:new"], pending_theme["review_group_ids"])
+
+    def test_theme_success_count_is_checkpointed_before_a_later_base_read_failure(self):
+        from helper.clients import PlexError
+        from helper.library_engine import LibraryEngine
+        from helper.scheduler_retry import TransientScheduleError
+        from helper.store import Store
+
+        with tempfile.TemporaryDirectory() as root:
+            store = Store(Path(root))
+            store.set_many({
+                "managed": {"base:existing": {"id": "base-playlist"}},
+                "sources": [
+                    {"id": "theme:existing", "enabled": True, "approved": True},
+                    {"id": "theme:new", "enabled": True, "approved": False},
+                ],
+            })
+            engine = LibraryEngine(store)
+            engine._enrich_singles = lambda **_kwargs: {
+                "status": "completed", "new_count": 1, "processed": 1,
+            }
+            engine.external = type("External", (), {
+                "rematch_missing": lambda _self: {},
+                "auto_refresh": lambda _self: {},
+            })()
+            plan = {
+                "id": "theme-plan", "created_at": time.time(), "applied": False,
+                "library_count": 100, "groups": [
+                    {"id": "theme:existing", "title": "已有主题", "desired": ["7"],
+                     "add": ["7"], "action": "update", "blocked": []},
+                    {"id": "theme:new", "title": "新主题", "desired": [str(i) for i in range(20)],
+                     "add": [str(i) for i in range(20)], "action": "create", "blocked": []},
+                ],
+            }
+            engine._preview = lambda _force=False: store.set("plan", plan) or plan
+            engine._apply = lambda *_args, **_kwargs: {
+                "written": 1, "unchanged": 0, "skipped": 1,
+                "errors": [], "retryable_errors": [], "added_ids": ["7"],
+            }
+            engine._preview_base = lambda: (_ for _ in ()).throw(PlexError("still down"))
+
+            with self.assertRaises(TransientScheduleError):
+                engine.refresh_new_tracks()
+
+            incremental = store.get("incremental_status")
+            pending_theme = store.get("plan")
+
+        self.assertEqual(1, incremental["auto_added_count"])
+        self.assertEqual(1, incremental["candidate_count"])
+        self.assertEqual(["theme:new"], pending_theme["review_group_ids"])
+
     def test_full_analysis_builds_theme_and_qq_field_category_previews(self):
         from helper.library_engine import LibraryEngine
         from helper.store import Store
@@ -230,12 +572,14 @@ class IncrementalLibraryV0416Tests(unittest.TestCase):
                 "fields": {"languages": ["国语"], "genres": ["流行"]},
             }
             store.set("single_result:old-scope:1", old)
+            before_revision = int(store.get("single_revision", 0))
             current = adopt_matching_records(store, "single_result:new-scope:", [track], {})
 
             self.assertEqual(["1"], sorted(current))
             adopted = store.get("single_result:new-scope:1")
             self.assertEqual(old["fingerprint"], adopted["fingerprint"])
             self.assertTrue(adopted["adopted_from_prior_connection"])
+            self.assertEqual(before_revision + 1, store.get("single_revision"))
 
     def test_token_refresh_does_not_change_playlist_or_single_cache_scope(self):
         from helper.library_engine import LibraryEngine

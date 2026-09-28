@@ -64,7 +64,9 @@ def adopt_matching_records(store,current_prefix,tracks,current):
         if is_current:out[tid]=record;continue
         copy={**record,'adopted_from_prior_connection':True,'adopted_at':time.time()}
         adopted[current_prefix+tid]=copy;out[tid]=copy
-    if adopted:store.set_many(adopted)
+    if adopted:
+        store.set_many(adopted)
+        store.set('single_revision',int(store.get('single_revision',0) or 0)+1)
     return out
 
 class SingleMixin:

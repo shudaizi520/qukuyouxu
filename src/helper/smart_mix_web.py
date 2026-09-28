@@ -8,15 +8,17 @@ from datetime import datetime, time as datetime_time, timedelta, timezone
 from fastapi import Request
 
 from .behavior import profile_behavior_subject
+from .audience import childrens_evidence_digest
 from .clients import PlexError, PlexNotFound
-from .engine import SafetyError, fingerprint, safe_error, state_ids, track_fingerprint
+from .engine import SafetyError, digest, fingerprint, safe_error, state_ids, track_fingerprint
+from .metadata import prepare_catalog
 from .playlist_sync import (has_exact_members, supersede_unresolved_snapshots,
                             sync_owned_items)
 from .smart_mixes import KINDS, select_smart_mix
 
 
 PLAN_TTL = 1800
-SMART_MIX_POLICY = "v0.4.19-childrens-isolation"
+SMART_MIX_POLICY = "v0.4.20-verified-childrens-isolation"
 MANAGED_KEY = "smart_mix_managed"
 PLANS_KEY = "smart_mix_plans"
 REMOVED_KEY = "smart_mix_removed"
@@ -223,9 +225,15 @@ def preview_smart_mix(engine, kind, options=None, now=None):
         cfg = _configured(engine)
         plex = engine.plex_factory(cfg)
         identity = plex.identity()
-        tracks = plex.tracks(cfg["section"])
-        if not tracks:
+        raw_tracks = plex.tracks(cfg["section"])
+        if not raw_tracks:
             raise SafetyError("Plex 没有返回可用曲目，不创建空歌单")
+        tracks, _metadata_audit = prepare_catalog(
+            raw_tracks, engine.store.get("metadata_overrides", {}) or {},
+        )
+        attach = getattr(engine, "single_attach", None)
+        if callable(attach):
+            tracks = attach(tracks, identity["machine"])
         try:
             selected = select_smart_mix(
                 kind, tracks, _history_events(engine), options or {}, now,
@@ -267,7 +275,10 @@ def preview_smart_mix(engine, kind, options=None, now=None):
             "before": before,
             "blocked": blocked,
             "applied": False,
-            "track_fingerprints": {str(row["id"]): track_fingerprint(row) for row in tracks if str(row.get("id")) in ids},
+            "single_revision": int(engine.store.get("single_revision", 0) or 0),
+            "metadata_overrides_digest": digest(engine.store.get("metadata_overrides", {}) or {}),
+            "audience_evidence_digest": childrens_evidence_digest(tracks),
+            "track_fingerprints": {str(row["id"]): track_fingerprint(row) for row in raw_tracks if str(row.get("id")) in ids},
         }
         plans = _plan_map(engine.store)
         plans[kind] = plan
@@ -288,6 +299,10 @@ def publish_smart_mix(engine, plan_id, now=None):
             raise SafetyError("智能歌单预览不存在，请重新生成")
         if plan.get("policy") != SMART_MIX_POLICY:
             raise SafetyError("智能歌单规则版本已更新，请重新生成预览")
+        if int(plan.get("single_revision", 0) or 0) != int(engine.store.get("single_revision", 0) or 0):
+            raise SafetyError("QQ 单曲资料在预览后变化，请重新生成智能歌单")
+        if plan.get("metadata_overrides_digest") != digest(engine.store.get("metadata_overrides", {}) or {}):
+            raise SafetyError("助手元数据纠正在预览后变化，请重新生成智能歌单")
         if plan.get("applied"):
             raise SafetyError("这份预览已经发布，不重复写入")
         if plan.get("blocked"):
@@ -302,7 +317,16 @@ def publish_smart_mix(engine, plan_id, now=None):
         planned_ids = list(ids)
         from .playlist_hub import apply_manual_edits
         ids = apply_manual_edits(engine.store, "smart", plan["kind"], ids)
-        fresh = {str(row["id"]): track_fingerprint(row) for row in plex.tracks(cfg["section"])}
+        fresh_rows = plex.tracks(cfg["section"])
+        fresh = {str(row["id"]): track_fingerprint(row) for row in fresh_rows}
+        fresh_effective, _metadata_audit = prepare_catalog(
+            fresh_rows, engine.store.get("metadata_overrides", {}) or {},
+        )
+        attach = getattr(engine, "single_attach", None)
+        if callable(attach):
+            fresh_effective = attach(fresh_effective, plan["machine"])
+        if childrens_evidence_digest(fresh_effective) != plan.get("audience_evidence_digest"):
+            raise SafetyError("儿童音乐识别证据在预览后变化，请重新生成智能歌单")
         if (not ids or any(tid not in fresh for tid in ids)
                 or any(fresh.get(tid) != plan.get("track_fingerprints", {}).get(tid) for tid in planned_ids)):
             raise SafetyError("候选歌曲在预览后变化，请重新生成")

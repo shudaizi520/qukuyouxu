@@ -3,10 +3,22 @@ from __future__ import annotations
 
 import copy
 import time
+import uuid
 
 from .base_mixin import BaseMixin
 from .engine import Engine, WorkflowPaused
+from .library_discovery import new_discovery_groups
 from .single_mixin import SingleMixin
+
+
+def _pending_candidate_plan(plan, candidates):
+    """Expose only new candidates while preserving the immutable full evidence plan."""
+    candidate_ids = {str(row.get('id') or '') for row in candidates}
+    pending = copy.deepcopy(plan)
+    pending.update(id=uuid.uuid4().hex, created_at=time.time(), applied=False)
+    pending.pop('result', None)
+    pending['review_group_ids'] = sorted(candidate_ids)
+    return pending
 
 
 class LibraryEngine(SingleMixin, BaseMixin, Engine):
@@ -87,8 +99,15 @@ class LibraryEngine(SingleMixin, BaseMixin, Engine):
             result = {
                 'status': single.get('status'), 'new_count': int(single.get('new_count') or 0),
                 'processed': int(single.get('processed') or 0), 'base': None, 'theme': None,
-                'external': None, 'updated_at': time.time(), 'message': single.get('message') or '',
+                'external': None, 'auto_added_count': 0, 'candidate_count': 0,
+                'updated_at': time.time(), 'message': single.get('message') or '',
             }
+            base_candidates = []
+            theme_candidates = []
+            base_candidate_plan = None
+            theme_candidate_plan = None
+            auto_added_ids = set()
+
             def retryable_read(message, operation):
                 try:
                     return operation()
@@ -98,6 +117,45 @@ class LibraryEngine(SingleMixin, BaseMixin, Engine):
                     from .scheduler_retry import TransientScheduleError
                     raise TransientScheduleError(message) from exc
 
+            def checkpoint(message=None, status=None):
+                errors = [
+                    value
+                    for key in ('base', 'theme')
+                    for value in ((result.get(key) or {}).get('errors') or [])
+                ]
+                result.update(
+                    auto_added_count=len(auto_added_ids),
+                    candidate_count=len(base_candidates) + len(theme_candidates),
+                    updated_at=time.time(),
+                )
+                if message is not None:
+                    result['message'] = message
+                if status is not None:
+                    result['status'] = status
+                elif errors:
+                    result['status'] = 'attention'
+                self.store.set('incremental_status', result)
+                if errors:
+                    parts = [result.get(key) or {} for key in ('base', 'theme')]
+                    self.store.set('library_maintenance_attention', {
+                        'status': 'attention', 'message': result['message'],
+                        'written': sum(int(row.get('written') or 0) for row in parts),
+                        'unchanged': sum(int(row.get('unchanged') or 0) for row in parts),
+                        'skipped': sum(int(row.get('skipped') or 0) for row in parts),
+                        'errors': list(errors), 'updated_at': result['updated_at'],
+                    })
+                # Candidate plans are written after the status timestamp so a
+                # restart still sees them as newer review work.
+                if theme_candidates:
+                    self.store.set('plan', _pending_candidate_plan(
+                        theme_candidate_plan, theme_candidates,
+                    ))
+                if base_candidates:
+                    self.store.set('base_plan', _pending_candidate_plan(
+                        base_candidate_plan, base_candidates,
+                    ))
+                return errors
+
             def finish_if_paused():
                 stopped = self.single_pause.is_set() or self.workflow_pause.is_set()
                 held = single.get('status') in ('paused', 'blocked')
@@ -105,8 +163,7 @@ class LibraryEngine(SingleMixin, BaseMixin, Engine):
                     return False
                 if stopped:
                     result.update(status='paused', message='新增歌曲检查已暂停，进度已经保存')
-                result['updated_at'] = time.time()
-                self.store.set('incremental_status', result)
+                checkpoint(result['message'], result['status'])
                 self._record_workflow_pause('incremental', result['message'])
                 self.progress(result['message'])
                 return True
@@ -114,7 +171,7 @@ class LibraryEngine(SingleMixin, BaseMixin, Engine):
             if finish_if_paused():
                 return result
             if single.get('status') != 'completed':
-                self.store.set('incremental_status', result)
+                checkpoint(result['message'], result['status'])
                 self.progress(result['message'] or '新增歌曲检查已暂停，进度已经保存')
                 return result
             result['external'] = {
@@ -122,48 +179,83 @@ class LibraryEngine(SingleMixin, BaseMixin, Engine):
                 'refresh': self.external.auto_refresh(),
             }
             managed = self.store.get('managed', {}) or {}
-            if any(str(key).startswith('base:') for key in managed):
-                self.progress('新增歌曲资料已保存，正在补入已有基础分类歌单')
-                plan=retryable_read('基础分类读取暂时不可用',self._preview_base)
-                if finish_if_paused():
-                    return result
-                result['base']=retryable_read(
-                    '基础分类读取暂时不可用',
-                    lambda:self._apply_base(plan['id'],automatic=True),
-                )
-                if finish_if_paused():
-                    return result
-
             sources = self.store.get('sources', []) or []
             approved = {str(row.get('id')) for row in sources if row.get('approved') and row.get('enabled', True)}
-            if approved:
+            if approved or (result['new_count'] and sources):
                 self.progress('正在补入已经确认过的主题歌单')
                 plan=retryable_read('主题分类读取暂时不可用',lambda:self._preview(False))
+                automatically_handled = {**managed, **{key: {} for key in approved}}
+                theme_candidates = new_discovery_groups(plan, automatically_handled)
+                theme_candidate_plan = plan
                 if finish_if_paused():
                     return result
-                result['theme']=retryable_read(
-                    '主题分类读取暂时不可用',
-                    lambda:self._apply(plan['id'],automatic=True),
-                )
+                if approved:
+                    result['theme']=retryable_read(
+                        '主题分类读取暂时不可用',
+                        lambda:self._apply(plan['id'],automatic=True),
+                    )
+                    auto_added_ids.update(map(str, result['theme'].get('added_ids') or []))
+                    checkpoint('新增歌曲检查进行中；主题歌单维护结果已经保存。')
+                    if finish_if_paused():
+                        return result
+                if theme_candidates:
+                    # Base classification consumes theme evidence. Keep the
+                    # complete immutable theme plan available before building it;
+                    # review_group_ids only controls what the UI may confirm.
+                    self.store.set('plan', _pending_candidate_plan(
+                        theme_candidate_plan, theme_candidates,
+                    ))
+
+            managed = self.store.get('managed', {}) or {}
+            base_ids = {str(key) for key in managed if str(key).startswith('base:')}
+            if base_ids or result['new_count']:
+                self.progress('新增歌曲资料已保存，正在补入已有基础分类歌单')
+                plan=retryable_read('基础分类读取暂时不可用',self._preview_base)
+                base_candidates = new_discovery_groups(plan, managed)
+                base_candidate_plan = plan
                 if finish_if_paused():
                     return result
+                if base_ids:
+                    result['base']=retryable_read(
+                        '基础分类读取暂时不可用',
+                        lambda:self._apply_base(plan['id'],automatic=True),
+                    )
+                    auto_added_ids.update(map(str, result['base'].get('added_ids') or []))
+                    checkpoint('新增歌曲检查进行中；基础分类维护结果已经保存。')
+                    if finish_if_paused():
+                        return result
 
             if finish_if_paused():
                 return result
             errors = []
             for part in ('base', 'theme'):
                 errors.extend((result.get(part) or {}).get('errors') or [])
+            result['auto_added_count'] = len(auto_added_ids)
+            result['candidate_count'] = len(base_candidates) + len(theme_candidates)
             if errors:
                 result['status'] = 'attention'
-                result['message'] = '新增歌曲已经检查；部分歌单触发保护并跳过，请查看运行记录。'
+            if result['new_count']:
+                parts = [f"新增歌曲检查完成：处理 {result['new_count']} 首"]
+                if result['auto_added_count']:
+                    parts.append(f"{result['auto_added_count']} 首已自动加入已有歌单")
+                if result['candidate_count']:
+                    parts.append(f"发现 {result['candidate_count']} 个新歌单等待确认")
+                if errors:
+                    parts.append('部分已有歌单触发保护并跳过，请查看运行记录')
+                elif len(parts) == 1:
+                    parts.append('没有符合现有歌单或新分类门槛的歌曲')
+                result['message'] = '；'.join(parts) + '。'
+            elif result['candidate_count']:
+                result['message'] = f"检查完成，没有新增歌曲；发现 {result['candidate_count']} 个新歌单等待确认。"
+                if errors:
+                    result['message'] += ' 部分已有歌单触发保护并跳过，请查看运行记录。'
+            elif errors:
+                result['message'] = '新增歌曲已经检查；部分已有歌单触发保护并跳过，请查看运行记录。'
             else:
-                result['message'] = (
-                    f"新增歌曲检查完成：处理 {result['new_count']} 首，并更新已有分类。"
-                    if result['new_count'] else
-                    '检查完成，没有新增歌曲；已检查并恢复程序管理的歌单。'
-                )
-            result['updated_at'] = time.time()
-            self.store.set('incremental_status', result)
+                result['message'] = '检查完成，没有新增歌曲；已检查并恢复程序管理的歌单。'
+            checkpoint(result['message'], 'attention' if errors else result['status'])
+            if not errors:
+                self.store.set('library_maintenance_attention', None)
             self.progress(result['message'])
             retryable=[]
             for part in ('base','theme'):

@@ -155,6 +155,32 @@ def test_review_is_compact_aligned_and_distinguishes_playlist_changes():
         browser.close()
 
 
+def test_childrens_playlist_is_presented_as_an_audience_category():
+    """Removing the audience label mapping must make the rendered category wrong."""
+    _prepare_browser()
+    review = {
+        "id": "base-plan",
+        "expired": False,
+        "groups": [{
+            "id": "base:children", "title": "儿歌", "kind": "base",
+            "dimension": "audience", "count": 28, "existing_count": 0,
+            "add_count": 28, "action": "create", "blocked": [],
+            "default_selected": True,
+        }],
+    }
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page(viewport={"width": 1280, "height": 900})
+        page.set_content(_library_page_without_assets())
+        page.add_script_tag(path=str(STATIC / "home.js"))
+        page.locator("#workspace").evaluate("node => node.hidden = false")
+        page.evaluate("review => renderReview(review, false)", review)
+
+        assert page.locator('[data-review-kind="create"] td:nth-child(2) small').inner_text() == "人群"
+        browser.close()
+
+
 def _install_preview_runtime(page, responses):
     page.evaluate(
         """responses => {

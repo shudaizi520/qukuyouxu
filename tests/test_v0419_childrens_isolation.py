@@ -38,12 +38,38 @@ class ChildrensAudiencePolicyV0419Tests(unittest.TestCase):
         self.assertTrue(is_childrens_track(track(3), ["分类:儿童音乐"]))
         self.assertTrue(is_childrens_track(track(4, paths=["/music/儿歌/小星星.flac"])))
 
+    def test_verified_qq_genre_marks_childrens_track_without_plex_tags(self):
+        from helper.audience import is_childrens_track
+
+        row = track(5, genres=[])
+        row["_qq_single"] = {"detail": {"genre_values": ["儿童音乐"]}}
+
+        self.assertTrue(is_childrens_track(row))
+
     def test_ordinary_song_with_child_word_is_not_guessed_as_childrens_music(self):
         from helper.audience import is_childrens_track
 
         self.assertFalse(is_childrens_track(track(1, title="像个孩子")))
         self.assertFalse(is_childrens_track(track(2, artist="小孩乐团")))
         self.assertFalse(is_childrens_track(track(3, album="童年的回忆")))
+
+    def test_shared_library_classification_reuses_explicit_childrens_evidence(self):
+        """Removing the audience group from base classification must break this test."""
+        from helper.base import build_base_groups
+
+        tracks = [
+            track(1, genres=["儿童音乐"]),
+            track(2, album="贝瓦儿歌合集", genres=[]),
+            track(3, paths=["/music/儿歌/小星星.flac"], genres=[]),
+            track(4, title="像个孩子", genres=[]),
+        ]
+
+        groups = build_base_groups(tracks, min_tracks=1)
+        childrens = next(group for group in groups if group["title"] == "儿歌")
+
+        self.assertEqual(["1", "2", "3"], childrens["desired"])
+        self.assertEqual("audience", childrens["dimension"])
+        self.assertNotIn("4", childrens["desired"])
 
     def test_context_filter_removes_child_tracks_events_features_and_seeds_together(self):
         from helper.audience import filter_childrens_context
@@ -103,6 +129,19 @@ class ChildrensLearningAndRecommendationV0419Tests(unittest.TestCase):
         self.assertEqual(0, result["stats"]["positive_seed_count"])
         self.assertEqual(1, result["stats"]["childrens_excluded_count"])
 
+    def test_daily_recommendation_excludes_qq_only_childrens_evidence(self):
+        from helper.recommend import recommend
+
+        child = track(2, genres=[], user_rating=10, view_count=50)
+        child["_qq_single"] = {"detail": {"genre_values": ["儿童音乐"]}}
+        result = recommend(
+            [track(1, view_count=0), child], {}, {}, {"size": 10}, [], ["2"], NOW, "daily",
+            behavior={"2": {"score": 20, "positive": 20}},
+        )
+
+        self.assertNotIn("2", [row["id"] for row in result["items"]])
+        self.assertEqual(1, result["stats"]["childrens_excluded_count"])
+
     def test_all_smart_playlist_kinds_exclude_childrens_tracks(self):
         from helper.smart_mixes import select_smart_mix
 
@@ -111,6 +150,27 @@ class ChildrensLearningAndRecommendationV0419Tests(unittest.TestCase):
             1, genres=["儿童音乐"], view_count=99,
             last_viewed_at=NOW - 500 * DAY, added_at=NOW - DAY,
         )
+        cases = {
+            "weekly": {"size": 10},
+            "time_capsule": {"size": 10, "stale_days": 180},
+            "recent_additions": {"size": 10, "added_days": 90},
+            "custom": {"size": 10},
+        }
+        for kind, options in cases.items():
+            with self.subTest(kind=kind):
+                result = select_smart_mix(kind, tracks, [], options, NOW, kind)
+                self.assertNotIn("1", [row["id"] for row in result["items"]])
+                self.assertEqual(1, result["stats"]["childrens_excluded_count"])
+
+    def test_all_smart_playlist_kinds_exclude_qq_only_childrens_evidence(self):
+        from helper.smart_mixes import select_smart_mix
+
+        tracks = [track(index) for index in range(1, 15)]
+        tracks[0] = track(
+            1, genres=[], view_count=99,
+            last_viewed_at=NOW - 500 * DAY, added_at=NOW - DAY,
+        )
+        tracks[0]["_qq_single"] = {"detail": {"genre_values": ["儿童音乐"]}}
         cases = {
             "weekly": {"size": 10},
             "time_capsule": {"size": 10, "stale_days": 180},

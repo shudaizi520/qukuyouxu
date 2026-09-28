@@ -10,7 +10,7 @@ from .clients import PlexError, PlexNotFound
 from .plex_webhook import load_behavior_snapshot
 from .playlist_sync import has_exact_members, supersede_unresolved_snapshots, sync_owned_items
 from .playlist_ownership import legacy_pch_marker, replace_marker
-from .audience import filter_childrens_context
+from .audience import childrens_evidence_digest, filter_childrens_context
 DAILY_CID = 'daily'
 CST = timezone(timedelta(hours=8))
 OBSOLETE_SAME_NAME_BLOCK = '存在同名非本助手托管的“每日推荐”，不接管'
@@ -121,7 +121,7 @@ class DailyMixin:
         from .engine import digest
         cfg = self.store.get('settings')
         daily = {**DEFAULT_DAILY, **self.store.get('daily_settings', {})}
-        return digest({'connection': [cfg.get(k) for k in ('plex_url', 'plex_token', 'section', 'account_label')], 'rules': {k: v for k, v in daily.items() if k not in ('enabled', 'hour')}, 'feedback': self.store.get('feedback', {}), 'metadata': self.store.get('metadata_overrides', {}), 'policy': DAILY_POLICY, 'daily_playlist_target': self.store.get('daily_playlist_target')})
+        return digest({'connection': [cfg.get(k) for k in ('plex_url', 'plex_token', 'section', 'account_label')], 'rules': {k: v for k, v in daily.items() if k not in ('enabled', 'hour')}, 'feedback': self.store.get('feedback', {}), 'metadata': self.store.get('metadata_overrides', {}), 'policy': DAILY_POLICY, 'single_revision': self.store.get('single_revision', 0), 'daily_playlist_target': self.store.get('daily_playlist_target')})
 
     def daily_signature(self):
         from .rotation import current_daily_signature
@@ -176,6 +176,9 @@ class DailyMixin:
         if not raw:
             raise SafetyError('Plex未返回曲目，不覆盖已有每日推荐')
         effective, audit = prepare_catalog(raw, self.store.get('metadata_overrides', {}))
+        attach = getattr(self, 'single_attach', None)
+        if callable(attach):
+            effective = attach(effective, identity['machine'])
         managed = self.store.get('daily_managed')
         blocked = []
         before = None
@@ -274,7 +277,7 @@ class DailyMixin:
         result['stats']['childrens_excluded_count'] = len(audience['excluded_ids'])
         if not result['items']:
             blocked.append('没有符合限制的可用候选，保留现有每日歌单')
-        plan = {**result, 'id': uuid.uuid4().hex, 'created_at': now, 'date': day_at(now), 'signature': self.daily_signature(), 'machine': identity['machine'], 'scope': self.daily_scope(), 'before': before, 'blocked': blocked, 'applied': False, 'origin': origin, 'track_fingerprints': {t['id']: track_fingerprint(t) for t in raw}, 'metadata_review_count': sum((t['_metadata_blocked'] for t in effective))}
+        plan = {**result, 'id': uuid.uuid4().hex, 'created_at': now, 'date': day_at(now), 'signature': self.daily_signature(), 'machine': identity['machine'], 'scope': self.daily_scope(), 'before': before, 'blocked': blocked, 'applied': False, 'origin': origin, 'track_fingerprints': {t['id']: track_fingerprint(t) for t in raw}, 'audience_evidence_digest': childrens_evidence_digest(effective), 'metadata_review_count': sum((t['_metadata_blocked'] for t in effective))}
         save_rotating_plan(self, {'catalog': raw, 'metadata_audit': audit, 'daily_plan': plan})
         self.store.log(f"每日推荐预览：{len(plan['items'])}首；偏好依据{plan['stats']['positive_seed_count']}首；尚未写入")
         return plan
@@ -302,7 +305,14 @@ class DailyMixin:
         p = self.plex_factory(cfg)
         if p.identity()['machine'] != plan['machine'] or plan['scope'] != self.daily_scope():
             raise SafetyError('Plex身份已变化')
-        fresh = {t['id']: track_fingerprint(t) for t in p.tracks(cfg['section'])}
+        fresh_rows = p.tracks(cfg['section'])
+        fresh = {t['id']: track_fingerprint(t) for t in fresh_rows}
+        fresh_effective, _ = prepare_catalog(fresh_rows, self.store.get('metadata_overrides', {}))
+        attach = getattr(self, 'single_attach', None)
+        if callable(attach):
+            fresh_effective = attach(fresh_effective, plan['machine'])
+        if childrens_evidence_digest(fresh_effective) != plan.get('audience_evidence_digest'):
+            raise SafetyError('儿童音乐识别证据在预览后变化，请重新生成每日推荐')
         ids = [x['id'] for x in plan['items']]
         planned_ids = list(ids)
         from .playlist_hub import apply_manual_edits

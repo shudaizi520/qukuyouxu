@@ -29,10 +29,17 @@ class ManagedPlaylistTarget:
 class ManagedPlaylistResult:
     status: str
     playlist: Mapping[str, object]
+    before_playlist: Mapping[str, object] | None = None
 
     def __post_init__(self):
         if self.status not in SUCCESS_STATUSES:
             raise ValueError("托管歌单结果状态无效")
+
+    @property
+    def added_member_ids(self) -> tuple[str, ...]:
+        """Members verified after this reconciliation but absent at its last pre-write read."""
+        before = set(_member_ids(self.before_playlist or {}))
+        return tuple(value for value in _member_ids(self.playlist) if value not in before)
 
 
 def validate_target(target: ManagedPlaylistTarget) -> ManagedPlaylistTarget:
@@ -222,11 +229,15 @@ def reconcile_managed_playlist(
 
     if created:
         verified = _read_verified(plex, playlist_id, target)
-        return ManagedPlaylistResult(status="created", playlist=verified)
+        return ManagedPlaylistResult(status="created", playlist=verified, before_playlist=None)
 
     # Read once more immediately before the first mutation. Manual edits are
     # normal drift, so the latest remote state becomes the diff base.
     current = plex.playlist_state(playlist_id)
+    before_write = {
+        **current,
+        "items": [dict(item) for item in current.get("items", [])],
+    }
     changed = False
     if str(current.get("title") or "") != target.title:
         plex.rename(playlist_id, target.title)
@@ -259,6 +270,10 @@ def reconcile_managed_playlist(
         changed = True
 
     if not changed and _matches(current, target):
-        return ManagedPlaylistResult(status="unchanged", playlist=current)
+        return ManagedPlaylistResult(
+            status="unchanged", playlist=current, before_playlist=before_write,
+        )
     verified = _read_verified(plex, playlist_id, target)
-    return ManagedPlaylistResult(status="updated", playlist=verified)
+    return ManagedPlaylistResult(
+        status="updated", playlist=verified, before_playlist=before_write,
+    )

@@ -141,7 +141,8 @@ class WorkflowPauseResumeTests(unittest.TestCase):
 
             with patch.object(engine, "_enrich_singles", return_value={
                 "status": "completed", "new_count": 1, "processed": 1,
-            }), patch.object(engine, "_preview", return_value={"id": "plan-1"}), \
+            }), patch.object(engine, "_preview_base", return_value={"id": "base-plan", "groups": []}), \
+                    patch.object(engine, "_preview", return_value={"id": "plan-1", "groups": []}), \
                     patch.object(engine, "_apply", side_effect=apply_then_pause):
                 result = engine.refresh_new_tracks()
 
