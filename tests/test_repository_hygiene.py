@@ -57,6 +57,22 @@ class RepositoryHygieneTests(unittest.TestCase):
             self.assertIn("music-cache-v2.json", rendered)
             self.assertIn("helper.sqlite3.before-cache-import-20260918.bak", rendered)
 
+    def test_allows_only_declared_public_turntable_images(self):
+        from tools.check_repository import find_violations
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            static = root / "src/helper/static"
+            static.mkdir(parents=True)
+            (static / "turntable-chassis.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * (1024 * 1024 + 1))
+            (static / "turntable-tonearm.png").write_bytes(b"\x89PNG\r\n\x1a\nasset")
+
+            self.assertEqual([], find_violations(root))
+
+            (static / "private-cover.png").write_bytes(b"\x89PNG\r\n\x1a\nprivate")
+            rendered = "\n".join(find_violations(root))
+            self.assertIn("private-cover.png", rendered)
+
     def test_gitignore_excludes_private_cache_and_import_backups(self):
         root = Path(__file__).resolve().parents[1]
         ignore = (root / ".gitignore").read_text(encoding="utf-8")

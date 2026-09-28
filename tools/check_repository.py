@@ -7,6 +7,11 @@ import sys
 
 IGNORED_DIRECTORIES = frozenset({".git", ".venv", "__pycache__", ".pytest_cache"})
 MAX_SOURCE_BYTES = 1024 * 1024
+PUBLIC_BINARY_ASSETS = frozenset({
+    "src/helper/static/turntable-chassis.png",
+    "src/helper/static/turntable-tonearm.png",
+})
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 FORBIDDEN_NAMES = (
     re.compile(r"\.sqlite3(?:-.+)?$", re.IGNORECASE),
     re.compile(r"\.bundle\.xz$", re.IGNORECASE),
@@ -40,6 +45,10 @@ def find_violations(root: Path) -> list[str]:
         relative = path.relative_to(root).as_posix()
         if any(pattern.search(path.name) for pattern in FORBIDDEN_NAMES):
             violations.append(f"禁止的运行或历史发布文件: {relative}")
+            continue
+        if relative in PUBLIC_BINARY_ASSETS:
+            if not path.read_bytes().startswith(PNG_SIGNATURE):
+                violations.append(f"公开图片格式无效: {relative}")
             continue
         size = path.stat().st_size
         if size > MAX_SOURCE_BYTES:
