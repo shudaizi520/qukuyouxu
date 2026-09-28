@@ -121,7 +121,19 @@ def ensure_builtin_toplists(runtime, profile_id, now=None):
         except Exception as exc:
             result["errors"].append({"external_id": external_id, "error": type(exc).__name__})
 
-    if any(repository.get_managed(profile_id, row["id"]) for row in sources.values()):
+    canonical_profiles = sorted({
+        str((record or {}).get("source_profile_id") or "")
+        for record in mirrored.values() if isinstance(record, dict)
+    } - {"", profile_id})
+    if canonical_profiles:
+        # A previous cross-library publish may have matched successfully but
+        # stopped before creating the Plex playlist. Retry from the canonical
+        # owner, because mirrored owners deliberately never fetch QQ directly.
+        result["libraries"] = [
+            sync_qq_toplists_across_libraries(runtime, source_profile_id)
+            for source_profile_id in canonical_profiles
+        ]
+    elif any(repository.get_managed(profile_id, row["id"]) for row in sources.values()):
         result["libraries"] = sync_qq_toplists_across_libraries(runtime, profile_id)
     complete = builtin_toplists_ready(engine)
     state = {

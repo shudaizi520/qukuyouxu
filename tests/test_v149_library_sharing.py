@@ -360,6 +360,89 @@ def test_mirrored_library_owner_does_not_become_a_second_remote_chart_updater(sh
     assert builtin_toplists_due(runtime, "default", now=2_000_000_100) is False
 
 
+def test_incomplete_mirrored_library_retry_asks_canonical_owner_to_redistribute(shared_library):
+    from helper.builtin_toplists import ensure_builtin_toplists
+    from helper.engine import fingerprint
+    from helper.external_playlist_sync import external_marker
+    from helper.external_sources import make_track
+    from helper.external_store import ExternalRepository
+    from helper.library_sharing import MIRRORED_TOPLISTS_KEY
+    from helper.scoped_store import ScopedStore
+
+    base, registry, runtime, data = shared_library
+    registry.create(
+        name="经典音乐", kind="owner", profile_id="classic",
+        account={"id": "owner"},
+        server={"machine": "server-a", "url": "http://plex"},
+        library={"id": "12", "name": "经典音乐"}, token="owner-token",
+    )
+
+    class LibraryPlex(FakePlex):
+        def __init__(self, token, rows, section):
+            super().__init__(token, rows)
+            self.section = str(section)
+
+        def tracks(self, section):
+            assert str(section) == self.section == "12"
+            return [
+                {"id": "101", "title": "歌曲一", "artist": "歌手甲", "album": "专辑", "duration": 180},
+                {"id": "102", "title": "歌曲二", "artist": "歌手乙", "album": "专辑", "duration": 200},
+            ]
+
+    classic = ScopedStore(base, "classic", registry=registry)
+    settings = classic.get("settings")
+    settings.update(plex_url="http://plex", plex_token="owner-token", section="12")
+    classic.set_many({
+        "settings": settings,
+        "qq_auth_credentials": {
+            "credential": {"musicid": "12345", "musickey": "authorized-key"},
+        },
+    })
+    classic_engine = runtime.engine("classic")
+    factory = lambda cfg, data=data: LibraryPlex(
+        cfg["plex_token"], data, cfg["section"],
+    )
+    classic_engine.plex_factory = factory
+    classic_engine.external.plex_factory = factory
+
+    owner = ScopedStore(base, "default")
+    owner_repository = ExternalRepository(owner)
+    target_repository = ExternalRepository(classic)
+    mirrored = {}
+    for external_id, title in (("26", "热歌榜"), ("62", "飙升榜")):
+        snapshot = {
+            "provider": "qq", "external_id": external_id,
+            "url": "https://y.qq.com/n/ryqq/toplist/" + external_id,
+            "title": title, "revision": "chart-" + external_id,
+            "tracks": [
+                make_track(
+                    0, "歌曲一", ["歌手甲"], album="专辑",
+                    duration_ms=180_000, source_id=external_id + "-1",
+                ),
+            ],
+        }
+        source = owner_repository.upsert_source("default", snapshot, 2_000_000_000)
+        marker = external_marker(owner.get("installation_id"), source["id"])
+        playlist = FakePlex("owner-token", data).create(title, ["1"], marker)
+        owner_repository.save_managed("default", source["id"], {
+            "id": playlist["id"], "title": title,
+            "fingerprint": fingerprint(playlist), "count": 1, "marker": marker,
+        })
+        target = target_repository.upsert_source("classic", snapshot, 2_000_000_000)
+        mirrored[target["id"]] = {
+            "source_profile_id": "default", "source_id": source["id"],
+        }
+    classic.set(MIRRORED_TOPLISTS_KEY, mirrored)
+
+    result = ensure_builtin_toplists(runtime, "classic", now=2_000_000_100)
+
+    assert result["status"] == "completed"
+    assert {
+        target_repository.get_managed("classic", source["id"])["title"]
+        for source in target_repository.list_sources("classic")
+    } == {"热歌榜", "飙升榜"}
+
+
 def test_second_owner_in_same_library_waits_for_canonical_owner_toplists(shared_library):
     from helper.builtin_toplists import builtin_toplists_due
     from helper.scoped_store import ScopedStore
