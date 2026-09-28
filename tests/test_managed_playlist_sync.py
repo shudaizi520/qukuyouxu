@@ -4,6 +4,7 @@ from helper.managed_playlist_sync import (
     ManagedPlaylistResult,
     ManagedPlaylistTarget,
     ReconcileConflict,
+    reconcile_managed_playlist,
     validate_target,
 )
 
@@ -101,3 +102,207 @@ def test_plex_owned_playlist_lookup_rejects_empty_or_overlong_markers():
         client.owned_playlists("")
     with pytest.raises(ValueError, match="管理标记"):
         client.owned_playlists("x" * 513)
+
+
+class MemoryPlex:
+    def __init__(self, states=()):
+        self.states = {str(row["id"]): self._copy(row) for row in states}
+        self.calls = []
+        self.next_id = 100
+        self.read_error = None
+        self.lose_create_response = False
+        self.second_read_state = None
+        self.read_count = 0
+
+    @staticmethod
+    def _copy(row):
+        return {**row, "items": [dict(item) for item in row.get("items", [])]}
+
+    def playlist_state(self, playlist_id):
+        from helper.clients import PlexNotFound
+
+        self.read_count += 1
+        if self.read_error:
+            raise self.read_error
+        if self.second_read_state is not None and self.read_count == 2:
+            row = self._copy(self.second_read_state)
+            self.states[str(row["id"])] = row
+        if str(playlist_id) not in self.states:
+            raise PlexNotFound("missing")
+        return self._copy(self.states[str(playlist_id)])
+
+    def playlists(self):
+        return [
+            {"ratingKey": row["id"], "title": row["title"], "summary": row.get("summary", "")}
+            for row in self.states.values()
+        ]
+
+    def owned_playlists(self, marker):
+        return [row for row in self.playlists() if marker in row["summary"].splitlines()]
+
+    def create(self, title, ids, marker, description=None):
+        self.calls.append(("create", title, tuple(ids)))
+        playlist_id = str(self.next_id)
+        self.next_id += 1
+        self.states[playlist_id] = {
+            "id": playlist_id,
+            "title": title,
+            "summary": marker + "\n" + str(description or ""),
+            "items": [
+                {"id": str(track_id), "item_id": str(index + 1)}
+                for index, track_id in enumerate(ids)
+            ],
+        }
+        if self.lose_create_response:
+            from helper.clients import PlexError
+            raise PlexError("connection lost after create")
+        return self.playlist_state(playlist_id)
+
+    def rename(self, playlist_id, title):
+        self.calls.append(("rename", str(playlist_id), title))
+        self.states[str(playlist_id)]["title"] = title
+
+    def update_playlist_summary(self, playlist_id, summary):
+        self.calls.append(("summary", str(playlist_id), summary))
+        self.states[str(playlist_id)]["summary"] = summary
+
+    def remove_items(self, playlist_id, item_ids):
+        self.calls.append(("remove", str(playlist_id), tuple(item_ids)))
+        unwanted = {str(value) for value in item_ids}
+        row = self.states[str(playlist_id)]
+        row["items"] = [item for item in row["items"] if item["item_id"] not in unwanted]
+
+    def append(self, playlist_id, ids):
+        self.calls.append(("append", str(playlist_id), tuple(ids)))
+        row = self.states[str(playlist_id)]
+        start = max([int(item["item_id"]) for item in row["items"]] or [0]) + 1
+        row["items"].extend(
+            {"id": str(track_id), "item_id": str(start + index)}
+            for index, track_id in enumerate(ids)
+        )
+
+
+def state(playlist_id="9", title="每周常听", summary="[PCH:installation:smart:weekly]\n由曲库有序管理", ids=("11", "22")):
+    return {
+        "id": str(playlist_id),
+        "title": title,
+        "summary": summary,
+        "items": [
+            {"id": str(track_id), "item_id": str(index + 1)}
+            for index, track_id in enumerate(ids)
+        ],
+    }
+
+
+def managed(playlist_id="9"):
+    return {"id": str(playlist_id), "machine": "plex-machine", "scope": "profile:library"}
+
+
+def test_reconcile_removes_manual_additions_and_restores_missing_members():
+    plex = MemoryPlex([state(ids=("11", "33"))])
+
+    result = reconcile_managed_playlist(plex, target(), managed())
+
+    assert result.status == "updated"
+    assert {item["id"] for item in result.playlist["items"]} == {"11", "22"}
+    assert ("remove", "9", ("2",)) in plex.calls
+    assert ("append", "9", ("22",)) in plex.calls
+
+
+def test_reconcile_restores_title_and_program_summary():
+    plex = MemoryPlex([state(title="人工名称", summary="人工说明")])
+
+    result = reconcile_managed_playlist(plex, target(), managed())
+
+    assert result.status == "updated"
+    assert result.playlist["title"] == "每周常听"
+    assert result.playlist["summary"] == "[PCH:installation:smart:weekly]\n由曲库有序管理"
+
+
+def test_reconcile_recreates_only_after_confirmed_not_found():
+    plex = MemoryPlex()
+
+    result = reconcile_managed_playlist(plex, target(), managed())
+
+    assert result.status == "created"
+    assert result.playlist["id"] == "100"
+    assert [call[0] for call in plex.calls] == ["create"]
+
+
+def test_reconcile_propagates_transient_read_error_without_creating():
+    from helper.clients import PlexError
+
+    plex = MemoryPlex()
+    plex.read_error = PlexError("timeout")
+    with pytest.raises(PlexError, match="timeout"):
+        reconcile_managed_playlist(plex, target(), managed())
+    assert plex.calls == []
+
+
+def test_reconcile_refuses_same_title_without_ownership_marker():
+    plex = MemoryPlex([state(playlist_id="44", summary="个人歌单")])
+
+    with pytest.raises(ReconcileConflict, match="同名"):
+        reconcile_managed_playlist(plex, target(), managed("9"))
+    assert plex.calls == []
+
+
+def test_reconcile_refuses_multiple_owned_candidates():
+    plex = MemoryPlex([state("44"), state("45")])
+
+    with pytest.raises(ReconcileConflict, match="多个"):
+        reconcile_managed_playlist(plex, target(), managed("9"))
+    assert plex.calls == []
+
+
+def test_reconcile_discovers_created_playlist_after_response_is_lost():
+    plex = MemoryPlex()
+    plex.lose_create_response = True
+
+    result = reconcile_managed_playlist(plex, target(), None)
+
+    assert result.status == "created"
+    assert result.playlist["id"] == "100"
+    assert [call[0] for call in plex.calls] == ["create"]
+
+
+def test_reconcile_uses_latest_state_when_members_change_before_write():
+    plex = MemoryPlex([state(ids=("11", "22"))])
+    plex.second_read_state = state(ids=("11", "22", "33"))
+
+    result = reconcile_managed_playlist(plex, target(), managed())
+
+    assert result.status == "updated"
+    assert {item["id"] for item in result.playlist["items"]} == {"11", "22"}
+    assert ("remove", "9", ("3",)) in plex.calls
+
+
+def test_reconcile_removes_duplicate_current_occurrences():
+    plex = MemoryPlex([state(ids=("11", "11", "22"))])
+
+    result = reconcile_managed_playlist(plex, target(), managed())
+
+    assert result.status == "updated"
+    assert [item["id"] for item in result.playlist["items"]].count("11") == 1
+
+
+def test_reconcile_repeated_exact_target_is_unchanged_without_mutations():
+    plex = MemoryPlex([state()])
+
+    first = reconcile_managed_playlist(plex, target(), managed())
+    second = reconcile_managed_playlist(plex, target(), managed())
+
+    assert first.status == second.status == "unchanged"
+    assert plex.calls == []
+
+
+def test_reconcile_rejects_managed_record_from_another_scope():
+    plex = MemoryPlex([state()])
+
+    with pytest.raises(ReconcileConflict, match="范围"):
+        reconcile_managed_playlist(
+            plex,
+            target(),
+            {"id": "9", "machine": "plex-machine", "scope": "someone-else"},
+        )
+    assert plex.calls == []
