@@ -11,7 +11,7 @@ class ReleaseVersionTests(unittest.TestCase):
     def test_application_and_static_pages_use_release_2_0_21(self):
         from helper import __version__
 
-        self.assertEqual("2.0.21", __version__)
+        self.assertEqual("2.0.22", __version__)
         pages = []
         for name in ("playlists.html", "daily.html", "home.html", "mixes.html", "external.html", "settings.html", "status.html"):
             with self.subTest(name=name):
@@ -19,7 +19,7 @@ class ReleaseVersionTests(unittest.TestCase):
                 pages.append(html)
                 self.assertIn("?v=app", html)
                 if name == "settings.html":
-                    self.assertIn(">v2.0.21<", html)
+                    self.assertIn(">v2.0.22<", html)
                 else:
                     self.assertNotIn('id="version"', html)
         self.assertNotIn("1.4.5", "".join(pages))
@@ -59,7 +59,7 @@ class ReleaseVersionTests(unittest.TestCase):
         self.assertIn("## 2.0.18 - 2026-09-27", changelog)
         self.assertIn("## 2.0.19 - 2026-09-28", changelog)
         self.assertIn("## 2.0.20 - 2026-09-28", changelog)
-        self.assertIn("## 2.0.21 - 2026-09-28", changelog)
+        self.assertIn("## 2.0.22 - 2026-09-28", changelog)
         self.assertIn("## 1.4.9 - 2026-09-21", changelog)
         for phrase in ("Plex / Plexamp", "智能歌单", "曲库整理", "我的最爱", "爱心"):
             self.assertIn(phrase, changelog)

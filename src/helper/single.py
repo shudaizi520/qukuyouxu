@@ -49,6 +49,9 @@ class SingleSourceError(SourceError):
     def __init__(self,message,kind='protocol',cooldown=900):
         super().__init__(message);self.kind=kind;self.cooldown=int(cooldown)
 
+class SingleCandidateError(SingleSourceError):
+    """One QQ candidate is stale or invalid; other candidates remain usable."""
+
 class SinglePaused(Exception):pass
 
 def _zero(v):return type(v) in (int,float) and v==0
@@ -94,7 +97,7 @@ def parse_detail(raw,requested_mid):
     data=req.get('data');t=data.get('track_info') if isinstance(data,dict) else None
     if not isinstance(t,dict):raise SingleSourceError('QQ单曲详情缺少 track_info；不当作无标签成功')
     mid=text(t.get('mid'))
-    if mid!=requested_mid:raise SingleSourceError('QQ返回的MID与请求不一致，停止采纳资料')
+    if mid!=requested_mid:raise SingleCandidateError('QQ返回的MID与请求不一致，跳过该候选')
     singers=t.get('singer');singers=[text(s.get('name')) for s in singers[:30] if isinstance(s,dict) and text(s.get('name'))] if isinstance(singers,list) else []
     title=text(t.get('title')) or text(t.get('name'))
     if not title or not singers:raise SingleSourceError('QQ详情缺失歌名或完整歌手字段')

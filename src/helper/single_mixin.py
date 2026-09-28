@@ -5,7 +5,7 @@ import json
 import re
 import threading
 import time
-from .single import (SINGLE_POLICY,MID,SingleSourceError,SinglePaused,compare_identity,
+from .single import (SINGLE_POLICY,MID,SingleSourceError,SingleCandidateError,SinglePaused,compare_identity,
                      select_detail,normalized_fields,match_fingerprint,recording_title_key)
 from .single_client import SingleQQClient
 from .metadata import prepare_catalog
@@ -172,7 +172,9 @@ class SingleMixin:
         def inspect(mid):
             if mid in seen:return
             if self.single_pause.is_set() or self.stop.is_set():raise SinglePaused('已暂停，已完成查询保留')
-            seen.add(mid);details.append(self._single_detail(client,mid))
+            seen.add(mid)
+            try:details.append(self._single_detail(client,mid))
+            except SingleCandidateError:pass
         if len(hints)>5:return {'status':'candidate_limit','message':'既有QQ匹配版本超过5个，未按排名猜选'}
         for mid in hints:inspect(mid)
         if details:
