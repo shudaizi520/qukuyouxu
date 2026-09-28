@@ -313,7 +313,7 @@ def test_first_daily_schedule_does_not_reset_a_deferred_retry_every_poll():
     assert second["tasks"]["daily"]["next_at"] == now + 300
 
 
-def test_deleted_daily_playlist_stays_opted_out_of_automatic_recreation():
+def test_enabled_daily_switch_overrides_legacy_opt_out_flag():
     from helper.profile_runtime import ProfileRuntime
 
     temp, _base, _registry, runtime, owner, _calls = _configured_runtime()
@@ -322,10 +322,10 @@ def test_deleted_daily_playlist_stays_opted_out_of_automatic_recreation():
         eligible = ProfileRuntime._eligible_for_task(runtime.engine("default"), "daily")
     finally:
         temp.cleanup()
-    assert not eligible
+    assert eligible
 
 
-def test_preupgrade_deleted_daily_playlist_is_not_recreated():
+def test_enabled_daily_switch_overrides_preupgrade_remove_snapshot():
     from helper.profile_runtime import ProfileRuntime
 
     temp, _base, _registry, runtime, owner, _calls = _configured_runtime()
@@ -337,7 +337,7 @@ def test_preupgrade_deleted_daily_playlist_is_not_recreated():
         eligible = ProfileRuntime._eligible_for_task(runtime.engine("default"), "daily")
     finally:
         temp.cleanup()
-    assert not eligible
+    assert eligible
 
 
 def test_library_scan_is_owner_only_even_if_a_recipient_is_due():

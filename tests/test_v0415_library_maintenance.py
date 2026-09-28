@@ -119,6 +119,64 @@ class LibraryMaintenanceV0415Tests(unittest.TestCase):
 
         self.assertEqual("attention", status["status"])
 
+    def test_nightly_playlist_read_timeout_waits_for_retry(self):
+        from helper.clients import PlexError
+        from helper.library_engine import LibraryEngine
+        from helper.scheduler_retry import TransientScheduleError
+        from helper.store import Store
+
+        with tempfile.TemporaryDirectory() as root:
+            engine = object.__new__(LibraryEngine)
+            engine.store = Store(Path(root))
+            engine.gate = threading.Lock()
+            engine.single_pause = threading.Event()
+            engine.workflow_pause = threading.Event()
+            engine.progress = lambda _message: None
+            engine._enrich_singles = lambda **_kwargs: {
+                "status": "completed", "new_count": 0, "processed": 0,
+            }
+            engine.external = type("External", (), {
+                "rematch_missing": lambda _self: {},
+                "auto_refresh": lambda _self: {},
+            })()
+            engine.store.set("managed", {"base:国语": {"id": "base-1"}})
+            engine._preview_base = lambda: (_ for _ in ()).throw(PlexError("read timeout"))
+
+            with self.assertRaises(TransientScheduleError) as raised:
+                engine.refresh_new_tracks()
+
+        self.assertIsInstance(raised.exception.__cause__, PlexError)
+
+    def test_nightly_theme_read_timeout_waits_for_retry(self):
+        from helper.clients import PlexError
+        from helper.library_engine import LibraryEngine
+        from helper.scheduler_retry import TransientScheduleError
+        from helper.store import Store
+
+        with tempfile.TemporaryDirectory() as root:
+            engine = object.__new__(LibraryEngine)
+            engine.store = Store(Path(root))
+            engine.gate = threading.Lock()
+            engine.single_pause = threading.Event()
+            engine.workflow_pause = threading.Event()
+            engine.progress = lambda _message: None
+            engine._enrich_singles = lambda **_kwargs: {
+                "status": "completed", "new_count": 0, "processed": 0,
+            }
+            engine.external = type("External", (), {
+                "rematch_missing": lambda _self: {},
+                "auto_refresh": lambda _self: {},
+            })()
+            engine.store.set("sources", [{
+                "id": "theme:work", "enabled": True, "approved": True,
+            }])
+            engine._preview = lambda *_args: (_ for _ in ()).throw(PlexError("read timeout"))
+
+            with self.assertRaises(TransientScheduleError) as raised:
+                engine.refresh_new_tracks()
+
+        self.assertIsInstance(raised.exception.__cause__, PlexError)
+
     def test_review_button_opens_a_library_panel_instead_of_advanced_diagnostics(self):
         page = Markup()
         page.feed((STATIC / "home.html").read_text(encoding="utf-8"))

@@ -504,7 +504,7 @@ class DailyMixin:
                     'retry_at': number_time(self.store.get('daily_last_attempt')) + 1800,
                 }
             scheduled_ready = bool(
-                scheduled and daily['enabled'] and not self.store.get('daily_auto_opt_out')
+                scheduled and daily['enabled']
                 and self.store.get('daily_auto_checked_date') != day_at(now)
             )
             if not scheduled_ready and not self.daily_due(now, schedule=schedule):

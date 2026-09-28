@@ -328,19 +328,8 @@ def attach_routes(app, store, engine, body, ensure_idle):
         ensure_idle()
         with engine.exclusive():
             enabled = d.get('enabled') is True
-            managed = store.get('daily_managed')
-            if enabled and (not managed or managed.get('scope') != engine.daily_scope()):
-                raise SafetyError('先预览并发布一次每日推荐，再启用每日更新')
-            if enabled and store.get('daily_auto_suspension'):
-                reason = str((store.get('daily_auto_suspension') or {}).get('reason') or '自动更新已暂停')
-                raise SafetyError(reason + '；请先手动预览并发布确认')
-            if enabled and store.get('daily_auto_opt_out'):
-                raise SafetyError('该用户已退出自动更新；请先手动预览并发布确认')
-            if enabled and any((s.get('category_id') == 'daily' and s.get('status') in ('prepared', 'uncertain', 'restoring') for s in store.get('snapshots'))):
-                raise SafetyError('有待核对的每日推荐变更，不能开启自动更新')
-            cfg = {**DEFAULT_DAILY, **store.get('daily_settings', {})}
-            cfg['enabled'] = enabled
-            store.set('daily_settings', cfg)
+            from .profile_controls import write_control
+            write_control(store,'daily',enabled)
         return {'message': '每日推荐自动更新已开启（北京时间，每天最多自动发布一次）' if enabled else '每日推荐自动更新已暂停'}
 
     @app.post('/api/feedback')

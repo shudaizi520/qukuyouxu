@@ -89,6 +89,15 @@ class LibraryEngine(SingleMixin, BaseMixin, Engine):
                 'processed': int(single.get('processed') or 0), 'base': None, 'theme': None,
                 'external': None, 'updated_at': time.time(), 'message': single.get('message') or '',
             }
+            def retryable_read(message, operation):
+                try:
+                    return operation()
+                except Exception as exc:
+                    from .clients import PlexError
+                    if not isinstance(exc,PlexError):raise
+                    from .scheduler_retry import TransientScheduleError
+                    raise TransientScheduleError(message) from exc
+
             def finish_if_paused():
                 stopped = self.single_pause.is_set() or self.workflow_pause.is_set()
                 held = single.get('status') in ('paused', 'blocked')
@@ -115,10 +124,13 @@ class LibraryEngine(SingleMixin, BaseMixin, Engine):
             managed = self.store.get('managed', {}) or {}
             if any(str(key).startswith('base:') for key in managed):
                 self.progress('新增歌曲资料已保存，正在补入已有基础分类歌单')
-                plan = self._preview_base()
+                plan=retryable_read('基础分类读取暂时不可用',self._preview_base)
                 if finish_if_paused():
                     return result
-                result['base'] = self._apply_base(plan['id'], automatic=True)
+                result['base']=retryable_read(
+                    '基础分类读取暂时不可用',
+                    lambda:self._apply_base(plan['id'],automatic=True),
+                )
                 if finish_if_paused():
                     return result
 
@@ -126,10 +138,13 @@ class LibraryEngine(SingleMixin, BaseMixin, Engine):
             approved = {str(row.get('id')) for row in sources if row.get('approved') and row.get('enabled', True)}
             if approved:
                 self.progress('正在补入已经确认过的主题歌单')
-                plan = self._preview(False)
+                plan=retryable_read('主题分类读取暂时不可用',lambda:self._preview(False))
                 if finish_if_paused():
                     return result
-                result['theme'] = self._apply(plan['id'], automatic=True)
+                result['theme']=retryable_read(
+                    '主题分类读取暂时不可用',
+                    lambda:self._apply(plan['id'],automatic=True),
+                )
                 if finish_if_paused():
                     return result
 

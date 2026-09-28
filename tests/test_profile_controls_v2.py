@@ -88,23 +88,20 @@ def test_invalid_control_update_does_not_change_saved_state(tmp_path):
     assert read_controls(scoped) == before
 
 
-def test_reenable_does_not_bypass_daily_safety_pause(tmp_path):
-    import pytest
-
+def test_reenable_clears_legacy_daily_pause_and_opt_out(tmp_path):
     base = Store(tmp_path)
     registry = ProfileRegistry(base)
     _profile(registry, "music", "11")
     store = ScopedStore(base, "music", registry=registry)
     write_control(store, "daily", False)
     store.set("daily_auto_suspension", {"reason": "歌单需要核对"})
-    with pytest.raises(ValueError, match="歌单需要核对"):
-        write_control(store, "daily", True)
-    assert read_controls(store)["daily"] is False
-    store.set("daily_auto_suspension", None)
     store.set("daily_auto_opt_out", True)
-    with pytest.raises(ValueError, match="先手动预览"):
-        write_control(store, "daily", True)
-    assert read_controls(store)["daily"] is False
+
+    write_control(store, "daily", True)
+
+    assert read_controls(store)["daily"] is True
+    assert store.get("daily_auto_suspension") is None
+    assert store.get("daily_auto_opt_out") is False
 
 
 def test_safety_pause_is_visible_even_when_daily_control_is_off(tmp_path):

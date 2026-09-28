@@ -27,14 +27,10 @@ def write_control(store, key, enabled):
     if key not in CONTROL_FIELDS or type(enabled) is not bool:
         raise ValueError("用户开关无效")
     if key == "daily" and enabled:
-        suspension = store.get("daily_auto_suspension") or {}
-        if suspension:
-            raise ValueError(str(suspension.get("reason") or "每日推荐安全暂停") + "；请先手动预览并发布确认")
-        if store.get("daily_auto_opt_out"):
-            raise ValueError("该用户已退出每日推荐自动更新；请先手动预览并发布确认")
-        if any(row.get("kind") == "daily" and row.get("status") in ("prepared", "uncertain", "restoring")
-               for row in store.get("snapshots", []) or [] if isinstance(row, dict)):
-            raise ValueError("每日推荐变更尚待核对，不能开启自动更新")
+        # The switch is authoritative. Legacy pause/opt-out flags described old
+        # append-only safety behavior and must not silently override it.
+        store.set("daily_auto_suspension", None)
+        store.set("daily_auto_opt_out", False)
     state_key, field = CONTROL_FIELDS[key]
     value = dict(store.get(state_key, {}) or {})
     changed = key == "learning" and (value.get(field, True) is not False) != enabled

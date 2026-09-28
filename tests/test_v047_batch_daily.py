@@ -104,27 +104,24 @@ class BatchDailyV047Tests(unittest.TestCase):
         self.assertEqual("Plex 中没有这个项目", row["blocked"][0])
         self.assertEqual("每日推荐存在阻止项", row["suspension_reason"])
 
-    def test_enabling_one_profile_requires_safe_preview_and_publish(self):
-        from helper.engine import SafetyError
+    def test_enabling_one_profile_clears_legacy_pause(self):
         from helper.smart_mix_web import set_profile_daily_schedule
 
         runtime = FakeRuntime()
         runtime.engines["friend"].store.set("daily_auto_suspension", {"reason": "每日推荐存在阻止项"})
-        with self.assertRaisesRegex(SafetyError, "手动预览并发布"):
-            set_profile_daily_schedule(runtime, FakeRegistry(), "friend", True)
-        self.assertFalse(runtime.engines["friend"].store.get("daily_settings")["enabled"])
-        result = set_profile_daily_schedule(runtime, FakeRegistry(), "default", True)
-        self.assertTrue(runtime.engines["default"].store.get("daily_settings")["enabled"])
+        result = set_profile_daily_schedule(runtime, FakeRegistry(), "friend", True)
+        self.assertTrue(runtime.engines["friend"].store.get("daily_settings")["enabled"])
+        self.assertIsNone(runtime.engines["friend"].store.get("daily_auto_suspension"))
         self.assertEqual("default", result["items"][0]["profile_id"])
 
-    def test_opted_out_profile_cannot_show_enabled_without_republish(self):
-        from helper.engine import SafetyError
+    def test_reenabling_opted_out_profile_restores_program_ownership(self):
         from helper.smart_mix_web import set_profile_daily_schedule
 
         runtime = FakeRuntime()
         runtime.engines["default"].store.set("daily_auto_opt_out", True)
-        with self.assertRaisesRegex(SafetyError, "手动预览并发布"):
-            set_profile_daily_schedule(runtime, FakeRegistry(), "default", True)
+        set_profile_daily_schedule(runtime, FakeRegistry(), "default", True)
+        self.assertTrue(runtime.engines["default"].store.get("daily_settings")["enabled"])
+        self.assertFalse(runtime.engines["default"].store.get("daily_auto_opt_out"))
 
     def test_preview_reports_each_profile_without_cross_profile_failure(self):
         from helper.smart_mix_web import batch_preview_daily
@@ -173,18 +170,17 @@ class BatchDailyV047Tests(unittest.TestCase):
             [row["display_name"] for row in result["items"]],
         )
 
-    def test_batch_schedule_validates_every_profile_before_changing_any(self):
-        from helper.engine import SafetyError
+    def test_batch_schedule_enables_profile_without_a_current_playlist(self):
         from helper.smart_mix_web import set_batch_daily_schedule
 
         runtime = FakeRuntime()
         runtime.engines["friend"].store.set("daily_managed", None)
 
-        with self.assertRaisesRegex(SafetyError, "shudai6 · 经典音乐"):
-            set_batch_daily_schedule(runtime, FakeRegistry(), True)
+        result = set_batch_daily_schedule(runtime, FakeRegistry(), True)
 
-        self.assertFalse(runtime.engines["default"].store.get("daily_settings")["enabled"])
-        self.assertFalse(runtime.engines["friend"].store.get("daily_settings")["enabled"])
+        self.assertEqual("on", result["auto_state"])
+        self.assertTrue(runtime.engines["default"].store.get("daily_settings")["enabled"])
+        self.assertTrue(runtime.engines["friend"].store.get("daily_settings")["enabled"])
 
     def test_batch_schedule_enables_and_disables_every_published_profile(self):
         from helper.smart_mix_web import set_batch_daily_schedule

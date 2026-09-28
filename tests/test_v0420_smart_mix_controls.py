@@ -185,6 +185,17 @@ class SmartMixControlsV0420Tests(unittest.TestCase):
         result = set_weekly_schedule(self.engine, True, now=NOW + 2)
         self.assertTrue(result["settings"]["weekly_auto_enabled"])
 
+    def test_reenabling_weekly_accepts_ordinary_plex_drift_for_next_reconcile(self):
+        from helper.smart_mix_web import set_weekly_schedule
+
+        managed = self.publish()
+        self.plex.states[managed["id"]]["title"] = "人工改名"
+        self.plex.states[managed["id"]]["summary"] = "人工说明"
+
+        result = set_weekly_schedule(self.engine, True, now=NOW + 2)
+
+        self.assertTrue(result["settings"]["weekly_auto_enabled"])
+
     def test_weekly_due_uses_monday_0300_beijing_and_only_one_attempt_per_week(self):
         from helper.smart_mix_web import set_weekly_schedule, weekly_auto_due, weekly_schedule_slot
 

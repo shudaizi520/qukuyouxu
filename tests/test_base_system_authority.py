@@ -19,6 +19,7 @@ from helper.store import Store
 class _BasePlex:
     def __init__(self):
         self.create_calls = 0
+        self.read_error = None
         self.state = {
             "id": "700",
             "title": "国语",
@@ -48,6 +49,8 @@ class _BasePlex:
     def playlist_state(self, playlist_id):
         from helper.clients import PlexNotFound
 
+        if self.read_error:
+            raise self.read_error
         if self.state is None or str(playlist_id) != self.state["id"]:
             raise PlexNotFound("missing")
         return copy.deepcopy(self.state)
@@ -158,6 +161,24 @@ class BaseSystemAuthorityTests(unittest.TestCase):
         self.assertEqual("国语", self.plex.state["title"])
         self.assertEqual(["1", "2"], [row["id"] for row in self.plex.state["items"]])
         self.assertIn(self.engine.marker(self.cid), self.plex.state["summary"])
+
+    def test_transient_managed_playlist_read_is_not_mislabeled_as_a_conflict(self):
+        from helper.clients import PlexError
+
+        self.plex.read_error = PlexError("read timeout")
+        group = {
+            "id": self.cid, "title": "国语", "kind": "base",
+            "desired": ["1", "2"], "matched": 2, "evidence": {},
+            "inferred_count": 0, "blocked": [],
+        }
+
+        with patch.object(self.engine, "_read_base_catalog", return_value=(self.tracks, self.tracks, {})), \
+                patch.object(self.engine, "single_attach", side_effect=lambda rows, _machine: rows), \
+                patch("helper.base_mixin.prepare_catalog", side_effect=lambda rows, _overrides: (rows, {})), \
+                patch("helper.base_mixin.album_genre_eligibility", return_value=({}, [])), \
+                patch("helper.base_mixin.build_base_groups", return_value=[group]):
+            with self.assertRaises(PlexError):
+                self.engine.preview_base()
 
     def test_deleted_category_is_recreated_and_managed_id_is_replaced(self):
         self.plex.state = None

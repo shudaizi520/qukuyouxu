@@ -192,11 +192,9 @@ def set_smart_mix_schedule(engine, enabled, now=None):
             cfg = _configured(engine)
             plex = engine.plex_factory(cfg)
             for kind, record in records:
-                current = plex.playlist_state(record["id"])
                 if (record.get("scope") != engine.daily_scope()
-                        or record.get("machine") != plex.identity()["machine"]
-                        or engine.marker("smart:" + kind) not in current.get("summary", "")):
-                    raise SafetyError("已有智能歌单被手动修改或所属资料库变化，不能自动更新")
+                        or record.get("machine") != plex.identity()["machine"]):
+                    raise SafetyError("已有智能歌单所属资料库变化，不能自动更新")
             settings["auto_enabled"] = True
             settings["weekly_auto_enabled"] = True
             settings["auto_last_slots"] = {
@@ -656,21 +654,10 @@ def batch_daily_status(runtime, registry):
 
 
 def _daily_schedule_blocker(engine):
-    suspension = engine.store.get("daily_auto_suspension") or {}
-    if suspension:
-        return str(suspension.get("reason") or "自动更新已暂停") + "；请先手动预览并发布确认"
-    if engine.store.get("daily_auto_opt_out"):
-        return "该用户已退出自动更新；请先手动预览并发布确认"
-    managed = engine.store.get("daily_managed") or {}
-    if not managed or managed.get("scope") != engine.daily_scope():
-        return "请先预览并发布一次"
-    unresolved = any(
-        row.get("category_id") == "daily"
-        and row.get("status") in ("prepared", "uncertain", "restoring")
-        for row in (engine.store.get("snapshots", []) or [])
-        if isinstance(row, dict)
-    )
-    return "有待核对的发布变更" if unresolved else ""
+    cfg=engine.store.get("settings",{}) or {}
+    if not cfg.get("plex_url") or not cfg.get("plex_token") or not cfg.get("section"):
+        return "该档案尚未完成 Plex 授权或选择音乐资料库"
+    return ""
 
 
 def set_profile_daily_schedule(runtime, registry, profile_id, enabled):
@@ -686,6 +673,9 @@ def set_profile_daily_schedule(runtime, registry, profile_id, enabled):
         if enabled and (reason := _daily_schedule_blocker(engine)):
             raise SafetyError(reason)
         saved = dict(engine.store.get("daily_settings", {}) or {})
+        if enabled:
+            engine.store.set("daily_auto_suspension",None)
+            engine.store.set("daily_auto_opt_out",False)
         engine.store.set("daily_settings", {**saved, "enabled": enabled})
     return batch_daily_status(runtime, registry)
 
@@ -712,11 +702,18 @@ def set_batch_daily_schedule(runtime, registry, enabled):
         try:
             for _profile, engine in engines:
                 saved = dict(engine.store.get("daily_settings", {}) or {})
-                original.append((engine, saved))
+                suspension=engine.store.get("daily_auto_suspension")
+                opt_out=engine.store.get("daily_auto_opt_out")
+                original.append((engine,saved,suspension,opt_out))
+                if enabled:
+                    engine.store.set("daily_auto_suspension",None)
+                    engine.store.set("daily_auto_opt_out",False)
                 engine.store.set("daily_settings", {**saved, "enabled": enabled})
         except Exception:
-            for engine, saved in original:
+            for engine,saved,suspension,opt_out in original:
                 engine.store.set("daily_settings", saved)
+                engine.store.set("daily_auto_suspension",suspension)
+                engine.store.set("daily_auto_opt_out",opt_out)
             raise
     result = batch_daily_status(runtime, registry)
     result["message"] = "全部用户的每日自动更新已开启" if enabled else "全部用户的每日自动更新已暂停"

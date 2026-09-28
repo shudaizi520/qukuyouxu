@@ -99,9 +99,10 @@ class BaseMixin:
                     action='update' if (not exact or current.get('title')!=title
                                         or current.get('summary','')!=expected_summary) else 'unchanged'
                 except Exception as exc:
-                    from .clients import PlexNotFound
+                    from .clients import PlexError, PlexNotFound
                     if isinstance(exc,PlexNotFound):
                         current=None;action='create';add=desired[:]
+                    elif isinstance(exc,PlexError):raise
                     else:blocked.append('读取程序管理歌单失败：'+safe_error(exc))
             elif any(x.get('title')==title for x in playlists):blocked.append('已存在同名未托管歌单：不会接管或覆盖')
             if not desired:blocked.append('当前可靠证据为空：保留 Plex 中现有歌单，不执行清空')
