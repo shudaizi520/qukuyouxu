@@ -95,9 +95,9 @@ def prepare_new_profile(runtime, profile_id):
         if stop_if_frozen():
             return state
         try:
-            from .library_sharing import owner_for_recipient, sync_recipient
+            from .library_sharing import owner_for_recipient, owner_shared_playlists, sync_recipient
             owner_id = owner_for_recipient(runtime, profile_id)
-            if owner_id and (runtime.engine(owner_id).store.get("managed", {}) or {}):
+            if owner_id and owner_shared_playlists(runtime.engine(owner_id)):
                 with runtime.operation_gate:
                     result = sync_recipient(runtime, owner_id, profile_id)
                 if result.get("errors"):

@@ -169,6 +169,259 @@ def test_owner_qq_toplist_is_copied_to_every_same_library_recipient(shared_libra
     assert [item["id"] for item in copied["items"]] == ["1", "2"]
 
 
+def test_upgrade_cycle_immediately_renames_existing_toplist_and_copies_clean_title(shared_library):
+    from helper.automation import PROFILE_STATE_KEY, automation_settings, ensure_profile_schedule
+    from helper.engine import fingerprint
+    from helper.external_playlist_sync import external_marker
+    from helper.external_sources import make_track
+    from helper.external_store import ExternalRepository
+    from helper.scoped_store import ScopedStore
+
+    base, _registry, runtime, data = shared_library
+    owner = ScopedStore(base, "default")
+    owner.set("qq_auth_credentials", {
+        "credential": {"musicid": "12345", "musickey": "authorized-key"},
+    })
+    repository = ExternalRepository(owner)
+    source = repository.upsert_source("default", {
+        "provider": "qq", "external_id": "26",
+        "url": "https://y.qq.com/n/ryqq/toplist/26",
+        "title": "热歌榜", "revision": "chart-r1",
+        "tracks": [
+            make_track(0, "歌曲一", ["歌手甲"], source_id="qq-1"),
+            make_track(1, "歌曲二", ["歌手乙"], source_id="qq-2"),
+        ],
+    }, 2_000_000_000)
+    marker = external_marker(owner.get("installation_id"), source["id"])
+    playlist = FakePlex("owner-token", data).create("QQ热歌榜", ["1", "2"], marker)
+    repository.save_managed("default", source["id"], {
+        "id": playlist["id"], "title": playlist["title"],
+        "fingerprint": fingerprint(playlist), "count": 2, "marker": marker,
+    })
+
+    now = 2_000_000_100
+    settings = automation_settings(base, runtime.registry, runtime, now=now)
+    for profile_id in ("default", "friend"):
+        scoped = ScopedStore(base, profile_id)
+        state = ensure_profile_schedule(scoped, settings, now)
+        for task in state["tasks"].values():
+            task["next_at"] = now + 86_400
+            task["slot"] = now + 86_400
+        scoped.set(PROFILE_STATE_KEY, state)
+
+    runtime.run_due(now=now)
+
+    assert data["owner-token"]["playlists"][playlist["id"]]["title"] == "热歌榜"
+    child = ScopedStore(base, "friend")
+    shared_chart = child.get("managed")["external:" + source["id"]]
+    assert data["friend-token"]["playlists"][shared_chart["id"]]["title"] == "热歌榜"
+
+
+def test_authorized_owner_gets_both_builtin_toplists_without_manual_import(tmp_path):
+    from helper.automation import PROFILE_STATE_KEY, automation_settings, ensure_profile_schedule, save_automation_settings
+    from helper.external_sources import make_track, recognize_source
+    from helper.external_store import ExternalRepository
+    from helper.profile_runtime import ProfileRuntime
+    from helper.profiles import ProfileRegistry
+    from helper.scoped_store import ScopedStore
+    from helper.store import Store
+
+    base = Store(tmp_path)
+    registry = ProfileRegistry(base)
+    registry.update(
+        "default", kind="owner", account={"id": "owner"},
+        server={"machine": "server-a", "url": "http://plex"},
+        library={"id": "11", "name": "音乐"}, token="owner-token",
+    )
+    registry.create(
+        name="朋友", kind="shared", profile_id="friend", account={"id": "friend"},
+        server={"machine": "server-a", "url": "http://plex"},
+        library={"id": "11", "name": "音乐"}, token="friend-token",
+    )
+    data = {}
+
+    class CatalogPlex(FakePlex):
+        def tracks(self, section):
+            assert str(section) == "11"
+            return [
+                {"id": "1", "title": "歌曲一", "artist": "歌手甲", "album": "专辑", "duration": 180},
+                {"id": "2", "title": "歌曲二", "artist": "歌手乙", "album": "专辑", "duration": 200},
+            ]
+
+    class ToplistProviders:
+        def __init__(self):
+            self.calls = []
+
+        def recognize(self, value):
+            return recognize_source(value)
+
+        def fetch(self, recognized):
+            external_id = str(recognized["external_id"])
+            self.calls.append(external_id)
+            title = {"26": "热歌榜", "62": "飙升榜"}[external_id]
+            return {
+                "provider": "qq", "external_id": external_id,
+                "url": recognized["url"], "title": title,
+                "revision": "revision-" + external_id,
+                "tracks": [
+                    make_track(0, "歌曲一", ["歌手甲"], album="专辑", duration_ms=180_000, source_id=external_id + "-1"),
+                    make_track(1, "歌曲二", ["歌手乙"], album="专辑", duration_ms=200_000, source_id=external_id + "-2"),
+                ],
+            }
+
+    runtime = ProfileRuntime(base, registry)
+    providers = ToplistProviders()
+    for profile_id, token in (("default", "owner-token"), ("friend", "friend-token")):
+        scoped = ScopedStore(base, profile_id, registry=registry)
+        settings = scoped.get("settings")
+        settings.update(plex_url="http://plex", plex_token=token, section="11")
+        scoped.set("settings", settings)
+        engine = runtime.engine(profile_id)
+        engine.plex_factory = lambda cfg, data=data: CatalogPlex(cfg["plex_token"], data)
+        engine.external.plex_factory = engine.plex_factory
+    runtime.engine("default").external.providers = providers
+    ScopedStore(base, "default").set("qq_auth_credentials", {
+        "credential": {"musicid": "12345", "musickey": "authorized-key"},
+    })
+    save_automation_settings(base, {
+        "daily": {"enabled": True, "hour": 6},
+        "smart": {"enabled": True, "hour": 3, "interval_days": 7},
+        "library": {"enabled": False, "hour": 0},
+    })
+    now = 2_000_000_100
+    schedule = automation_settings(base, registry, runtime, now=now)
+    for profile_id in ("default", "friend"):
+        scoped = ScopedStore(base, profile_id)
+        state = ensure_profile_schedule(scoped, schedule, now)
+        for task in state["tasks"].values():
+            task["next_at"] = now + 86_400
+            task["slot"] = now + 86_400
+        scoped.set(PROFILE_STATE_KEY, state)
+
+    runtime.run_due(now=now)
+    runtime.run_due(now=now + 1)
+
+    repository = ExternalRepository(ScopedStore(base, "default"))
+    sources = repository.list_sources("default")
+    assert sorted((row["external_id"], row["follow_updates"]) for row in sources) == [
+        ("26", True), ("62", True),
+    ]
+    assert {
+        repository.get_managed("default", row["id"])["title"] for row in sources
+    } == {"热歌榜", "飙升榜"}
+    assert providers.calls == ["26", "62"]
+    assert len(data["owner-token"]["playlists"]) == 2
+    assert {row["title"] for row in data["friend-token"]["playlists"].values()} == {"热歌榜", "飙升榜"}
+
+
+def test_builtin_toplists_wait_for_qq_authorization(shared_library):
+    from helper.builtin_toplists import builtin_toplists_due
+    from helper.external_store import ExternalRepository
+    from helper.scoped_store import ScopedStore
+
+    base, _registry, runtime, _data = shared_library
+
+    assert builtin_toplists_due(runtime, "default", now=2_000_000_100) is False
+    assert ExternalRepository(ScopedStore(base, "default")).list_sources("default") == []
+
+
+def test_mirrored_library_owner_does_not_become_a_second_remote_chart_updater(shared_library):
+    from helper.builtin_toplists import builtin_toplists_due
+    from helper.engine import fingerprint
+    from helper.external_playlist_sync import external_marker
+    from helper.external_sources import make_track
+    from helper.external_store import ExternalRepository
+    from helper.library_sharing import MIRRORED_TOPLISTS_KEY
+    from helper.scoped_store import ScopedStore
+
+    base, _registry, runtime, data = shared_library
+    owner = ScopedStore(base, "default")
+    owner.set("qq_auth_credentials", {
+        "credential": {"musicid": "12345", "musickey": "authorized-key"},
+    })
+    repository = ExternalRepository(owner)
+    mirrored = {}
+    for external_id, title in (("26", "热歌榜"), ("62", "飙升榜")):
+        source = repository.upsert_source("default", {
+            "provider": "qq", "external_id": external_id,
+            "url": "https://y.qq.com/n/ryqq/toplist/" + external_id,
+            "title": title, "revision": "chart-" + external_id,
+            "tracks": [make_track(0, "歌曲一", ["歌手甲"], source_id=external_id + "-1")],
+        }, 2_000_000_000)
+        marker = external_marker(owner.get("installation_id"), source["id"])
+        playlist = FakePlex("owner-token", data).create(title, ["1"], marker)
+        repository.save_managed("default", source["id"], {
+            "id": playlist["id"], "title": title,
+            "fingerprint": fingerprint(playlist), "count": 1, "marker": marker,
+        })
+        mirrored[source["id"]] = {"source_profile_id": "canonical", "source_id": "source-" + external_id}
+    owner.set(MIRRORED_TOPLISTS_KEY, mirrored)
+
+    assert builtin_toplists_due(runtime, "default", now=2_000_000_100) is False
+
+
+def test_second_owner_in_same_library_waits_for_canonical_owner_toplists(shared_library):
+    from helper.builtin_toplists import builtin_toplists_due
+    from helper.scoped_store import ScopedStore
+
+    base, registry, runtime, _data = shared_library
+    registry.create(
+        name="第二位所有者", kind="owner", profile_id="second-owner",
+        account={"id": "second-owner"}, server={"machine": "server-a", "url": "http://plex"},
+        library={"id": "11", "name": "音乐"}, token="second-owner-token",
+    )
+    scoped = ScopedStore(base, "second-owner", registry=registry)
+    settings = scoped.get("settings")
+    settings.update(plex_url="http://plex", plex_token="second-owner-token", section="11")
+    scoped.set_many({
+        "settings": settings,
+        "qq_auth_credentials": {
+            "credential": {"musicid": "12345", "musickey": "authorized-key"},
+        },
+    })
+
+    assert builtin_toplists_due(runtime, "second-owner", now=2_000_000_100) is False
+
+
+def test_new_recipient_onboarding_copies_owner_toplist_even_without_category_playlists(shared_library):
+    from helper.engine import fingerprint
+    from helper.external_playlist_sync import external_marker
+    from helper.external_sources import make_track
+    from helper.external_store import ExternalRepository
+    from helper.profile_onboarding import KINDS, prepare_new_profile
+    from helper.scoped_store import ScopedStore
+
+    base, _registry, runtime, data = shared_library
+    owner = ScopedStore(base, "default")
+    owner.set("managed", {})
+    repository = ExternalRepository(owner)
+    source = repository.upsert_source("default", {
+        "provider": "qq", "external_id": "62",
+        "url": "https://y.qq.com/n/ryqq/toplist/62",
+        "title": "飙升榜", "revision": "chart-r1",
+        "tracks": [
+            make_track(0, "歌曲一", ["歌手甲"], source_id="qq-1"),
+            make_track(1, "歌曲二", ["歌手乙"], source_id="qq-2"),
+        ],
+    }, 2_000_000_000)
+    marker = external_marker(owner.get("installation_id"), source["id"])
+    playlist = FakePlex("owner-token", data).create("飙升榜", ["1", "2"], marker)
+    repository.save_managed("default", source["id"], {
+        "id": playlist["id"], "title": playlist["title"],
+        "fingerprint": fingerprint(playlist), "count": 2, "marker": marker,
+    })
+    friend = ScopedStore(base, "friend")
+    friend.set("profile_prepare_v1", {
+        "status": "running", "completed": list(KINDS), "errors": {},
+    })
+
+    result = prepare_new_profile(runtime, "friend")
+
+    assert result["status"] == "done"
+    shared_chart = friend.get("managed")["external:" + source["id"]]
+    assert data["friend-token"]["playlists"][shared_chart["id"]]["title"] == "飙升榜"
+
+
 def test_qq_toplist_is_rematched_into_every_other_library_and_drops_qq_prefix(shared_library):
     from helper.engine import fingerprint
     from helper.external_playlist_sync import external_marker

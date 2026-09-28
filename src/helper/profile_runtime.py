@@ -142,6 +142,7 @@ class ProfileRuntime:
             if (isinstance(state, dict) and state.get("status") != "done"
                     and float(state.get("next_retry_at") or 0) <= now):
                 prepare_new_profile(self, profile["id"])
+        self.sync_builtin_toplists_due(now)
         settings = automation_settings(self.base_store, self.registry, self, now=now)
         results = []
         profiles = [row for row in self.registry.list_public()
@@ -244,6 +245,33 @@ class ProfileRuntime:
         if settings["library"]["enabled"]:
             self.sync_library_shares_due(now)
         return results
+
+    def sync_builtin_toplists_due(self, now):
+        """Install or migrate public charts as soon as Plex and QQ are ready."""
+        from .builtin_toplists import builtin_toplists_due, ensure_builtin_toplists
+
+        outcomes = []
+        for profile in self.registry.list_public(enabled_only=True):
+            profile_id = profile["id"]
+            if not builtin_toplists_due(self, profile_id, now):
+                continue
+            engine = self.engine(profile_id)
+
+            def install(profile_id=profile_id):
+                with self.operation_gate:
+                    return ensure_builtin_toplists(self, profile_id, now=now)
+
+            outcomes.append({
+                "profile_id": profile_id,
+                "result": self._run_job(engine, "builtin_toplists", install, now),
+            })
+        if outcomes:
+            # Initial availability is not a library-scan preference: once the
+            # owner has the public charts, every same-library account gets its
+            # verified copy immediately. The daily refresh still follows the
+            # user's library automation switch.
+            self.sync_library_shares_due(now)
+        return outcomes
 
     def sync_library_shares_due(self, now):
         """Default same-library category copies, independent of QQ/scan schedules."""
@@ -499,6 +527,7 @@ class ProfileRuntime:
                 name="profile-scheduler",
             )
             self._scheduler_thread = thread
+            self.wake.set()
             thread.start()
             return thread
 

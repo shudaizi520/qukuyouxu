@@ -60,6 +60,21 @@ def test_start_scheduler_reuses_the_live_supervisor(tmp_path):
     assert not first.is_alive()
 
 
+def test_start_scheduler_runs_upgrade_cycle_without_waiting_for_interval(tmp_path):
+    runtime = configured_runtime(tmp_path)
+    runtime.scheduler_interval = 60
+    cycles = []
+    runtime.run_due = lambda: cycles.append(time.monotonic())
+
+    runtime.start_scheduler()
+    try:
+        wait_until(lambda: len(cycles) == 1, timeout=0.5)
+    finally:
+        runtime.close(join_timeout=1)
+
+    assert len(cycles) == 1
+
+
 def test_scheduler_survives_when_error_logging_also_fails(tmp_path):
     runtime = configured_runtime(tmp_path)
     calls = []
