@@ -3,63 +3,66 @@ export function buildVisualizerLevels(frequencyData,count){
  if(!barCount)return [];
  const size=frequencyData?.length||0;
  if(size<8)return Array(barCount).fill(0);
- const firstBin=3,lastBin=Math.max(firstBin+1,Math.min(size-1,Math.floor(size*.62)));
+ const firstBin=7,lastBin=Math.max(firstBin+1,Math.min(size-1,Math.floor(size*.62)));
+ const bassSplit=Math.min(lastBin-2,Math.max(firstBin+1,12));
+ const bassEnd=Math.min(lastBin-1,Math.max(bassSplit+1,18));
+ const bandEdges=[firstBin,bassSplit,bassEnd];
+ for(let edgeIndex=3;edgeIndex<=barCount;edgeIndex++){
+  const progress=(edgeIndex-2)/(barCount-2);
+  const target=Math.round(bassEnd*Math.pow(lastBin/bassEnd,progress));
+  const remaining=barCount-edgeIndex;
+  bandEdges.push(Math.max(bandEdges.at(-1)+1,Math.min(lastBin-remaining,target)));
+ }
+ const bandTextures=Array(barCount).fill(0);
  const frequencyBands=Array.from({length:barCount},(_value,index)=>{
-  const start=Math.max(firstBin,Math.floor(firstBin*Math.pow(lastBin/firstBin,index/barCount)));
-  const end=Math.max(start+1,Math.floor(firstBin*Math.pow(lastBin/firstBin,(index+1)/barCount)));
+  const start=bandEdges[index]??lastBin;
+  const end=Math.max(start+1,bandEdges[index+1]??lastBin+1);
   let sum=0,peak=0,samples=0;
-  for(let bin=start;bin<=Math.min(lastBin,end);bin++){
+  for(let bin=start;bin<Math.min(lastBin+1,end);bin++){
    const value=frequencyData[bin]/255;
    sum+=value;peak=Math.max(peak,value);samples++;
   }
-  return samples?(sum/samples)*.72+peak*.28:0;
+  if(!samples)return 0;
+  const mean=sum/samples;
+  bandTextures[index]=Math.max(0,(peak-mean)/(mean+.06));
+  return mean*.68+peak*.32;
  });
  const framePeak=Math.max(...frequencyBands);
  if(framePeak<.025)return Array(barCount).fill(0);
- const frameAverage=frequencyBands.reduce((sum,value)=>sum+value,0)/barCount;
- const amplitude=Math.min(1,.2+frameAverage*1.16+framePeak*.2);
- const spectralEnvelope=frequencyBands.map((_value,index)=>{
-  let weighted=0,weightTotal=0;
-  for(let offset=-7;offset<=7;offset++){
-   const sample=Math.max(0,Math.min(barCount-1,index+offset));
-   const weight=8-Math.abs(offset);
-   weighted+=frequencyBands[sample]*weight;weightTotal+=weight;
-  }
-  return weighted/weightTotal;
- });
- const whitened=frequencyBands.map((energy,index)=>{
-  const contrast=(energy-spectralEnvelope[index])/(spectralEnvelope[index]+.08);
-  return Math.max(0,Math.min(1,.5+contrast*3.6));
- });
  const detailed=frequencyBands.map((energy,index)=>{
-  const relative=Math.pow(energy/framePeak,.62);
-  return Math.min(1,amplitude*(.12+relative*.33+whitened[index]*.62));
+  const before=frequencyBands[index-1]??energy,after=frequencyBands[index+1]??energy;
+  const localAverage=(before+energy+after)/3;
+  const detailStrength=Math.max(0,Math.min(1,(energy-.06)/.16));
+  const signedContrast=Math.max(-.24,Math.min(.36,(energy-localAverage)/(localAverage+.08)*4))*detailStrength;
+  const texture=Math.max(0,Math.min(1,bandTextures[index]*1.8));
+  const absolute=Math.pow(Math.max(0,(energy-.015)/.985),.78);
+  const highFrequencyLift=1+.22*(barCount===1?0:index/(barCount-1));
+  return Math.max(0,Math.min(1,absolute*(.67+signedContrast+texture*.22)*highFrequencyLift));
  });
  const smoothSpectrum=detailed.map((level,index)=>{
-  const farBefore=detailed[index-2]??level,before=detailed[index-1]??level;
-  const after=detailed[index+1]??level,farAfter=detailed[index+2]??level;
-  return level*.5+(before+after)*.2+(farBefore+farAfter)*.05;
+  const before=detailed[index-1]??level,after=detailed[index+1]??level;
+  return level*.86+(before+after)*.07;
  });
  const centeredSpectrum=Array(barCount).fill(0);
  const leftCenter=Math.floor((barCount-1)/2),rightCenter=Math.ceil((barCount-1)/2);
  let sourceIndex=0,firstRadius=0;
- if(leftCenter===rightCenter){centeredSpectrum[leftCenter]=smoothSpectrum[0];sourceIndex=1;firstRadius=1;}
- for(let radius=firstRadius;sourceIndex<barCount;radius++){
+ if(leftCenter===rightCenter){centeredSpectrum[leftCenter]=smoothSpectrum[sourceIndex++]??0;firstRadius=1;}
+ const maxRadius=Math.max(leftCenter,barCount-1-rightCenter);
+ for(let radius=firstRadius;radius<=maxRadius&&sourceIndex<barCount;radius++){
   const left=leftCenter-radius,right=rightCenter+radius;
-  const first=smoothSpectrum[sourceIndex]??0,second=smoothSpectrum[sourceIndex+1]??first;
-  const pair=(first+second)/2;
-  if(left>=0)centeredSpectrum[left]=pair*.25+first*.75;
-  if(right<barCount)centeredSpectrum[right]=pair*.25+second*.75;
-  sourceIndex+=2;
+  const first=smoothSpectrum[sourceIndex++]??0,second=smoothSpectrum[sourceIndex++]??first;
+  const firstWeight=radius%2===0?.82:.18,secondWeight=1-firstWeight;
+  if(left>=0)centeredSpectrum[left]=first*firstWeight+second*secondWeight;
+  if(right<barCount)centeredSpectrum[right]=first*secondWeight+second*firstWeight;
  }
  return centeredSpectrum.map((level,index)=>{
   const position=barCount===1?.5:index/(barCount-1);
   const edgeWindow=Math.min(1,position/.16,(1-position)/.16);
-  return level*Math.pow(Math.max(0,edgeWindow),.68);
+  return level*Math.pow(Math.max(0,edgeWindow),1.15);
  });
 }
 
-export function smoothVisualizerLevels(previous,target,attack=.76,release=.34){
+export function smoothVisualizerLevels(previous,target,attack=.82,release=.24){
  return target.map((next,index)=>{
   const before=previous[index]||0,rate=next>before?attack:release;
   return before+(next-before)*rate;
@@ -68,7 +71,7 @@ export function smoothVisualizerLevels(previous,target,attack=.76,release=.34){
 
 export function visualizerGeometry(width){
  const available=Math.max(1,Number(width)||1),barWidth=3.2,gap=6.5;
- const count=Math.max(42,Math.min(88,Math.floor((available+gap)/(barWidth+gap))));
+ const count=Math.max(42,Math.min(64,Math.floor((available+gap)/(barWidth+gap))));
  const span=count*(barWidth+gap)-gap;
  return {barWidth,gap,count,span,start:(available-span)/2};
 }
@@ -86,7 +89,7 @@ export function createPlaybackVisualizer({canvas,media,view=globalThis}){
   if(!AudioContextClass){audioUnavailable=true;return null;}
   try{
    audioContext=new AudioContextClass();source=audioContext.createMediaElementSource(media);analyser=audioContext.createAnalyser();
-   analyser.fftSize=4096;analyser.smoothingTimeConstant=.38;analyser.minDecibels=-92;analyser.maxDecibels=-22;
+   analyser.fftSize=4096;analyser.smoothingTimeConstant=.27;analyser.minDecibels=-92;analyser.maxDecibels=-22;
    frequencyData=new Uint8Array(analyser.frequencyBinCount);source.connect(analyser);analyser.connect(audioContext.destination);
   }catch(_error){audioUnavailable=true;analyser=null;frequencyData=null;}
   return analyser;

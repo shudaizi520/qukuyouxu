@@ -193,10 +193,10 @@ def test_fullscreen_player_has_qq_like_proportions_and_a_play_state_visualizer()
     assert _rule(css, ".now-playing-artwork")["width"] == "min(430px,35vw)"
     assert _rule(css, ".now-playing-lyric-line")["font-size"] == "clamp(14px,.9vw,17px)"
     assert _rule(css, ".now-playing-lyric-line.active")["font-size"] == "clamp(16px,1.05vw,19px)"
-    assert ".now-playing-visualizer{position:absolute;z-index:1;left:50%;bottom:var(--app-player-height,68px);width:min(900px,60vw);height:64px" in css
+    assert ".now-playing-visualizer{position:absolute;z-index:1;left:50%;bottom:var(--app-player-height,68px);width:min(680px,48vw);height:64px" in css
     assert "buildVisualizerLevels" in visualizer
     assert "smoothVisualizerLevels" in visualizer
-    assert "analyser.smoothingTimeConstant=.38" in visualizer
+    assert "analyser.smoothingTimeConstant=.27" in visualizer
     assert "level*height*.86" in visualizer
     assert "paintGlow" in visualizer
     assert "context.filter='blur(5px)'" in visualizer
@@ -206,7 +206,7 @@ def test_fullscreen_player_has_qq_like_proportions_and_a_play_state_visualizer()
     assert ".now-playing-visualizer-bar" not in css
 
 
-def test_visualizer_uses_whitened_frequency_bands_without_a_fixed_middle_spike():
+def test_visualizer_uses_distinct_frequency_bands_without_a_fixed_middle_spike():
     source = (STATIC / "playlist-visualizer.js").read_text(encoding="utf-8")
     module_url = "data:text/javascript;base64," + base64.b64encode(source.encode()).decode()
     prepare_playwright_environment(ROOT)
@@ -228,7 +228,7 @@ def test_visualizer_uses_whitened_frequency_bands_without_a_fixed_middle_spike()
             }
             return bins;
           };
-          const levels = module.buildVisualizerLevels(makeSpectrum(180),104);
+          const levels = module.buildVisualizerLevels(makeSpectrum(180),64);
           const ordered = [...levels].sort((a,b)=>a-b);
           const median = ordered[Math.floor(ordered.length/2)];
           const peaks = levels.filter((value,index) => index>1 && index<levels.length-2
@@ -236,35 +236,280 @@ def test_visualizer_uses_whitened_frequency_bands_without_a_fixed_middle_spike()
             && value>(levels[index-2]+levels[index+2])*.5+0.018).length;
           const half=Math.floor(levels.length/2);
           const average = values => values.reduce((sum,value)=>sum+value,0)/values.length;
-          const firstDynamic=module.buildVisualizerLevels(makeSpectrum(25,90),104);
-          const secondDynamic=module.buildVisualizerLevels(makeSpectrum(280,90),104);
-          const firstMean=average(firstDynamic),secondMean=average(secondDynamic);
-          let covariance=0,firstVariance=0,secondVariance=0;
-          for(let index=0;index<firstDynamic.length;index++){
-            const first=firstDynamic[index]-firstMean,second=secondDynamic[index]-secondMean;
-            covariance+=first*second;firstVariance+=first*first;secondVariance+=second*second;
-          }
           return {
             max:Math.max(...levels),median,peaks,geometry:module.visualizerGeometry(900),
             active:levels.filter(value=>value>.025).length,
             leftAverage:average(levels.slice(0,half)),
             rightAverage:average(levels.slice(-half)),
-            centerAverage:average(levels.slice(half-12,half+12)),
-            edgeAverage:average([...levels.slice(0,12),...levels.slice(-12)]),
-            dynamicCorrelation:covariance/Math.sqrt(firstVariance*secondVariance),
+            centerAverage:average(levels.slice(half-8,half+8)),
+            edgeAverage:average([...levels.slice(0,8),...levels.slice(-8)]),
           };
         }""", module_url)
         browser.close()
 
     assert 1.1 <= metrics["max"] / metrics["median"] <= 2.8
-    assert 5 <= metrics["peaks"] <= 18
-    assert metrics["active"] >= 88
+    assert 4 <= metrics["peaks"] <= 14
+    assert metrics["active"] >= 54
     assert 0.9 <= metrics["leftAverage"] / metrics["rightAverage"] <= 1.1
     assert metrics["centerAverage"] > metrics["edgeAverage"] * 1.15
-    assert metrics["dynamicCorrelation"] <= 0.9
-    assert 76 <= metrics["geometry"]["count"] <= 92
+    assert 60 <= metrics["geometry"]["count"] <= 64
+    assert metrics["geometry"]["span"] <= 625
     assert 3 <= metrics["geometry"]["barWidth"] <= 4
     assert 5.5 <= metrics["geometry"]["gap"] <= 7
+
+
+def test_visualizer_active_region_keeps_real_local_relief_instead_of_forming_a_platform():
+    source = (STATIC / "playlist-visualizer.js").read_text(encoding="utf-8")
+    module_url = "data:text/javascript;base64," + base64.b64encode(source.encode()).decode()
+    prepare_playwright_environment(ROOT)
+    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(ROOT / ".playwright"))
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        frames = page.evaluate("""async url => {
+          const module = await import(url);
+          const makeSpectrum = peakBin => {
+            const bins = new Uint8Array(2048);
+            let seed=peakBin*7919;
+            for (let index=3; index<bins.length; index++) {
+              seed=(seed*48271)%2147483647;
+              const jitter=(seed/2147483647-.5)*28;
+              const tilt=210-38*Math.log10(index+1);
+              const primary=55*Math.exp(-Math.pow((Math.log(index)-Math.log(peakBin))/.10,2));
+              const harmonic=32*Math.exp(-Math.pow((Math.log(index)-Math.log(peakBin*2.4))/.15,2));
+              bins[index]=Math.max(0,Math.min(255,Math.round(tilt+primary+harmonic+jitter)));
+            }
+            return bins;
+          };
+          return [24,55,130,310].map(peakBin => {
+            const levels=module.buildVisualizerLevels(makeSpectrum(peakBin),64);
+            const peakIndex=levels.indexOf(Math.max(...levels));
+            const start=Math.max(0,Math.min(levels.length-24,peakIndex-12));
+            const activeRegion=levels.slice(start,start+24);
+            const mean=activeRegion.reduce((sum,value)=>sum+value,0)/activeRegion.length;
+            const deviation=Math.sqrt(activeRegion.reduce((sum,value)=>sum+Math.pow(value-mean,2),0)/activeRegion.length);
+            const visibleThreshold=Math.max(...activeRegion)*.35;
+            let run=1,longestFlatRun=1;
+            for(let index=1;index<activeRegion.length;index++){
+              const visible=activeRegion[index]>=visibleThreshold||activeRegion[index-1]>=visibleThreshold;
+              run=visible&&Math.abs(activeRegion[index]-activeRegion[index-1])<.025?run+1:1;
+              longestFlatRun=Math.max(longestFlatRun,run);
+            }
+            return {coefficientOfVariation:deviation/mean,longestFlatRun};
+          });
+        }""", module_url)
+        browser.close()
+
+    assert max(frame["longestFlatRun"] for frame in frames) <= 8, frames
+    assert sum(frame["coefficientOfVariation"] >= 0.045 for frame in frames) >= 3, frames
+
+
+def test_visualizer_frequency_regions_move_independently_without_global_pulsing():
+    source = (STATIC / "playlist-visualizer.js").read_text(encoding="utf-8")
+    module_url = "data:text/javascript;base64," + base64.b64encode(source.encode()).decode()
+    prepare_playwright_environment(ROOT)
+    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(ROOT / ".playwright"))
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        metrics = page.evaluate("""async url => {
+          const module = await import(url);
+          const makeSpectrum = () => {
+            const bins = new Uint8Array(2048);
+            for(let index=3;index<bins.length;index++)bins[index]=72;
+            for(let index=3;index<=6;index++)bins[index]=185;
+            return bins;
+          };
+          const boosted = (start,end) => {
+            const bins=makeSpectrum();
+            for(let index=start;index<=end;index++)bins[index]=205;
+            return bins;
+          };
+          const base=module.buildVisualizerLevels(makeSpectrum(),88);
+          const bass=module.buildVisualizerLevels(boosted(8,28),88);
+          const treble=module.buildVisualizerLevels(boosted(420,850),88);
+          const deltas=next=>next.map((value,index)=>Math.abs(value-base[index]));
+          const bassDelta=deltas(bass),trebleDelta=deltas(treble);
+          const bassChanged=bassDelta.map((value,index)=>value>.025?index:-1).filter(index=>index>=0);
+          const trebleChanged=trebleDelta.map((value,index)=>value>.025?index:-1).filter(index=>index>=0);
+          const trebleSet=new Set(trebleChanged);
+          return {
+            bassPeak:Math.max(...bassDelta),
+            treblePeak:Math.max(...trebleDelta),
+            bassChanged:bassChanged.length,
+            trebleChanged:trebleChanged.length,
+            overlap:bassChanged.filter(index=>trebleSet.has(index)).length,
+          };
+        }""", module_url)
+        browser.close()
+
+    assert metrics["bassPeak"] >= 0.08, metrics
+    assert metrics["treblePeak"] >= 0.08, metrics
+    assert 2 <= metrics["bassChanged"] <= 36, metrics
+    assert 2 <= metrics["trebleChanged"] <= 36, metrics
+    assert metrics["overlap"] <= 4, metrics
+
+
+def test_visualizer_preserves_the_difference_between_low_and_high_pitch_spectra():
+    source = (STATIC / "playlist-visualizer.js").read_text(encoding="utf-8")
+    module_url = "data:text/javascript;base64," + base64.b64encode(source.encode()).decode()
+    prepare_playwright_environment(ROOT)
+    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(ROOT / ".playwright"))
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        metrics = page.evaluate("""async url => {
+          const module=await import(url);
+          const makeVoice=fundamental=>{
+            const bins=new Uint8Array(2048);bins.fill(12);
+            for(let harmonic=1;harmonic<=10;harmonic++){
+              const center=fundamental*harmonic;
+              const strength=190/Math.pow(harmonic,.72);
+              for(let index=Math.max(1,Math.floor(center*.88));index<=Math.min(1260,Math.ceil(center*1.12));index++){
+                const distance=(Math.log(index)-Math.log(center))/.045;
+                bins[index]=Math.min(255,Math.round(bins[index]+strength*Math.exp(-distance*distance)));
+              }
+            }
+            return bins;
+          };
+          const correlation=(first,second)=>{
+            const firstMean=first.reduce((sum,value)=>sum+value,0)/first.length;
+            const secondMean=second.reduce((sum,value)=>sum+value,0)/second.length;
+            let covariance=0,firstVariance=0,secondVariance=0;
+            for(let index=0;index<first.length;index++){
+              const left=first[index]-firstMean,right=second[index]-secondMean;
+              covariance+=left*right;firstVariance+=left*left;secondVariance+=right*right;
+            }
+            return covariance/Math.sqrt(firstVariance*secondVariance);
+          };
+          const weightedRadius=levels=>{
+            const center=(levels.length-1)/2;
+            const total=levels.reduce((sum,value)=>sum+value,0);
+            return levels.reduce((sum,value,index)=>sum+value*Math.abs(index-center),0)/total;
+          };
+          const low=module.buildVisualizerLevels(makeVoice(10),64);
+          const high=module.buildVisualizerLevels(makeVoice(28),64);
+          return {
+            correlation:correlation(low,high),
+            meanDifference:low.reduce((sum,value,index)=>sum+Math.abs(value-high[index]),0)/64,
+            lowRadius:weightedRadius(low),
+            highRadius:weightedRadius(high),
+          };
+        }""", module_url)
+        browser.close()
+
+    assert metrics["correlation"] <= 0.25, metrics
+    assert metrics["meanDifference"] >= 0.09, metrics
+    assert metrics["highRadius"] >= metrics["lowRadius"] + 3, metrics
+
+
+def test_low_frequency_energy_does_not_wrap_into_detached_side_islands():
+    source = (STATIC / "playlist-visualizer.js").read_text(encoding="utf-8")
+    module_url = "data:text/javascript;base64," + base64.b64encode(source.encode()).decode()
+    prepare_playwright_environment(ROOT)
+    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(ROOT / ".playwright"))
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        metrics = page.evaluate("""async url => {
+          const module=await import(url);
+          const bins=new Uint8Array(2048);bins.fill(10);
+          for(let index=7;index<=70;index++){
+            const distance=(Math.log(index)-Math.log(18))/.36;
+            bins[index]=Math.min(255,Math.round(16+210*Math.exp(-distance*distance)));
+          }
+          const levels=module.buildVisualizerLevels(bins,64);
+          const active=levels.map(level=>level>.075);
+          let islands=0,inside=false;
+          for(const value of active){
+            if(value&&!inside)islands++;
+            inside=value;
+          }
+          return {
+            islands,
+            pattern:active.map(value=>value?'#':'.').join(''),
+          };
+        }""", module_url)
+        browser.close()
+
+    assert metrics["islands"] == 1, metrics["pattern"]
+
+
+def test_visualizer_center_is_not_permanently_reserved_for_weakest_low_bands():
+    source = (STATIC / "playlist-visualizer.js").read_text(encoding="utf-8")
+    module_url = "data:text/javascript;base64," + base64.b64encode(source.encode()).decode()
+    prepare_playwright_environment(ROOT)
+    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(ROOT / ".playwright"))
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        metrics = page.evaluate("""async url => {
+          const module=await import(url);
+          const bins=new Uint8Array(2048);
+          for(let index=7;index<=18;index++)bins[index]=14;
+          let seed=41;
+          for(let index=19;index<=320;index++){
+            seed=(seed*48271)%2147483647;
+            bins[index]=Math.round(145+(seed/2147483647-.5)*34);
+          }
+          for(let index=321;index<=1260;index++)bins[index]=52;
+          const levels=module.buildVisualizerLevels(bins,64);
+          const average=values=>values.reduce((sum,value)=>sum+value,0)/values.length;
+          const center=levels.slice(28,36);
+          const neighbors=[...levels.slice(16,28),...levels.slice(36,48)];
+          return {
+            centerAverage:average(center),
+            neighborAverage:average(neighbors),
+            activeCenter:center.filter(value=>value>.12).length,
+          };
+        }""", module_url)
+        browser.close()
+
+    assert metrics["centerAverage"] >= 0.16, metrics
+    assert metrics["activeCenter"] >= 6, metrics
+
+
+def test_short_visualizer_does_not_spread_sparse_music_across_a_long_canvas():
+    source = (STATIC / "playlist-visualizer.js").read_text(encoding="utf-8")
+    module_url = "data:text/javascript;base64," + base64.b64encode(source.encode()).decode()
+    prepare_playwright_environment(ROOT)
+    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(ROOT / ".playwright"))
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        metrics = page.evaluate("""async url => {
+          const module=await import(url);
+          const geometry=module.visualizerGeometry(900);
+          const bins=new Uint8Array(2048);
+          for(let index=7;index<=1260;index++)bins[index]=18;
+          for(const [start,end,strength] of [[20,62,145],[88,205,132],[300,610,118]]){
+            for(let index=start;index<=end;index++){
+              bins[index]=Math.min(255,strength+Math.round(18*Math.sin(index*.37)));
+            }
+          }
+          const levels=module.buildVisualizerLevels(bins,geometry.count);
+          const active=levels.map(level=>level>.075);
+          const first=active.indexOf(true),last=active.lastIndexOf(true);
+          let islands=0,longestGap=0,gap=0,inside=false;
+          for(let index=0;index<active.length;index++){
+            if(active[index]){
+              if(!inside)islands++;
+              inside=true;gap=0;
+            }else if(index>first&&index<last){
+              inside=false;gap++;longestGap=Math.max(longestGap,gap);
+            }
+          }
+          return {
+            count:geometry.count,span:geometry.span,islands,longestGap,
+            pattern:active.map(value=>value?'#':'.').join(''),
+          };
+        }""", module_url)
+        browser.close()
+
+    assert metrics["count"] <= 64, metrics
+    assert metrics["span"] <= 625, metrics
+    assert metrics["islands"] <= 4, metrics["pattern"]
+    assert metrics["longestGap"] <= 5, metrics["pattern"]
 
 
 def test_player_identity_has_breathing_room_and_visualizer_keeps_independent_frequency_detail():
@@ -275,12 +520,8 @@ def test_player_identity_has_breathing_room_and_visualizer_keeps_independent_fre
     player = _rule(foundation, "body[data-view=playlists] .playlist-player")
     assert player["padding"] == "0 22px 4px calc(var(--app-rail-width) + 40px)"
     assert _rule(foundation, "body[data-view=playlists] .playlist-now").get("padding-left", "0") == "0"
-    assert "width:min(900px,60vw);height:64px" in css
+    assert "width:min(680px,48vw);height:64px" in css
     assert "frequencyData" in visualizer
-    assert "spectralEnvelope" in visualizer
-    assert "whitened" in visualizer
-    assert "smoothSpectrum" in visualizer
-    assert "centeredSpectrum" in visualizer
     assert "edgeWindow=Math.min(1,position/.16,(1-position)/.16)" in visualizer
     assert "context.fillRect" in visualizer
 

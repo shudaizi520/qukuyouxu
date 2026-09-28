@@ -29,7 +29,7 @@ body[data-view=playlists] .now-playing .now-playing-close:active:not(:disabled){
 .now-playing-lyric-line.active{color:var(--immersive-accent);font-size:clamp(16px,1.05vw,19px);font-weight:650;transform:translateX(3px)}
 .now-playing-lyrics-status{position:absolute;inset:50% 0 auto;transform:translateY(-50%);margin:0;color:var(--immersive-copy);font-size:14px;text-align:center}
 .now-playing-lyrics-status[hidden]{display:none}
-.now-playing-visualizer{position:absolute;z-index:1;left:50%;bottom:var(--app-player-height,68px);width:min(900px,60vw);height:64px;transform:translateX(-50%);opacity:.98;pointer-events:none;mask-image:linear-gradient(90deg,transparent,var(--immersive-mask) 3%,var(--immersive-mask) 97%,transparent)}
+.now-playing-visualizer{position:absolute;z-index:1;left:50%;bottom:var(--app-player-height,68px);width:min(680px,48vw);height:64px;transform:translateX(-50%);opacity:.98;pointer-events:none;mask-image:linear-gradient(90deg,transparent,var(--immersive-mask) 3%,var(--immersive-mask) 97%,transparent)}
 
 .now-playing-open .playlist-player{z-index:55;padding-left:22px;background:transparent;border-top:0;box-shadow:none}
 body[data-view=playlists].now-playing-open .playlist-player{background:transparent;color:var(--immersive-text)}
