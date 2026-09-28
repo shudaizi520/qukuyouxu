@@ -142,6 +142,7 @@ def ensure_builtin_toplists(runtime, profile_id, now=None):
         "checked_at": now,
         "next_retry_at": 0 if complete else now + RETRY_SECONDS,
         "errors": list(result["errors"]),
+        "libraries": result.get("libraries"),
     }
     engine.store.set(STATE_KEY, state)
     result["status"] = state["status"]

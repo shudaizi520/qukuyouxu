@@ -46,6 +46,7 @@ def sync_qq_toplists_across_libraries(runtime, source_profile_id):
     receive a local snapshot and match it against their own Plex library IDs.
     """
     from .external_store import ExternalRepository
+    from .engine import safe_error
     from .playlist_hub import rename_playlist
 
     source_profile = runtime.registry.get(source_profile_id)
@@ -77,6 +78,7 @@ def sync_qq_toplists_across_libraries(runtime, source_profile_id):
                     "profile_id": source_profile_id,
                     "source_id": source["id"],
                     "error": type(exc).__name__,
+                    "message": safe_error(exc),
                 })
         normalized.append((source, managed, title))
 
@@ -139,6 +141,7 @@ def sync_qq_toplists_across_libraries(runtime, source_profile_id):
                     "profile_id": target_id,
                     "source_id": source["id"],
                     "error": type(exc).__name__,
+                    "message": safe_error(exc),
                 })
     return result
 
