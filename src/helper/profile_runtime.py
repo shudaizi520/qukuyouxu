@@ -163,6 +163,7 @@ class ProfileRuntime:
                 if float(scheduled.get("next_at") or 0) > now:
                     continue
                 if not self._eligible_for_task(engine, task):
+                    clear_retry(scheduled)
                     scheduled["next_at"] = advance_slot(scheduled.get("slot"), now, task, settings)
                     scheduled["slot"] = scheduled["next_at"]
                     engine.store.set(PROFILE_STATE_KEY, state)
@@ -187,9 +188,9 @@ class ProfileRuntime:
                         "profile_id": profile["id"],
                         "kind": kind,
                         "status": (
-                            "transient_error"
+                            "waiting_retry"
                             if classify_scheduled_failure(exc) == "transient"
-                            else "safety_error"
+                            else "needs_attention"
                         ),
                         "error": type(exc).__name__,
                     }

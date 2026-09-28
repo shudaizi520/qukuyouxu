@@ -62,7 +62,7 @@ class BaseMixin:
         from .engine import digest
         single_digest=digest([(t['id'],t.get('_qq_single')) for t in effective])
         raw=build_base_groups(effective,theme,min_tracks=1,diagnostics=diagnostics)
-        playlists=p.playlists();managed=self.store.get('managed');snapshots=self.store.get('snapshots')
+        playlists=p.playlists();managed=self.store.get('managed')
         # Minimum size applies to new lists, not to judging members of an
         # already-managed era: a valid small list is not a wrong-year list.
         raw=[g for g in raw if g['matched']>=int(cfg.get('min_tracks',5)) or
@@ -77,40 +77,36 @@ class BaseMixin:
                             'evidence':{},'inferred_count':0,'blocked':[]})
         groups=[];base_ids=set()
         disabled={str(value) for value in (self.store.get('managed_disabled_categories',[]) or [])}
-        era_ids={'base:'+normalize(title) for title in ERA_CATEGORIES+ALBUM_ERA_CATEGORIES}
-        language_ids={'base:'+normalize(title) for title in LANGUAGE_CATEGORIES}
+        scope=self.daily_scope()
         for g in raw:
             cid=g['id'];title=managed.get(cid,{}).get('title') or g['title']
             from .playlist_hub import apply_manual_edits
             desired=apply_manual_edits(self.store,'category',cid,list(g['desired']));blocked=[];current=None;add=desired[:];action='create'
             if cid in disabled:blocked.append('已停止维护：保留 Plex 中现有歌单，不再自动写入')
+            record=managed.get(cid) or {}
+            if record.get('machine') and record.get('machine')!=identity['machine']:
+                blocked.append('托管歌单属于另一台 Plex 服务器，停止写入')
+            if record.get('scope') and record.get('scope')!=scope:
+                blocked.append('托管歌单属于另一个曲库范围，停止写入')
             if cid in managed:
                 try:
                     current=p.playlist_state(managed[cid]['id'])
-                    if self.marker(cid) not in current.get('summary',''):
-                        blocked.append('歌单所有权标记变化：暂停，不覆盖')
                     exists=set(state_ids(current));add=[k for k in desired if k not in exists]
-                    action='append' if add or current.get('title')!=title else 'unchanged'
-                    if cid in language_ids and exists-set(desired):
-                        blocked.append(f'已有语种歌单包含{len(exists-set(desired))}首尚未获得当前单曲语种证据的曲目；不会自动删除，请先核对旧快照')
-                    if cid in era_ids and exists-set(desired):
-                        blocked.append(f'已有年代歌单包含{len(exists-set(desired))}首不符合当前明确年份规则的曲目；不会自动删除，请先核对或恢复旧快照')
-                except Exception as exc:blocked.append('读取程序管理歌单失败：'+safe_error(exc))
+                    expected_summary=self.marker(cid)+'\n由曲库有序管理；曲库整理会按已确认设置更新成员。'
+                    actual=state_ids(current)
+                    exact=(len(actual)==len(desired) and len(set(actual))==len(actual)
+                           and set(actual)==set(desired))
+                    action='update' if (not exact or current.get('title')!=title
+                                        or current.get('summary','')!=expected_summary) else 'unchanged'
+                except Exception as exc:
+                    from .clients import PlexNotFound
+                    if isinstance(exc,PlexNotFound):
+                        current=None;action='create';add=desired[:]
+                    else:blocked.append('读取程序管理歌单失败：'+safe_error(exc))
             elif any(x.get('title')==title for x in playlists):blocked.append('已存在同名未托管歌单：不会接管或覆盖')
-            if any(s.get('category_id')==cid and s.get('status') in ('prepared','uncertain','restoring') for s in snapshots):
-                blocked.append('上次写入结果待核对：请先核对快照和Plex')
+            if not desired:blocked.append('当前可靠证据为空：保留 Plex 中现有歌单，不执行清空')
             base_ids.update(desired)
             groups.append({**g,'title':title,'desired':desired,'matched':len(desired),'add':add,'action':action,'before':current,'blocked':blocked})
-        if any(g['id'] in era_ids and any('不符合当前' in b for b in g['blocked']) for g in groups):
-            # Append-only maintenance must not leave one track in an obsolete
-            # decade and also publish it into a new one. No silent deletion.
-            for g in groups:
-                if g['id'] in era_ids and not g['blocked']:
-                    g['blocked'].append('已有年代歌单成员待核对，为避免同曲双重年代，暂停年代写入；不自动删除旧歌')
-        if any(g['id'] in language_ids and any('尚未获得当前单曲' in b for b in g['blocked']) for g in groups):
-            for g in groups:
-                if g['id'] in language_ids and not g['blocked']:
-                    g['blocked'].append('已有语种歌单成员待核对，为避免旧错误语种并存，暂停语种写入；不自动删歌')
         current_ids={str(t['id']) for t in tracks};theme_ids=set()
         if theme:
             for g in theme.get('groups') or []:theme_ids.update(str(x) for x in g.get('desired') or [] if str(x) in current_ids)
@@ -147,72 +143,73 @@ class BaseMixin:
         fresh_tracks,fresh_enriched,_=self._read_base_catalog(p,cfg['section'])
         fresh={t['id']:track_fingerprint(t) for t in fresh_tracks}
         fresh_evidence={t['id']:base_track_fingerprint(t) for t in fresh_enriched}
-        managed=self.store.get('managed');existing_titles={x.get('title') for x in p.playlists()};result={'written':0,'unchanged':0,'skipped':0,'errors':[]}
+        managed=self.store.get('managed');result={'written':0,'unchanged':0,'skipped':0,'errors':[],'retryable_errors':[],'conflicts':[]}
         disabled={str(value) for value in (self.store.get('managed_disabled_categories',[]) or [])}
         fresh_effective,_=prepare_catalog(fresh_enriched,self.store.get('metadata_overrides',{}))
         from .engine import digest
         fresh_single=digest([(t['id'],t.get('_qq_single')) for t in self.single_attach(fresh_effective,plan['machine'])])
         if fresh_single!=plan.get('single_evidence_digest'):
-            result['errors'].append('单曲补全证据过期或变化，请重新预览；本轮未写入')
+            message='单曲补全证据过期或变化，请重新预览；本轮未写入'
+            result['errors'].append(message);result['conflicts'].append(message)
             plan['result']=result;self.store.set('base_plan',plan)
             return result
         if fresh_evidence!=plan.get('album_evidence_fingerprints',{}):
             # Album supplementation depends on peers as well as the selected
             # track. A newly added or changed peer can reveal a mixed album.
-            result['errors'].append('Plex曲库或所属专辑资料在预览后变化，请重新预览；本轮未写入')
+            message='Plex曲库或所属专辑资料在预览后变化，请重新预览；本轮未写入'
+            result['errors'].append(message);result['conflicts'].append(message)
             plan['result']=result;self.store.set('base_plan',plan)
             return result
         for g in plan['groups']:
             cid=g['id']
-            if (allowed_ids is not None and cid not in allowed_ids) or cid in disabled or g['blocked'] or automatic and cid not in managed:
+            if (allowed_ids is not None and cid not in allowed_ids) or cid in disabled or automatic and cid not in managed:
+                result['skipped']+=1;continue
+            if g['blocked']:
+                if automatic:
+                    message=g['title']+'：'+'；'.join(g['blocked'])
+                    result['errors'].append(message);result['conflicts'].append(message)
                 result['skipped']+=1;continue
             if any(fresh.get(k)!=plan['track_fingerprints'].get(k) or
                    fresh_evidence.get(k)!=plan.get('album_evidence_fingerprints',{}).get(k) for k in g['desired']):
-                result['errors'].append(g['title']+'：Plex曲目或所属专辑资料在预览后变化，请重新预览');continue
-            before=None
-            try:
-                if g['before']:
-                    before=p.playlist_state(g['before']['id'])
-                    if fingerprint(before)!=fingerprint(g['before']) or self.marker(cid) not in before.get('summary',''):raise SafetyError('预览后歌单被修改，停止覆盖')
-                elif g['title'] in existing_titles:raise SafetyError('预览后出现同名歌单，不接管')
-                rename_needed=bool(before and before.get('title')!=g['title'])
-                if not g['add'] and before and not rename_needed:
-                    result['unchanged']+=1;continue
-            except Exception as exc:
-                result['errors'].append(g['title']+'：'+safe_error(exc));continue
+                message=g['title']+'：Plex曲目或所属专辑资料在预览后变化，请重新预览'
+                result['errors'].append(message);result['conflicts'].append(message);continue
+            before=g.get('before')
             snap={'id':uuid.uuid4().hex,'kind':'base','category_id':cid,'title':g['title'],'created_at':time.time(),'status':'prepared',
-                  'before':before,'after':None,'add':g['add'],'marker':self.marker(cid),'plan_id':plan_id}
+                  'before':before,'after':None,'add':g['add'],'marker':self.marker(cid),'plan_id':plan_id,
+                  'machine':plan['machine'],'scope':self.daily_scope()}
             self._save_snapshot(snap)
             try:
-                if before:
-                    working=before
-                    if before.get('title')!=g['title']:
-                        p.rename(before['id'],g['title'])
-                        predicate=lambda state:(state.get('title')==g['title'] and
-                                                state_ids(state)==state_ids(before) and
-                                                self.marker(cid) in state.get('summary',''))
-                        if hasattr(p,'read_playlist_until'):
-                            working=p.read_playlist_until(before['id'],predicate)
-                        else:
-                            working=p.playlist_state(before['id'])
-                        if not working or not predicate(working):raise SafetyError('歌单改名后回读与预期不一致')
-                    if g['add']:
-                        p.append(before['id'],g['add']);after=p.playlist_state(before['id'])
-                    else:after=working
-                else:after=p.create(g['title'],g['desired'],self.marker(cid))
-                expected=(state_ids(before) if before else [])+g['add']
-                if state_ids(after)!=expected or after['title']!=g['title'] or self.marker(cid) not in after.get('summary',''):
-                    raise SafetyError('写入后回读与预期不一致，不标记成功，也不自动重试')
+                from .managed_playlist_sync import ManagedPlaylistTarget, ReconcileConflict, reconcile_managed_playlist
+                scope=self.daily_scope();record=dict(managed.get(cid) or {})
+                if record:
+                    record.setdefault('machine',plan['machine']);record.setdefault('scope',scope)
+                target=ManagedPlaylistTarget(
+                    category_id=cid,title=g['title'],marker=self.marker(cid),member_ids=tuple(g['desired']),
+                    machine=plan['machine'],scope=scope,
+                    description='由曲库有序管理；曲库整理会按已确认设置更新成员。',
+                )
+                reconciled=reconcile_managed_playlist(p,target,record or None,adopt_existing=bool(record))
+                after=dict(reconciled.playlist)
                 snap.update(status='applied',after=after);self._save_snapshot(snap)
-                managed[cid]={'id':after['id'],'fingerprint':fingerprint(after),'snapshot_id':snap['id'],'title':after['title']}
-                self.store.set('managed',managed);existing_titles.add(after['title']);result['written']+=1
+                managed[cid]={'id':after['id'],'fingerprint':fingerprint(after),'snapshot_id':snap['id'],'title':after['title'],
+                              'machine':plan['machine'],'scope':scope,'marker':self.marker(cid),'count':len(after.get('items',[]))}
+                self.store.set('managed',managed)
+                from .playlist_sync import supersede_unresolved_snapshots
+                supersede_unresolved_snapshots(self.store,cid,snap['id'])
+                if reconciled.status=='unchanged':result['unchanged']+=1
+                else:result['written']+=1
                 runtime=getattr(self,'profile_runtime',None)
-                if runtime is not None and runtime.registry.get(self.store.profile_id).get('kind')=='owner':
+                if reconciled.status!='unchanged' and runtime is not None and runtime.registry.get(self.store.profile_id).get('kind')=='owner':
                     from .library_sharing import queue_owner_revision
                     queue_owner_revision(runtime,self.store.profile_id,cid,'publish',managed[cid])
             except Exception as exc:
-                snap.update(status='uncertain',error=safe_error(exc));self._save_snapshot(snap)
-                result['errors'].append(g['title']+'：'+safe_error(exc))
+                from .clients import PlexError
+                from .managed_playlist_sync import ReconcileConflict
+                retryable=isinstance(exc,PlexError) and not isinstance(exc,ReconcileConflict)
+                message=g['title']+'：'+safe_error(exc)
+                snap.update(status='retryable' if retryable else 'conflict',error=safe_error(exc));self._save_snapshot(snap)
+                result['errors'].append(message)
+                result['retryable_errors' if retryable else 'conflicts'].append(message)
         settings=self.store.get('base_settings',dict(DEFAULT_BASE))
         if not automatic and not result['errors']:
             settings['approved']=True;settings['approved_policy']=BASE_POLICY;self.store.set('base_settings',settings)
@@ -226,8 +223,6 @@ class BaseMixin:
         if enabled:
             if not cfg.get('approved') or cfg.get('approved_policy')!=BASE_POLICY or not any(k.startswith('base:') for k in self.store.get('managed')):
                 raise SafetyError('先预览并确认写入一次基础分类，再开启自动维护')
-            if any(s.get('kind')=='base' and s.get('status') in ('prepared','uncertain','restoring') for s in self.store.get('snapshots')):
-                raise SafetyError('基础分类有待核对写入，不能开启自动维护')
         cfg['enabled']=enabled;self.store.set('base_settings',cfg);self.store.set('base_last_run',time.time())
         return {'message':'基础分类自动维护已开启' if enabled else '基础分类自动维护已暂停'}
 

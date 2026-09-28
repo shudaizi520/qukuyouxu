@@ -131,7 +131,7 @@ class Engine(RenamingMixin, DailyMixin):
         self.store.set_many({'qq_tags':tags,'sources':sources,'theme_unavailable':unavailable})
         playlists=p.playlists();cache=self.store.get('cache');managed=self.store.get('managed');overrides=self.store.get('overrides')
         minimum_tracks=discovery_min_tracks(len(tracks))
-        snapshots=self.store.get('snapshots');groups=[];covered=set();now=time.time()
+        groups=[];covered=set();now=time.time();scope=self.daily_scope()
         active_sources=[src for src in self.store.get('sources') if src.get('enabled',True)]
         self.workflow_progress(0,len(active_sources))
         for source_index,src in enumerate(active_sources,1):
@@ -174,18 +174,28 @@ class Engine(RenamingMixin, DailyMixin):
             from .playlist_hub import apply_manual_edits
             desired=apply_manual_edits(self.store,'category',cid,desired);matches=set(desired)
             current=None;action='create';add=desired[:]
+            record=managed.get(cid) or {}
+            if record.get('machine') and record.get('machine')!=identity['machine']:
+                blocked.append('托管歌单属于另一台 Plex 服务器，停止写入')
+            if record.get('scope') and record.get('scope')!=scope:
+                blocked.append('托管歌单属于另一个曲库范围，停止写入')
             if cid in managed:
                 try:
                     current=p.playlist_state(managed[cid]['id'])
-                    if self.marker(cid) not in current.get('summary',''):
-                        blocked.append('歌单所有权标记变化：暂停，不覆盖')
                     exists=set(state_ids(current));add=[k for k in desired if k not in exists]
-                    action='append' if add or current.get('title')!=title else 'unchanged'
-                except Exception as exc:blocked.append('读取程序管理歌单失败：'+safe_error(exc))
+                    expected_summary=self.marker(cid)+'\n由曲库有序管理；曲库整理会按已确认设置更新成员。'
+                    actual=state_ids(current)
+                    exact=(len(actual)==len(desired) and len(set(actual))==len(actual)
+                           and set(actual)==set(desired))
+                    action='update' if (not exact or current.get('title')!=title
+                                        or current.get('summary','')!=expected_summary) else 'unchanged'
+                except Exception as exc:
+                    from .clients import PlexNotFound
+                    if isinstance(exc,PlexNotFound):
+                        current=None;action='create';add=desired[:]
+                    else:blocked.append('读取程序管理歌单失败：'+safe_error(exc))
             elif any(x.get('title')==title for x in playlists):
                 blocked.append('已存在同名未托管歌单：不会接管或覆盖')
-            if any(s['category_id']==cid and s['status'] in ('prepared','uncertain','restoring') for s in snapshots):
-                blocked.append('上次写入结果待核对：请先交给维护者核对快照和Plex')
             if len(desired)<minimum_tracks:blocked.append('本地可靠匹配不足最低歌曲数；不创建稀疏或空歌单')
             covered.update(matches)
             groups.append({'id':cid,'title':title,'kind':src['kind'],'source_title':entry.get('data',{}).get('title',''),
@@ -221,60 +231,58 @@ class Engine(RenamingMixin, DailyMixin):
         # Refresh real metadata before any mutation. Do not trust old ratingKeys blindly.
         fresh={t['id']:track_fingerprint(t) for t in p.tracks(cfg['section'])}
         sources=self.store.get('sources');source_map={s['id']:s for s in sources}
-        managed=self.store.get('managed');result={'written':0,'unchanged':0,'skipped':0,'errors':[]}
+        managed=self.store.get('managed');result={'written':0,'unchanged':0,'skipped':0,'errors':[],'retryable_errors':[],'conflicts':[]}
         minimum_tracks=discovery_min_tracks(plan.get('library_count',0))
         for g in plan['groups']:
             src=source_map.get(g['id']);cid=g['id']
-            if not src or not src.get('enabled',True) or g['blocked'] or automatic and not src.get('approved'):
+            if not src or not src.get('enabled',True) or automatic and not src.get('approved'):
+                result['skipped']+=1;continue
+            if g['blocked']:
+                if automatic:
+                    message=g['title']+'：'+'；'.join(g['blocked'])
+                    result['errors'].append(message);result['conflicts'].append(message)
                 result['skipped']+=1;continue
             if cid not in managed and not g.get('before') and len(g.get('desired') or [])<minimum_tracks:
                 result['skipped']+=1;continue
             if any(fresh.get(k)!=plan['track_fingerprints'].get(k) for k in g['desired']):
-                result['errors'].append(g['title']+'：Plex曲目在预览后变化，请重新预览');continue
-            before=None
-            try:
-                if g['before']:
-                    before=p.playlist_state(g['before']['id'])
-                    if fingerprint(before)!=fingerprint(g['before']) or self.marker(cid) not in before.get('summary',''):raise SafetyError('预览后歌单被修改，停止覆盖')
-                elif any(x.get('title')==g['title'] for x in p.playlists()):raise SafetyError('预览后出现同名歌单，不接管')
-                rename_needed=bool(before and before.get('title')!=g['title'])
-                if not g['add'] and before and not rename_needed:
-                    result['unchanged']+=1;src['approved']=True;continue
-            except Exception as exc:
-                result['errors'].append(g['title']+'：'+safe_error(exc));continue
-            snap={'id':uuid.uuid4().hex,'category_id':cid,'title':g['title'],'created_at':time.time(),'status':'prepared','before':before,'after':None,'add':g['add'],'marker':self.marker(cid),'plan_id':plan_id}
+                message=g['title']+'：Plex曲目在预览后变化，请重新预览'
+                result['errors'].append(message);result['conflicts'].append(message);continue
+            before=g.get('before')
+            snap={'id':uuid.uuid4().hex,'category_id':cid,'title':g['title'],'created_at':time.time(),'status':'prepared','before':before,'after':None,'add':g['add'],'marker':self.marker(cid),'plan_id':plan_id,
+                  'machine':plan['machine'],'scope':self.daily_scope()}
             self._save_snapshot(snap)
             try:
-                if before:
-                    working=before
-                    if before.get('title')!=g['title']:
-                        p.rename(before['id'],g['title'])
-                        predicate=lambda state:(state.get('title')==g['title'] and
-                                                state_ids(state)==state_ids(before) and
-                                                self.marker(cid) in state.get('summary',''))
-                        if hasattr(p,'read_playlist_until'):
-                            working=p.read_playlist_until(before['id'],predicate)
-                        else:
-                            working=p.playlist_state(before['id'])
-                        if not working or not predicate(working):raise SafetyError('歌单改名后回读与预期不一致')
-                    if g['add']:
-                        p.append(before['id'],g['add']);after=p.playlist_state(before['id'])
-                    else:after=working
-                else:after=p.create(g['title'],g['desired'],self.marker(cid))
-                expected=(state_ids(before) if before else [])+g['add']
-                if state_ids(after)!=expected or after['title']!=g['title'] or self.marker(cid) not in after.get('summary',''):
-                    raise SafetyError('写入后回读与预期不一致，不标记成功，也不自动重试')
+                from .managed_playlist_sync import ManagedPlaylistTarget, reconcile_managed_playlist
+                scope=self.daily_scope();record=dict(managed.get(cid) or {})
+                if record:
+                    record.setdefault('machine',plan['machine']);record.setdefault('scope',scope)
+                target=ManagedPlaylistTarget(
+                    category_id=cid,title=g['title'],marker=self.marker(cid),member_ids=tuple(g['desired']),
+                    machine=plan['machine'],scope=scope,
+                    description='由曲库有序管理；曲库整理会按已确认设置更新成员。',
+                )
+                reconciled=reconcile_managed_playlist(p,target,record or None,adopt_existing=bool(record))
+                after=dict(reconciled.playlist)
                 snap.update(status='applied',after=after)
                 self._save_snapshot(snap)
-                managed[cid]={'id':after['id'],'fingerprint':fingerprint(after),'snapshot_id':snap['id'],'title':after['title'],'count':len(after.get('items',[]))}
-                self.store.set('managed',managed);src['approved']=True;result['written']+=1
+                managed[cid]={'id':after['id'],'fingerprint':fingerprint(after),'snapshot_id':snap['id'],'title':after['title'],'count':len(after.get('items',[])),
+                              'machine':plan['machine'],'scope':scope,'marker':self.marker(cid)}
+                self.store.set('managed',managed);src['approved']=True
+                from .playlist_sync import supersede_unresolved_snapshots
+                supersede_unresolved_snapshots(self.store,cid,snap['id'])
+                if reconciled.status=='unchanged':result['unchanged']+=1
+                else:result['written']+=1
                 runtime=getattr(self,'profile_runtime',None)
-                if runtime is not None and runtime.registry.get(self.store.profile_id).get('kind')=='owner':
+                if reconciled.status!='unchanged' and runtime is not None and runtime.registry.get(self.store.profile_id).get('kind')=='owner':
                     from .library_sharing import queue_owner_revision
                     queue_owner_revision(runtime,self.store.profile_id,cid,'publish',managed[cid])
             except Exception as exc:
-                snap.update(status='uncertain',error=safe_error(exc));self._save_snapshot(snap)
-                src['approved']=False;result['errors'].append(g['title']+'：'+safe_error(exc))
+                from .clients import PlexError
+                retryable=isinstance(exc,PlexError)
+                message=g['title']+'：'+safe_error(exc)
+                snap.update(status='retryable' if retryable else 'conflict',error=safe_error(exc));self._save_snapshot(snap)
+                result['errors'].append(message)
+                result['retryable_errors' if retryable else 'conflicts'].append(message)
         self.store.set('sources',sources);plan['applied']=True;plan['result']=result;self.store.set('plan',plan)
         self.store.log(f"写入结果：成功{result['written']}项，不变{result['unchanged']}项，跳过{result['skipped']}项，失败{len(result['errors'])}项")
         return result

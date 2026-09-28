@@ -1,4 +1,5 @@
 import tempfile
+import threading
 import unittest
 from html.parser import HTMLParser
 from pathlib import Path
@@ -37,6 +38,87 @@ class _Engine:
 
 
 class LibraryMaintenanceV0415Tests(unittest.TestCase):
+    def test_nightly_run_reconciles_managed_playlists_even_without_new_tracks(self):
+        from helper.library_engine import LibraryEngine
+        from helper.store import Store
+
+        with tempfile.TemporaryDirectory() as root:
+            engine = object.__new__(LibraryEngine)
+            engine.store = Store(Path(root))
+            engine.gate = threading.Lock()
+            engine.single_pause = threading.Event()
+            engine.workflow_pause = threading.Event()
+            engine.progress = lambda _message: None
+            engine._enrich_singles = lambda **_kwargs: {
+                "status": "completed", "new_count": 0, "processed": 0,
+            }
+            engine.external = type("External", (), {
+                "rematch_missing": lambda _self: {},
+                "auto_refresh": lambda _self: {},
+            })()
+            engine.store.set_many({
+                "managed": {"base:国语": {"id": "base-1"}},
+                "sources": [{
+                    "id": "theme:work", "name": "工作", "kind": "theme",
+                    "enabled": True, "approved": True,
+                }],
+            })
+            calls = []
+            engine._preview_base = lambda: calls.append("preview_base") or {"id": "base-plan"}
+            engine._apply_base = lambda plan_id, automatic=False: (
+                calls.append(("apply_base", plan_id, automatic))
+                or {"written": 0, "unchanged": 1, "skipped": 0, "errors": []}
+            )
+            engine._preview = lambda force=False: calls.append(("preview_theme", force)) or {"id": "theme-plan"}
+            engine._apply = lambda plan_id, automatic=False: (
+                calls.append(("apply_theme", plan_id, automatic))
+                or {"written": 0, "unchanged": 1, "skipped": 0, "errors": []}
+            )
+
+            result = engine.refresh_new_tracks()
+
+        self.assertEqual(
+            ["preview_base", ("apply_base", "base-plan", True),
+             ("preview_theme", False), ("apply_theme", "theme-plan", True)],
+            calls,
+        )
+        self.assertEqual("completed", result["status"])
+        self.assertIn("已检查并恢复", result["message"])
+
+    def test_nightly_true_conflict_is_reported_for_attention(self):
+        from helper.engine import SafetyError
+        from helper.library_engine import LibraryEngine
+        from helper.store import Store
+
+        with tempfile.TemporaryDirectory() as root:
+            engine = object.__new__(LibraryEngine)
+            engine.store = Store(Path(root))
+            engine.gate = threading.Lock()
+            engine.single_pause = threading.Event()
+            engine.workflow_pause = threading.Event()
+            engine.progress = lambda _message: None
+            engine._enrich_singles = lambda **_kwargs: {
+                "status": "completed", "new_count": 0, "processed": 0,
+            }
+            engine.external = type("External", (), {
+                "rematch_missing": lambda _self: {},
+                "auto_refresh": lambda _self: {},
+            })()
+            engine.store.set("managed", {"base:国语": {"id": "base-1"}})
+            engine._preview_base = lambda: {"id": "base-plan"}
+            engine._apply_base = lambda *_args, **_kwargs: {
+                "written": 0, "unchanged": 0, "skipped": 1,
+                "errors": ["国语：托管范围冲突"],
+                "retryable_errors": [], "conflicts": ["国语：托管范围冲突"],
+            }
+
+            with self.assertRaises(SafetyError):
+                engine.refresh_new_tracks()
+
+            status = engine.store.get("incremental_status")
+
+        self.assertEqual("attention", status["status"])
+
     def test_review_button_opens_a_library_panel_instead_of_advanced_diagnostics(self):
         page = Markup()
         page.feed((STATIC / "home.html").read_text(encoding="utf-8"))

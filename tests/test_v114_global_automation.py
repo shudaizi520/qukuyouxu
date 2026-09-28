@@ -531,7 +531,7 @@ def test_transient_daily_retry_survives_runtime_restart():
     finally:
         temp.cleanup()
 
-    assert first_result[0]["status"] == "transient_error"
+    assert first_result[0]["status"] == "waiting_retry"
     assert first_result[0]["retry_at"] == now + 300
     assert retry["slot"] == now
     assert retry["retry_slot"] == now
@@ -564,10 +564,43 @@ def test_ambiguous_daily_write_error_advances_without_automatic_retry():
     finally:
         temp.cleanup()
 
-    assert result[0]["status"] == "safety_error"
+    assert result[0]["status"] == "needs_attention"
     assert "retry_at" not in result[0]
     assert task["next_at"] > now
     assert task["slot"] == task["next_at"]
+    assert "failure_count" not in task
+
+
+def test_disabling_daily_before_retry_cancels_the_retry_without_running():
+    from helper.automation import PROFILE_STATE_KEY, save_automation_settings
+    from helper.profile_controls import write_control
+    from helper.scheduler_retry import TransientScheduleError
+
+    temp, base, _registry, runtime, scoped, calls = _configured_runtime()
+    now = datetime(2027, 1, 10, 6, tzinfo=BEIJING).timestamp()
+    try:
+        saved = save_automation_settings(base, {
+            "daily": {"enabled": True, "hour": 6},
+            "smart": {"enabled": False, "interval_days": 7, "hour": 3},
+            "library": {"enabled": False, "hour": 0},
+        })
+        _set_due(scoped, saved, "daily", now)
+        runtime.engine("default").daily_auto = lambda **_kwargs: (
+            (_ for _ in ()).throw(TransientScheduleError("preview unavailable"))
+        )
+        runtime.run_due(now)
+        retry_at = scoped.get(PROFILE_STATE_KEY)["tasks"]["daily"]["retry_at"]
+        write_control(scoped, "daily", False)
+
+        result = runtime.run_due(retry_at)
+        task = scoped.get(PROFILE_STATE_KEY)["tasks"]["daily"]
+    finally:
+        temp.cleanup()
+
+    assert result == []
+    assert calls == []
+    assert task["next_at"] > retry_at
+    assert "retry_at" not in task
     assert "failure_count" not in task
 
 

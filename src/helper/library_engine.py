@@ -73,7 +73,7 @@ class LibraryEngine(SingleMixin, BaseMixin, Engine):
             return result
 
     def refresh_new_tracks(self):
-        """Find only missing/changed tracks, then append to already-approved playlists."""
+        """Refresh evidence and converge every enabled, approved managed playlist."""
         with self.exclusive():
             self.progress('检查 Plex 里有没有新增歌曲')
             try:
@@ -112,12 +112,6 @@ class LibraryEngine(SingleMixin, BaseMixin, Engine):
                 'rematch': self.external.rematch_missing(),
                 'refresh': self.external.auto_refresh(),
             }
-            if not result['new_count']:
-                result['message'] = '检查完成，没有发现需要查询的新增或有变化歌曲。'
-                self.store.set('incremental_status', result)
-                self.progress(result['message'])
-                return result
-
             managed = self.store.get('managed', {}) or {}
             if any(str(key).startswith('base:') for key in managed):
                 self.progress('新增歌曲资料已保存，正在补入已有基础分类歌单')
@@ -148,8 +142,24 @@ class LibraryEngine(SingleMixin, BaseMixin, Engine):
                 result['status'] = 'attention'
                 result['message'] = '新增歌曲已经检查；部分歌单触发保护并跳过，请查看运行记录。'
             else:
-                result['message'] = f"新增歌曲检查完成：处理 {result['new_count']} 首，并更新已有分类。"
+                result['message'] = (
+                    f"新增歌曲检查完成：处理 {result['new_count']} 首，并更新已有分类。"
+                    if result['new_count'] else
+                    '检查完成，没有新增歌曲；已检查并恢复程序管理的歌单。'
+                )
             result['updated_at'] = time.time()
             self.store.set('incremental_status', result)
             self.progress(result['message'])
+            retryable=[]
+            for part in ('base','theme'):
+                retryable.extend((result.get(part) or {}).get('retryable_errors') or [])
+            if retryable:
+                from .scheduler_retry import TransientScheduleError
+                raise TransientScheduleError('Plex 托管歌单暂时无法完成同步')
+            conflicts=[]
+            for part in ('base','theme'):
+                conflicts.extend((result.get(part) or {}).get('conflicts') or [])
+            if conflicts:
+                from .engine import SafetyError
+                raise SafetyError('程序管理歌单存在身份、范围或证据冲突，请查看运行记录')
             return result

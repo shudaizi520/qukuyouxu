@@ -53,12 +53,12 @@ class _FreshPlex:
     def playlists(self):
         return list(self.created.values())
 
-    def create(self, title, track_ids, summary):
+    def create(self, title, track_ids, summary, description=None):
         playlist_id = f"playlist-{len(self.created) + 1}"
         state = {
             "id": playlist_id,
             "title": title,
-            "summary": summary,
+            "summary": summary + ("\n" + description if description else ""),
             "items": [{"id": str(track_id), "item_id": f"item-{track_id}"} for track_id in track_ids],
         }
         self.created[playlist_id] = state

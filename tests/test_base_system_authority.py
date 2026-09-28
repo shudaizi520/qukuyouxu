@@ -18,6 +18,7 @@ from helper.store import Store
 
 class _BasePlex:
     def __init__(self):
+        self.create_calls = 0
         self.state = {
             "id": "700",
             "title": "国语",
@@ -32,14 +33,34 @@ class _BasePlex:
         return {"machine": "machine-a", "server": "Plex"}
 
     def playlists(self):
-        return [{"ratingKey": self.state["id"], "title": self.state["title"]}]
+        if self.state is None:
+            return []
+        return [{"ratingKey": self.state["id"], "title": self.state["title"],
+                 "summary": self.state.get("summary", "")}]
+
+    def owned_playlists(self, marker):
+        return [row for row in self.playlists()
+                if marker in str(row.get("summary") or "").splitlines()]
 
     def tracks(self, _section):
         return copy.deepcopy(getattr(self, "tracks_data", []))
 
     def playlist_state(self, playlist_id):
-        assert str(playlist_id) == self.state["id"]
+        from helper.clients import PlexNotFound
+
+        if self.state is None or str(playlist_id) != self.state["id"]:
+            raise PlexNotFound("missing")
         return copy.deepcopy(self.state)
+
+    def create(self, title, ids, marker, description=None):
+        self.create_calls += 1
+        self.state = {
+            "id": "701", "title": title,
+            "summary": marker + ("\n" + description if description else ""),
+            "items": [{"id": str(track_id), "item_id": f"new-{index}"}
+                      for index, track_id in enumerate(ids, 1)],
+        }
+        return self.playlist_state("701")
 
     def read_playlist_until(self, playlist_id, predicate, attempts=8, delay=0.25):
         state = self.playlist_state(playlist_id)
@@ -58,6 +79,16 @@ class _BasePlex:
             {"id": str(track_id), "item_id": f"item-{start + offset}"}
             for offset, track_id in enumerate(ids)
         )
+
+    def remove_items(self, playlist_id, item_ids):
+        assert str(playlist_id) == self.state["id"]
+        removed = {str(value) for value in item_ids}
+        self.state["items"] = [row for row in self.state["items"]
+                               if str(row["item_id"]) not in removed]
+
+    def update_playlist_summary(self, playlist_id, summary):
+        assert str(playlist_id) == self.state["id"]
+        self.state["summary"] = str(summary)
 
 
 class BaseSystemAuthorityTests(unittest.TestCase):
@@ -97,7 +128,11 @@ class BaseSystemAuthorityTests(unittest.TestCase):
 
     def test_next_category_update_restores_an_owned_playlist_changed_in_plex(self):
         self.plex.state["title"] = "Plex 手工改名"
-        self.plex.state["items"] = [{"id": "1", "item_id": "item-1"}]
+        self.plex.state["summary"] = "人工说明"
+        self.plex.state["items"] = [
+            {"id": "1", "item_id": "item-1"},
+            {"id": "3", "item_id": "item-3"},
+        ]
         group = {
             "id": self.cid,
             "title": "国语",
@@ -122,13 +157,56 @@ class BaseSystemAuthorityTests(unittest.TestCase):
         self.assertEqual([], result["errors"])
         self.assertEqual("国语", self.plex.state["title"])
         self.assertEqual(["1", "2"], [row["id"] for row in self.plex.state["items"]])
+        self.assertIn(self.engine.marker(self.cid), self.plex.state["summary"])
+
+    def test_deleted_category_is_recreated_and_managed_id_is_replaced(self):
+        self.plex.state = None
+        group = {
+            "id": self.cid, "title": "国语", "kind": "base",
+            "desired": ["1", "2"], "matched": 2, "evidence": {},
+            "inferred_count": 0, "blocked": [],
+        }
+
+        with patch.object(self.engine, "_read_base_catalog", return_value=(self.tracks, self.tracks, {})), \
+                patch.object(self.engine, "single_attach", side_effect=lambda rows, _machine: rows), \
+                patch("helper.base_mixin.prepare_catalog", side_effect=lambda rows, _overrides: (rows, {})), \
+                patch("helper.base_mixin.album_genre_eligibility", return_value=({}, [])), \
+                patch("helper.base_mixin.build_base_groups", return_value=[group]):
+            plan = self.engine.preview_base()
+            result = self.engine.apply_base(plan["id"])
+
+        self.assertEqual([], result["errors"])
+        self.assertEqual("701", self.store.get("managed")[self.cid]["id"])
+        self.assertEqual(["1", "2"], [row["id"] for row in self.plex.state["items"]])
+
+    def test_empty_category_evidence_preserves_existing_playlist(self):
+        original = copy.deepcopy(self.plex.state)
+        group = {
+            "id": self.cid, "title": "国语", "kind": "base",
+            "desired": [], "matched": 0, "evidence": {},
+            "inferred_count": 0, "blocked": [],
+        }
+
+        with patch.object(self.engine, "_read_base_catalog", return_value=(self.tracks, self.tracks, {})), \
+                patch.object(self.engine, "single_attach", side_effect=lambda rows, _machine: rows), \
+                patch("helper.base_mixin.prepare_catalog", side_effect=lambda rows, _overrides: (rows, {})), \
+                patch("helper.base_mixin.album_genre_eligibility", return_value=({}, [])), \
+                patch("helper.base_mixin.build_base_groups", return_value=[group]):
+            plan = self.engine.preview_base()
+            planned = next(row for row in plan["groups"] if row["id"] == self.cid)
+            self.assertTrue(planned["blocked"])
+            result = self.engine.apply_base(plan["id"])
+
+        self.assertEqual(1, result["skipped"])
+        self.assertEqual(original, self.plex.state)
 
     def test_next_theme_update_restores_an_owned_playlist_changed_in_plex(self):
         cid = "theme:work"
         self.plex.state.update(
             title="Plex 手工改名",
             summary=self.engine.marker(cid),
-            items=[{"id": "1", "item_id": "item-1"}],
+            items=[{"id": "1", "item_id": "item-1"},
+                   {"id": "3", "item_id": "item-3"}],
         )
         self.store.set("managed", {
             cid: {
