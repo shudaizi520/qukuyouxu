@@ -82,13 +82,27 @@ def sync_qq_toplists_across_libraries(runtime, source_profile_id):
 
     source_machine = str((source_profile.get("server") or {}).get("machine") or "")
     source_library = str((source_profile.get("library") or {}).get("id") or "")
+    target_libraries = {}
     for target_profile in runtime.registry.list_public(enabled_only=True):
-        target_id = target_profile["id"]
         target_machine = str((target_profile.get("server") or {}).get("machine") or "")
         target_library = str((target_profile.get("library") or {}).get("id") or "")
-        if (target_id == source_profile_id or target_machine != source_machine
+        if (target_profile["id"] == source_profile_id or target_machine != source_machine
                 or not target_library or target_library == source_library):
             continue
+        target_libraries.setdefault((target_machine, target_library), []).append(target_profile)
+
+    targets = []
+    for profiles in target_libraries.values():
+        owners = [profile for profile in profiles if profile.get("kind") == "owner"]
+        if owners:
+            targets.append(min(owners, key=lambda row: (row.get("created_at") or 0, row["id"])))
+        else:
+            # Old installations can contain a shared profile without its owner.
+            # Keep those profiles usable until their owner is connected again.
+            targets.extend(sorted(profiles, key=lambda row: (row.get("created_at") or 0, row["id"])))
+
+    for target_profile in targets:
+        target_id = target_profile["id"]
         target_engine = runtime.engine(target_id)
         target_repository = ExternalRepository(target_engine.store)
         target_mirrored = dict(target_engine.store.get(MIRRORED_TOPLISTS_KEY, {}) or {})

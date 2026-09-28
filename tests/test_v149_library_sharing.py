@@ -178,10 +178,16 @@ def test_qq_toplist_is_rematched_into_every_other_library_and_drops_qq_prefix(sh
 
     base, registry, runtime, data = shared_library
     registry.create(
-        name="经典音乐", kind="shared", profile_id="classic",
+        name="经典音乐", kind="owner", profile_id="classic",
         account={"id": "owner"},
         server={"machine": "server-a", "url": "http://plex"},
         library={"id": "12", "name": "经典音乐"}, token="classic-token",
+    )
+    registry.create(
+        name="经典音乐朋友", kind="shared", profile_id="classic-friend",
+        account={"id": "classic-friend"},
+        server={"machine": "server-a", "url": "http://plex"},
+        library={"id": "12", "name": "经典音乐"}, token="classic-friend-token",
     )
 
     catalogs = {
@@ -197,8 +203,15 @@ def test_qq_toplist_is_rematched_into_every_other_library_and_drops_qq_prefix(sh
             {"id": "101", "title": "歌曲一", "artist": "歌手甲", "album": "专辑", "duration": 180},
             {"id": "102", "title": "歌曲二", "artist": "歌手乙", "album": "专辑", "duration": 200},
         ],
+        "classic-friend-token": [
+            {"id": "101", "title": "歌曲一", "artist": "歌手甲", "album": "专辑", "duration": 180},
+            {"id": "102", "title": "歌曲二", "artist": "歌手乙", "album": "专辑", "duration": 200},
+        ],
     }
-    sections = {"owner-token": "11", "friend-token": "11", "classic-token": "12"}
+    sections = {
+        "owner-token": "11", "friend-token": "11",
+        "classic-token": "12", "classic-friend-token": "12",
+    }
 
     class LibraryPlex(FakePlex):
         def sections(self):
@@ -208,7 +221,7 @@ def test_qq_toplist_is_rematched_into_every_other_library_and_drops_qq_prefix(sh
             assert str(section) == sections[self.token]
             return copy.deepcopy(catalogs[self.token])
 
-    for profile_id in ("default", "friend", "classic"):
+    for profile_id in ("default", "friend", "classic", "classic-friend"):
         factory = lambda cfg, data=data: LibraryPlex(cfg["plex_token"], data)
         runtime.engine(profile_id).plex_factory = factory
         runtime.engine(profile_id).external.plex_factory = factory
@@ -235,7 +248,7 @@ def test_qq_toplist_is_rematched_into_every_other_library_and_drops_qq_prefix(sh
 
     now = 2_000_000_100
     settings = automation_settings(base, registry, runtime, now=now)
-    for profile_id in ("default", "friend", "classic"):
+    for profile_id in ("default", "friend", "classic", "classic-friend"):
         scoped = ScopedStore(base, profile_id)
         state = ensure_profile_schedule(scoped, settings, now)
         for task in state["tasks"].values():
@@ -260,6 +273,15 @@ def test_qq_toplist_is_rematched_into_every_other_library_and_drops_qq_prefix(sh
     assert target_playlist["title"] == "飙升榜"
     assert [item["id"] for item in target_playlist["items"]] == ["101", "102"]
     assert ExternalRepository(ScopedStore(base, "friend")).list_sources("friend") == []
+    assert ExternalRepository(ScopedStore(base, "classic-friend")).list_sources("classic-friend") == []
+    shared_chart = next(
+        row for row in ScopedStore(base, "classic-friend").get("managed").values()
+        if row.get("title") == "飙升榜"
+    )
+    assert [
+        item["id"]
+        for item in data["classic-friend-token"]["playlists"][shared_chart["id"]]["items"]
+    ] == ["101", "102"]
 
 
 def test_owner_ordinary_qq_import_stays_personal(shared_library):
