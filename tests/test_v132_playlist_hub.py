@@ -84,6 +84,31 @@ class PlaylistHubRowsTests(unittest.TestCase):
         self.assertEqual(10, external["count"])
         self.assertEqual("用户自己的歌单", native["title"])
 
+    def test_other_library_external_copy_is_hidden_from_this_profile(self):
+        from helper.playlist_inventory import merge_playlist_rows
+
+        prefix = "[QKYX:external:install-abc:"
+        rows = merge_playlist_rows([{
+            "source": "external", "kind": "external", "key": "x-current",
+            "playlist_id": "77", "title": "热歌榜", "count": 10,
+            "_ownership_marker": prefix + "x-current]",
+        }], [
+            {
+                "ratingKey": "77", "playlistType": "audio", "title": "热歌榜",
+                "leafCount": "10", "summary": prefix + "x-current]",
+            },
+            {
+                "ratingKey": "88", "playlistType": "audio", "title": "热歌榜",
+                "leafCount": "20", "summary": prefix + "x-other-library]",
+            },
+            {
+                "ratingKey": "99", "playlistType": "audio", "title": "用户歌单",
+                "leafCount": "5", "summary": "用户自己的说明",
+            },
+        ], external_marker_prefix=prefix)
+
+        self.assertEqual(["77", "99"], [row["playlist_id"] for row in rows])
+
     def setUp(self):
         from helper.external_store import ExternalRepository
         from helper.profiles import ProfileRegistry

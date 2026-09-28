@@ -191,6 +191,26 @@ class ExternalPlaylistSyncV130Tests(unittest.TestCase):
             create_or_reconcile_external_playlist(plex, INSTALL, SOURCE, None, ["1", "2"])
         self.assertEqual([], plex.created)
 
+    def test_same_name_owned_by_another_library_in_this_install_can_coexist(self):
+        from helper.external_playlist_sync import (
+            create_or_reconcile_external_playlist, external_marker,
+        )
+
+        other = owned_state(
+            playlist_id="76",
+            source={"id": "x-other-library", "title": SOURCE["title"]},
+        )
+        self.assertIn(external_marker(INSTALL, "x-other-library"), other["summary"])
+        plex = FakePlex(states=[other])
+
+        after, managed = create_or_reconcile_external_playlist(
+            plex, INSTALL, SOURCE, None, ["1", "2"]
+        )
+
+        self.assertNotEqual("76", after["id"])
+        self.assertEqual(SOURCE["title"], managed["title"])
+        self.assertEqual(1, len(plex.created))
+
     def test_retry_after_lost_create_response_finds_exact_owned_marker(self):
         from helper.external_playlist_sync import create_or_reconcile_external_playlist
 

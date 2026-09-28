@@ -131,8 +131,22 @@ def order_playlist_rows(rows):
     ]
 
 
-def merge_playlist_rows(assistant_rows, plex_rows):
+def merge_playlist_rows(assistant_rows, plex_rows, *, external_marker_prefix=""):
     assistant_rows = [dict(row) for row in (assistant_rows or [])]
+    current_external_markers = {
+        str(row.get("_ownership_marker") or "")
+        for row in assistant_rows if row.get("source") == "external"
+    }
+    if external_marker_prefix:
+        plex_rows = [
+            row for row in (plex_rows or [])
+            if not any(
+                line.startswith(external_marker_prefix)
+                and line.endswith("]")
+                and line not in current_external_markers
+                for line in str((row or {}).get("summary") or "").splitlines()
+            )
+        ]
     raw_native_by_id = {
         str(row.get("ratingKey") or row.get("playlist_id") or ""): row
         for row in (plex_rows or []) if isinstance(row, dict)

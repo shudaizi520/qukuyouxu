@@ -16,7 +16,9 @@ from .auth import COOKIE_NAME
 from .clients import PlexError
 from .engine import SafetyError, fingerprint
 from .external_audio import stream_track_audio
-from .external_playlist_sync import external_marker, rename_owned_external_playlist
+from .external_playlist_sync import (
+    external_marker, external_marker_prefix, rename_owned_external_playlist,
+)
 from .external_store import ExternalRepository
 from .favorite_smart import ensure_profile_favorites
 from .lyrics import read_track_lyrics
@@ -161,6 +163,8 @@ def playlist_rows(engine, hidden_playlist_ids=()):
     """Return assistant and native Plex playlists, retaining the last good native list."""
     store = engine.store
     hidden_playlist_ids = {str(value) for value in hidden_playlist_ids}
+    installation_id = store.get("installation_id")
+    marker_prefix = external_marker_prefix(installation_id) if installation_id else ""
     assistant = []
     for row in assistant_playlist_rows(store):
         prepared = dict(row)
@@ -186,7 +190,10 @@ def playlist_rows(engine, hidden_playlist_ids=()):
                     continue
                 row["source_section"] = source_section
             native_rows.append(row)
-        merged = merge_playlist_rows(assistant, native_rows)
+        merged = merge_playlist_rows(
+            assistant, native_rows,
+            external_marker_prefix=marker_prefix,
+        )
         native = [dict(row) for row in merged if row.get("source") == "plex"]
         store.set("playlist_native_cache_v1", native)
         return [{key: value for key, value in row.items() if key != "_ownership_marker"}
@@ -206,7 +213,10 @@ def playlist_rows(engine, hidden_playlist_ids=()):
             {key: value for key, value in (
                 {**row, "stale": True} if row.get("source") == "plex" else row
             ).items() if key != "_ownership_marker"}
-            for row in merge_playlist_rows(assistant, cached)
+            for row in merge_playlist_rows(
+                assistant, cached,
+                external_marker_prefix=marker_prefix,
+            )
         ]
 
 

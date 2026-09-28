@@ -42,7 +42,20 @@ def _safe_identifier(value, name):
 def external_marker(installation_id: str, source_id: str) -> str:
     installation_id = _safe_identifier(installation_id, "安装标识")
     source_id = _safe_identifier(source_id, "外部歌单标识")
-    return f"[QKYX:external:{installation_id}:{source_id}]"
+    return external_marker_prefix(installation_id) + source_id + "]"
+
+
+def external_marker_prefix(installation_id: str) -> str:
+    installation_id = _safe_identifier(installation_id, "安装标识")
+    return f"[QKYX:external:{installation_id}:"
+
+
+def _same_installation_external(summary, marker):
+    prefix = marker.rsplit(":", 1)[0] + ":"
+    return any(
+        line.startswith(prefix) and line.endswith("]")
+        for line in str(summary or "").splitlines()
+    )
 
 
 def _validate_desired(desired_ids):
@@ -143,7 +156,8 @@ def _initial_state(plex, source, marker, managed, desired):
         if not _owned_state(current, playlist_id, source_title, marker):
             raise _safety("已拥有的 Plex 歌单名称或管理标记不一致")
         return current, source_title
-    if any(str(row.get("title") or "") == source_title for row in listed):
+    same_title = [row for row in listed if str(row.get("title") or "") == source_title]
+    if any(not _same_installation_external(row.get("summary"), marker) for row in same_title):
         raise _safety("Plex 中已有同名歌单，但没有本安装的管理标记，不会接管")
     created = plex.create(
         source_title, desired, marker,
@@ -246,6 +260,7 @@ def rename_owned_external_playlist(plex, installation_id, source_id, managed, ti
     if any(
         str(row.get("title") or "") == title
         and str(row.get("ratingKey") or row.get("id") or "") != playlist_id
+        and not _same_installation_external(row.get("summary"), marker)
         for row in plex.playlists()
     ):
         raise _safety("Plex 中已经存在同名歌单，请换一个名称")
