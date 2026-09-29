@@ -202,7 +202,9 @@ class DailyMixin:
                 self.store, same_name_id, identity['machine']))
             if archived_claim:
                 blocked.append('旧用户的每日歌单仍在 Plex；请先核对，不会自动另建歌单')
-            if (same_name_id and not self.store.get('daily_playlist_target')
+            saved_target = self.store.get('daily_playlist_target')
+            if (same_name_id
+                    and (not saved_target or is_legacy_library_daily_title(saved_target.get('title')))
                     and not archived_claim
                     and claimed_by_another_profile(self.store, same_name_id, identity['machine'])):
                 # A Plex account can expose several music libraries. Scoped
@@ -330,7 +332,7 @@ class DailyMixin:
             trusted = managed or ({'id': before['id'], 'machine': plan['machine'],
                                    'scope': plan['scope']} if before else None)
             reconciled = reconcile_managed_playlist(
-                p, target, trusted, adopt_existing=bool(trusted),
+                p, target, trusted, adopt_existing=True,
             )
             after = reconciled.playlist
             snap.update(status='applied', after=after)
@@ -533,5 +535,5 @@ class DailyMixin:
             result = self._publish_daily(plan['id'], now)
             self.store.set('daily_auto_checked_date', day_at(now))
             return result
-from .restart import daily_target_title, validate_daily_target
+from .restart import daily_target_title, is_legacy_library_daily_title, validate_daily_target
 from .rotation import recommend_rotating, save_rotating_plan

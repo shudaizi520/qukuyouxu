@@ -183,6 +183,37 @@ class _UnconfirmedRenameDailyPlex(_DailyPlex):
         super().remove_items(playlist_id, item_ids)
 
 
+class _CreateThenVerifyFailsDailyPlex(_DailyPlex):
+    """The create commits in Plex, but its first verification read fails."""
+
+    def __init__(self):
+        super().__init__(existing=True)
+        self.fail_created_read = True
+
+    def create(self, title, ids, marker, description=None):
+        self.create_calls += 1
+        playlist_id = str(900 + self.create_calls)
+        state = {
+            "id": playlist_id,
+            "title": title,
+            "summary": marker + "\n" + (description or ""),
+            "items": [
+                {"id": str(track_id), "item_id": f"new-{playlist_id}-{index}"}
+                for index, track_id in enumerate(ids, 1)
+            ],
+        }
+        self.playlists_by_id[playlist_id] = state
+        return copy.deepcopy(state)
+
+    def playlist_state(self, playlist_id):
+        if str(playlist_id) == "901" and self.fail_created_read:
+            from helper.clients import PlexError
+
+            self.fail_created_read = False
+            raise PlexError("verification timeout")
+        return super().playlist_state(playlist_id)
+
+
 def _recommendation(*_args, **_kwargs):
     return {
         "items": [
@@ -373,6 +404,81 @@ class DailyFixedPlaylistTests(unittest.TestCase):
         self.assertEqual("900", result["playlist_id"])
         self.assertEqual("每日推荐", plex.playlist_state("900")["title"])
         self.assertEqual("每日推荐", store.get("daily_managed")["title"])
+
+    def test_retry_adopts_a_scoped_daily_created_before_verification_failed(self):
+        from helper.engine import SafetyError
+        from helper.profiles import ProfileRegistry
+        from helper.scoped_store import ScopedStore
+
+        root = tempfile.TemporaryDirectory()
+        self.addCleanup(root.cleanup)
+        base = Store(Path(root.name))
+        registry = ProfileRegistry(base)
+        registry.create(name="第二曲库", kind="owner", profile_id="other",
+                        token="other-token", library={"id": "22"})
+        owner = ScopedStore(base, "default", registry=registry)
+        owner_settings = owner.get("settings")
+        owner_settings.update(plex_url="http://plex:32400", plex_token="token", section="11")
+        owner.set("settings", owner_settings)
+        other = ScopedStore(base, "other", registry=registry)
+        other_settings = other.get("settings")
+        other_settings.update(plex_url="http://plex:32400", plex_token="other-token", section="22")
+        other.set("settings", other_settings)
+        plex = _CreateThenVerifyFailsDailyPlex()
+        owner_engine = LibraryEngine(owner, plex_factory=lambda _settings: plex)
+        with patch("helper.daily.recommend_rotating", side_effect=_recommendation):
+            owner_plan = owner_engine.preview_daily(now=1_799_900_000)
+        owner_engine.publish_daily(owner_plan["id"], now=1_799_900_010)
+        engine = LibraryEngine(other, plex_factory=lambda _settings: plex)
+
+        with patch("helper.daily.recommend_rotating", side_effect=_recommendation):
+            first = engine.preview_daily(now=1_800_000_000)
+        with self.assertRaisesRegex(SafetyError, "verification timeout"):
+            engine.publish_daily(first["id"], now=1_800_000_010)
+
+        with patch("helper.daily.recommend_rotating", side_effect=_recommendation):
+            retry = engine.preview_daily(now=1_800_000_020)
+        result = engine.publish_daily(retry["id"], now=1_800_000_030)
+
+        self.assertEqual("901", result["playlist_id"])
+        self.assertEqual(1, plex.create_calls)
+        self.assertEqual({"900", "901"}, set(plex.playlists_by_id))
+
+    def test_unpublished_legacy_library_target_does_not_block_same_title_creation(self):
+        from helper.profiles import ProfileRegistry
+        from helper.scoped_store import ScopedStore
+
+        root = tempfile.TemporaryDirectory()
+        self.addCleanup(root.cleanup)
+        base = Store(Path(root.name))
+        registry = ProfileRegistry(base)
+        registry.create(name="第二曲库", kind="owner", profile_id="other",
+                        token="other-token", library={"id": "22"})
+        owner = ScopedStore(base, "default", registry=registry)
+        owner_settings = owner.get("settings")
+        owner_settings.update(plex_url="http://plex:32400", plex_token="token", section="11")
+        owner.set("settings", owner_settings)
+        other = ScopedStore(base, "other", registry=registry)
+        other_settings = other.get("settings")
+        other_settings.update(plex_url="http://plex:32400", plex_token="other-token", section="22")
+        other.set("settings", other_settings)
+        plex = _DailyPlex(existing=True)
+        owner_engine = LibraryEngine(owner, plex_factory=lambda _settings: plex)
+        with patch("helper.daily.recommend_rotating", side_effect=_recommendation):
+            owner_plan = owner_engine.preview_daily(now=1_799_900_000)
+        owner_engine.publish_daily(owner_plan["id"], now=1_799_900_010)
+        engine = LibraryEngine(other, plex_factory=lambda _settings: plex)
+        other.set("daily_playlist_target", {
+            "title": "每日推荐·曲库22", "scope": engine.daily_scope(),
+            "machine": "machine-a",
+        })
+
+        with patch("helper.daily.recommend_rotating", side_effect=_recommendation):
+            plan = engine.preview_daily(now=1_800_000_000)
+        result = engine.publish_daily(plan["id"], now=1_800_000_010)
+
+        self.assertEqual([], plan["blocked"])
+        self.assertEqual("每日推荐", plex.playlist_state(result["playlist_id"])["title"])
 
     def test_previewed_daily_cannot_be_adopted_after_another_library_claims_it(self):
         from helper.engine import SafetyError

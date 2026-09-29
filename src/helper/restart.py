@@ -2,16 +2,22 @@
 import time
 from .rotation import reconciliation_state
 
+
+def is_legacy_library_daily_title(title):
+    return str(title or '').removeprefix('每日推荐·曲库').isdigit()
+
+
+def normalize_daily_title(title):
+    title=str(title or '')
+    return '每日推荐' if is_legacy_library_daily_title(title) else title
+
 def daily_target_title(engine):
     from .engine import SafetyError
     target=engine.store.get('daily_playlist_target')
     if not target:return '每日推荐'
     if target.get('scope')!=engine.daily_scope():
         raise SafetyError('新每日歌单的账户/资料库范围已变化，请先恢复对应的 Plex 设置。')
-    title=str(target.get('title') or '')
-    if title.removeprefix('每日推荐·曲库').isdigit():
-        return '每日推荐'
-    return title
+    return normalize_daily_title(target.get('title'))
 
 def validate_daily_target(engine,identity):
     from .engine import SafetyError

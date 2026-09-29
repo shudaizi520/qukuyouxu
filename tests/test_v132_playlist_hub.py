@@ -401,6 +401,24 @@ class PlaylistHubPlaybackTests(unittest.TestCase):
         self.assertEqual([180, 200], [row["duration"] for row in result["tracks"]])
         self.assertEqual("/library/metadata/10/thumb/1", result["tracks"][0]["thumb"])
 
+    def test_legacy_daily_library_suffix_is_hidden_in_inventory_and_detail(self):
+        from helper.engine import fingerprint
+        from helper.playlist_hub import assistant_playlist_rows, playlist_detail
+
+        self.state["title"] = "每日推荐·曲库11"
+        managed = dict(self.store.get("daily_managed"))
+        managed.update(title="每日推荐·曲库11", fingerprint=fingerprint(self.state))
+        self.store.set("daily_managed", managed)
+
+        daily = next(row for row in assistant_playlist_rows(self.store)
+                     if row["kind"] == "daily")
+        detail = playlist_detail(self.engine, "daily", "daily")
+
+        self.assertEqual("每日推荐", daily["title"])
+        self.assertEqual("每日推荐", detail["title"])
+        self.assertEqual("每日推荐", detail["recorded_title"])
+        self.assertFalse(detail["externally_modified"])
+
     def test_detail_keeps_a_marked_playlist_readable_after_plex_changes_it(self):
         from helper.playlist_hub import playlist_detail
 

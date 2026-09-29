@@ -25,6 +25,7 @@ from .lyrics import read_track_lyrics
 from .playlist_inventory import assistant_playlist_row, merge_playlist_rows
 from .playlist_ownership import legacy_external_marker, legacy_pch_marker, replace_marker
 from .profiles import profile_identity
+from .restart import normalize_daily_title
 
 
 KIND_LABELS = {
@@ -95,6 +96,7 @@ def assistant_playlist_rows(store):
     rows = []
     daily = store.get("daily_managed") or {}
     if daily:
+        daily = {**daily, "title": normalize_daily_title(daily.get("title"))}
         published = store.get("daily_published_view") or {}
         count = published.get("count")
         if count is None and isinstance(published.get("items"), list):
@@ -764,9 +766,14 @@ def playlist_detail(engine, kind, key, hidden_playlist_ids=(), *, migrate_owners
         engine, str(kind), str(key), record, state, marker, plex,
         migrate=migrate_ownership,
     )
-    recorded_title = str(record.get("title") or "")
+    raw_recorded_title = str(record.get("title") or "")
+    raw_state_title = str(state.get("title") or "")
+    recorded_title = (
+        normalize_daily_title(raw_recorded_title)
+        if str(kind) == "daily" else raw_recorded_title
+    )
     externally_modified = (
-        str(state.get("title") or "") != recorded_title
+        raw_state_title != raw_recorded_title
         or bool(record.get("fingerprint") and fingerprint(state) != record.get("fingerprint"))
     )
     plex_synced = False
@@ -801,7 +808,8 @@ def playlist_detail(engine, kind, key, hidden_playlist_ids=(), *, migrate_owners
         })
     return {
         "kind": str(kind), "key": str(key), "playlist_id": str(record["id"]),
-        "title": str(state["title"]), "recorded_title": recorded_title,
+        "title": normalize_daily_title(raw_state_title) if str(kind) == "daily" else raw_state_title,
+        "recorded_title": recorded_title,
         "externally_modified": externally_modified, "plex_synced": plex_synced,
         "count": len(tracks), "tracks": tracks,
     }
