@@ -15,6 +15,7 @@ from .engine import fingerprint, state_ids
 STATE_KEY = "library_share_v1"
 REVISIONS_KEY = "library_share_revisions_v2"
 MIRRORED_TOPLISTS_KEY = "mirrored_qq_toplists_v1"
+SHARE_POLICY_REVISION = "scoped-playlist-ownership-v2"
 
 
 def _is_qq_toplist(source):

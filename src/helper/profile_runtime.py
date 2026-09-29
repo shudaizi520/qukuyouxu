@@ -277,7 +277,8 @@ class ProfileRuntime:
         """Default same-library category copies, independent of QQ/scan schedules."""
         from .engine import digest, safe_error
         from .library_sharing import (
-            REVISIONS_KEY, STATE_KEY, owner_for_recipient, owner_shared_playlists,
+            REVISIONS_KEY, SHARE_POLICY_REVISION, STATE_KEY,
+            owner_for_recipient, owner_shared_playlists,
             recover_owner_revisions, sync_recipient,
         )
         from .scheduler_retry import clear_retry, schedule_retry
@@ -313,7 +314,7 @@ class ProfileRuntime:
                  sources.get(key, {}).get("enabled", True))
                 for key, row in sorted(managed.items()) if isinstance(row, dict)
             ]
-            revision = digest([manifest, revisions])
+            revision = digest([SHARE_POLICY_REVISION, manifest, revisions])
             share = child_store.get(STATE_KEY, {}) or {}
             checked_at = float(share.get("checked_at") or 0)
             if (share.get("status") == "waiting_retry"

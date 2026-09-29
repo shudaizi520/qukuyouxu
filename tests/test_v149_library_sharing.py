@@ -946,6 +946,38 @@ def test_scheduler_marks_ownership_conflict_for_attention_without_retry(shared_l
     assert state["last_result"]["conflicts"]
 
 
+def test_scheduler_retries_old_attention_state_after_share_policy_upgrade(shared_library):
+    from helper.engine import digest
+    from helper.library_sharing import REVISIONS_KEY, STATE_KEY, owner_shared_playlists
+    from helper.scoped_store import ScopedStore
+
+    base, _registry, runtime, data = shared_library
+    FakePlex("friend-token", data).create("流行精选", ["3"], "个人说明")
+    runtime.sync_library_shares_due(now=1000)
+
+    owner = runtime.engine("default")
+    managed = owner_shared_playlists(owner)
+    sources = {str(row.get("id")): row for row in owner.store.get("sources", []) or []}
+    manifest = [
+        (key, row.get("id"), row.get("title"), row.get("fingerprint"),
+         sources.get(key, {}).get("enabled", True))
+        for key, row in sorted(managed.items()) if isinstance(row, dict)
+    ]
+    legacy_digest = digest([manifest, owner.store.get(REVISIONS_KEY, {}) or {}])
+    child = ScopedStore(base, "friend")
+    state = child.get(STATE_KEY)
+    assert state["status"] == "needs_attention"
+    assert state["owner_digest"] != legacy_digest
+
+    data["friend-token"]["playlists"].clear()
+    state["owner_digest"] = legacy_digest
+    child.set(STATE_KEY, state)
+    runtime.sync_library_shares_due(now=1100)
+
+    assert child.get(STATE_KEY)["status"] == "normal"
+    assert child.get("managed")["qq:pop"]["shared_from"] == "default"
+
+
 def test_recipient_sync_never_recalculates_owner_categories(shared_library):
     from helper.library_sharing import sync_recipient
 
