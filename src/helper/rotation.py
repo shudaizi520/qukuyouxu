@@ -42,6 +42,7 @@ def save_rotating_plan(engine,values):
 
 def reconciliation_state(engine):
     from .engine import SafetyError, fingerprint, state_ids
+    from .restart import normalize_daily_title
     store=engine.store
     managed=store.get('daily_managed')
     if not managed:raise SafetyError('没有已托管的每日歌单；不会按名称接管其他歌单。')
@@ -55,7 +56,7 @@ def reconciliation_state(engine):
     if str(current['id'])!=str(managed['id']):raise SafetyError('返回的歌单标识不一致。')
     marker_ok=engine.marker('daily') in current.get('summary','')
     fp=fingerprint(current)
-    return managed,current,{'playlist_id':str(managed['id']),'title':current.get('title',''),
+    return managed,current,{'playlist_id':str(managed['id']),'title':normalize_daily_title(current.get('title','')),
         'count':len(state_ids(current)),'marker_ok':marker_ok,'changed':fp!=managed.get('fingerprint'),
         'review_fingerprint':fp,'can_accept':marker_ok}
 

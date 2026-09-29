@@ -864,7 +864,39 @@ class PlaylistHubPlaybackTests(unittest.TestCase):
         self.assertEqual(1, self.engine.exclusive_entries)
         self.assertIsNone(self.store.get("daily_managed"))
         self.assertEqual("applied", self.store.get("snapshots")[-1]["status"])
+        self.assertFalse(self.store.get("daily_settings")["enabled"])
+        self.assertTrue(self.store.get("daily_auto_opt_out"))
         self.assertIn("音乐文件未删除", result["message"])
+
+    def test_daily_delete_accepts_public_title_for_unchanged_legacy_suffix(self):
+        from helper.engine import fingerprint
+        from helper.playlist_hub import remove_playlist
+
+        self.state["title"] = "每日推荐·曲库11"
+        managed = dict(self.store.get("daily_managed"))
+        managed.update(title="每日推荐·曲库11", fingerprint=fingerprint(self.state))
+        self.store.set("daily_managed", managed)
+
+        remove_playlist(self.engine, "daily", "daily", "每日推荐")
+
+        self.assertEqual(["900"], self.plex.deleted)
+        self.assertEqual("每日推荐·曲库11", self.store.get("snapshots")[-1]["title"])
+        self.assertIn("每日推荐", self.store.get("events")[-1]["message"])
+        self.assertNotIn("·曲库11", self.store.get("events")[-1]["message"])
+
+    def test_daily_delete_rejects_a_different_legacy_suffix(self):
+        from helper.engine import SafetyError, fingerprint
+        from helper.playlist_hub import remove_playlist
+
+        self.state["title"] = "每日推荐·曲库11"
+        managed = dict(self.store.get("daily_managed"))
+        managed.update(title="每日推荐·曲库11", fingerprint=fingerprint(self.state))
+        self.store.set("daily_managed", managed)
+
+        with self.assertRaisesRegex(SafetyError, "名称已经变化"):
+            remove_playlist(self.engine, "daily", "daily", "每日推荐·曲库999")
+
+        self.assertEqual([], self.plex.deleted)
 
     def test_generated_playlist_rejects_manual_add_but_keeps_existing_removal(self):
         from helper.playlist_hub import edit_playlist_track

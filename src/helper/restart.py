@@ -1,6 +1,10 @@
 """Opt-in detachment of an unrecognized daily list; never writes to Plex."""
+import re
 import time
 from .rotation import reconciliation_state
+
+
+_LEGACY_DAILY_TITLE = re.compile(r'每日推荐·曲库\d+')
 
 
 def is_legacy_library_daily_title(title):
@@ -10,6 +14,10 @@ def is_legacy_library_daily_title(title):
 def normalize_daily_title(title):
     title=str(title or '')
     return '每日推荐' if is_legacy_library_daily_title(title) else title
+
+
+def normalize_daily_text(value):
+    return _LEGACY_DAILY_TITLE.sub('每日推荐', str(value or ''))
 
 def daily_target_title(engine):
     from .engine import SafetyError

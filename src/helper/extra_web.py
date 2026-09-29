@@ -12,6 +12,7 @@ from .behavior import behavior_profile, recent_behavior_events
 from .plex_webhook import active_session_count, webhook_health
 from .base_mixin import DEFAULT_BASE
 from .base import BASE_POLICY
+from .restart import normalize_daily_title
 
 SIMILARITY_FALLBACK_NOTICE = 'Plex 相似接口没有可用结果，本批使用歌手、专辑、流派和已有分类关系寻找相近歌曲。'
 
@@ -43,7 +44,7 @@ def public_daily_published(store):
         return {
             'plan_id': str(view.get('plan_id') or ''),
             'playlist_id': str(view.get('playlist_id') or ''),
-            'title': str(view.get('title') or ''),
+            'title': normalize_daily_title(view.get('title')),
             'date': str(view.get('date') or ''),
             'published_at': view.get('published_at'),
             'count': int(view.get('count') or len(items)),
@@ -59,7 +60,7 @@ def public_daily_published(store):
     return {
         'plan_id': str(latest.get('plan_id') or ''),
         'playlist_id': str(managed.get('id') or ''),
-        'title': str(managed.get('title') or ''),
+        'title': normalize_daily_title(managed.get('title')),
         'date': str(managed.get('date') or latest.get('date') or ''),
         'published_at': managed.get('published_at') or latest.get('created_at'),
         'count': len(ids),
@@ -135,7 +136,10 @@ def extensions_status(store, now=None):
         'updated_at': behavior_status.get('updated_at'),
         'status': behavior_status.get('status', 'waiting'),
     }
-    return {'source_settings': store.get('source_settings', {'reference_limit': 12}), 'metadata_summary': {'review': sum((counts.get(k, 0) for k in ('conflict', 'incomplete', 'stale_correction'))), 'confirmed': counts.get('confirmed', 0), 'breakdown': dict(counts)}, 'base_settings': {**DEFAULT_BASE, **(store.get('base_settings') or {})}, 'base_plan': public_base(store), 'base_notice': store.get('base_notice', ''), 'daily_settings': {**DEFAULT_DAILY, **store.get('daily_settings', {})}, 'daily_plan': public_daily(store), 'daily_published': public_daily_published(store), 'daily_managed': {k: managed.get(k) for k in ('id', 'title', 'date')} if managed else None, 'daily_repair': public_daily_repair(store), 'daily_notice': store.get('daily_notice', ''), 'behavior': behavior, 'status_refresh_ms': 5000 if behavior['active_sessions'] else 45000, 'webhook': webhook_health(base_store, store), 'active_profile': public_active_profile(store), 'product_settings': {'behavior_enabled': product.get('behavior_enabled', True)}, 'feedback': store.get('feedback', {'tracks': {}, 'artists': {}})}
+    daily_managed = {k: managed.get(k) for k in ('id', 'title', 'date')} if managed else None
+    if daily_managed:
+        daily_managed['title'] = normalize_daily_title(daily_managed.get('title'))
+    return {'source_settings': store.get('source_settings', {'reference_limit': 12}), 'metadata_summary': {'review': sum((counts.get(k, 0) for k in ('conflict', 'incomplete', 'stale_correction'))), 'confirmed': counts.get('confirmed', 0), 'breakdown': dict(counts)}, 'base_settings': {**DEFAULT_BASE, **(store.get('base_settings') or {})}, 'base_plan': public_base(store), 'base_notice': store.get('base_notice', ''), 'daily_settings': {**DEFAULT_DAILY, **store.get('daily_settings', {})}, 'daily_plan': public_daily(store), 'daily_published': public_daily_published(store), 'daily_managed': daily_managed, 'daily_repair': public_daily_repair(store), 'daily_notice': store.get('daily_notice', ''), 'behavior': behavior, 'status_refresh_ms': 5000 if behavior['active_sessions'] else 45000, 'webhook': webhook_health(base_store, store), 'active_profile': public_active_profile(store), 'product_settings': {'behavior_enabled': product.get('behavior_enabled', True)}, 'feedback': store.get('feedback', {'tracks': {}, 'artists': {}})}
 
 def attach_routes(app, store, engine, body, ensure_idle):
 

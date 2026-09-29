@@ -125,6 +125,24 @@ class DailyPublishedViewV108Tests(unittest.TestCase):
         self.assertEqual(2, status["daily_published"]["count"])
         self.assertEqual([], status["daily_published"]["items"])
 
+    def test_status_never_exposes_a_legacy_library_suffix(self):
+        from helper.extra_web import extensions_status
+
+        store, _engine = self.make_engine()
+        store.set_many({
+            "daily_managed": {
+                "id": "99239", "title": "每日推荐·曲库11", "published_at": NOW,
+            },
+            "daily_published_view": {
+                **PUBLISHED, "playlist_id": "99239", "title": "每日推荐·曲库11",
+            },
+        })
+
+        status = extensions_status(store)
+
+        self.assertEqual("每日推荐", status["daily_managed"]["title"])
+        self.assertEqual("每日推荐", status["daily_published"]["title"])
+
     def test_draft_for_one_profile_never_replaces_another_profiles_published_view(self):
         from helper.extra_web import extensions_status
         from helper.profiles import ProfileRegistry

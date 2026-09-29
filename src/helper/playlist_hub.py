@@ -956,7 +956,7 @@ def _remove_daily(engine, confirm_title, now=None):
         engine, "daily", "daily", record, current, engine.marker("daily"), plex,
     )
     title = str(current.get("title") or "")
-    if str(confirm_title or "") != title:
+    if str(confirm_title or "") not in {title, normalize_daily_title(title)}:
         raise SafetyError("歌单名称已经变化，请刷新后重试")
     if record.get("scope") != engine.daily_scope() or record.get("machine") != identity.get("machine"):
         raise SafetyError("账户、服务器或音乐库已经变化，拒绝删除")
@@ -982,7 +982,7 @@ def _remove_daily(engine, confirm_title, now=None):
             "daily_settings": settings, "daily_auto_suspension": None,
             "daily_auto_opt_out": True,
         })
-        store.log("已从首页删除每日推荐歌单：" + title)
+        store.log("已从首页删除每日推荐歌单：" + normalize_daily_title(title))
         return {"message": "已从 Plex 删除该歌单；音乐文件未删除。"}
     except Exception as exc:
         snapshot.update(status="uncertain", error=str(exc)[:300])

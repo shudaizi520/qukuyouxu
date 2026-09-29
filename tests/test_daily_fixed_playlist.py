@@ -405,6 +405,28 @@ class DailyFixedPlaylistTests(unittest.TestCase):
         self.assertEqual("每日推荐", plex.playlist_state("900")["title"])
         self.assertEqual("每日推荐", store.get("daily_managed")["title"])
 
+    def test_recovery_reports_never_expose_a_legacy_library_suffix(self):
+        from helper.engine import fingerprint
+        from helper.restart import restart_proposal
+        from helper.rotation import reconciliation_state
+
+        plex = _DailyPlex(existing=True)
+        store, engine = self.make_engine(plex)
+        current = plex.playlists_by_id["900"]
+        current["title"] = "每日推荐·曲库11"
+        store.set("daily_managed", {
+            "id": "900", "title": current["title"],
+            "fingerprint": fingerprint(current), "machine": "machine-a",
+            "scope": engine.daily_scope(),
+        })
+
+        _managed, _current, reconciliation = reconciliation_state(engine)
+        self.assertEqual("每日推荐", reconciliation["title"])
+
+        current["summary"] = "用户原有说明"
+        restart = restart_proposal(engine)
+        self.assertEqual("每日推荐", restart["title"])
+
     def test_retry_adopts_a_scoped_daily_created_before_verification_failed(self):
         from helper.engine import SafetyError
         from helper.profiles import ProfileRegistry

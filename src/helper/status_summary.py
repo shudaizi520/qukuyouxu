@@ -149,4 +149,12 @@ def build_status_summary(app, store, engine, runtime, now=None):
 
 
 def build_status_details(store):
-    return {"events": list(store.get("events") or [])[-30:]}
+    from .restart import normalize_daily_text
+
+    events = []
+    for row in list(store.get("events") or [])[-30:]:
+        if isinstance(row, dict):
+            events.append({**row, "message": normalize_daily_text(row.get("message"))})
+        else:
+            events.append(normalize_daily_text(row))
+    return {"events": events}

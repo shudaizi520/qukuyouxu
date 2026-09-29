@@ -180,3 +180,22 @@ def test_status_details_are_bounded_and_absent_from_polling_payload(tmp_path):
     assert "events" not in summary
     assert len(details["events"]) == 30
     assert details["events"][-1]["message"] == "event-34"
+
+
+def test_status_details_hide_legacy_daily_suffixes_without_rewriting_audit(tmp_path):
+    from helper.status_summary import build_status_details
+    from helper.store import Store
+
+    store = Store(tmp_path)
+    raw_message = "已从首页删除每日推荐歌单：每日推荐·曲库11"
+    store.log(raw_message)
+    stored = store.get("events")
+    stored.insert(0, "旧记录：每日推荐·曲库22")
+    store.set("events", stored)
+
+    details = build_status_details(store)
+
+    assert details["events"][0] == "旧记录：每日推荐"
+    assert details["events"][-1]["message"] == "已从首页删除每日推荐歌单：每日推荐"
+    assert store.get("events") == ["旧记录：每日推荐·曲库22", stored[-1]]
+    assert store.get("events")[-1]["message"] == raw_message
