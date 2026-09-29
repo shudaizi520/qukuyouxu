@@ -8,7 +8,10 @@ def daily_target_title(engine):
     if not target:return '每日推荐'
     if target.get('scope')!=engine.daily_scope():
         raise SafetyError('新每日歌单的账户/资料库范围已变化，请先恢复对应的 Plex 设置。')
-    return target['title']
+    title=str(target.get('title') or '')
+    if title.removeprefix('每日推荐·曲库').isdigit():
+        return '每日推荐'
+    return title
 
 def validate_daily_target(engine,identity):
     from .engine import SafetyError

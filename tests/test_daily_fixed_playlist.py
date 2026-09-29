@@ -313,7 +313,7 @@ class DailyFixedPlaylistTests(unittest.TestCase):
         self.assertEqual("901", store.get("daily_managed")["id"])
         self.assertEqual({"3", "4"}, {row["id"] for row in plex.playlist_state("901")["items"]})
 
-    def test_new_profile_uses_own_daily_title_when_another_library_owns_default(self):
+    def test_new_profile_uses_same_daily_title_when_another_library_owns_default(self):
         from helper.profiles import ProfileRegistry
         from helper.scoped_store import ScopedStore
 
@@ -324,12 +324,18 @@ class DailyFixedPlaylistTests(unittest.TestCase):
         registry.create(name="第二曲库", kind="owner", profile_id="other",
                         token="other-token", library={"id": "22"})
         owner = ScopedStore(base, "default", registry=registry)
-        owner.set("daily_managed", {"id": "900", "machine": "machine-a"})
+        owner_settings = owner.get("settings")
+        owner_settings.update(plex_url="http://plex:32400", plex_token="token", section="11")
+        owner.set("settings", owner_settings)
         other = ScopedStore(base, "other", registry=registry)
         settings = other.get("settings")
         settings.update(plex_url="http://plex:32400", plex_token="other-token", section="22")
         other.set("settings", settings)
         plex = _DailyPlex(existing=True)
+        owner_engine = LibraryEngine(owner, plex_factory=lambda _settings: plex)
+        with patch("helper.daily.recommend_rotating", side_effect=_recommendation):
+            owner_plan = owner_engine.preview_daily(now=1_799_900_000)
+        owner_engine.publish_daily(owner_plan["id"], now=1_799_900_010)
         engine = LibraryEngine(other, plex_factory=lambda _settings: plex)
 
         with patch("helper.daily.recommend_rotating", side_effect=_recommendation):
@@ -337,11 +343,36 @@ class DailyFixedPlaylistTests(unittest.TestCase):
 
         self.assertEqual([], plan["blocked"])
         self.assertIsNone(plan["before"])
-        self.assertEqual("每日推荐·曲库22", other.get("daily_playlist_target")["title"])
+        self.assertIsNone(other.get("daily_playlist_target"))
         result = engine.publish_daily(plan["id"], now=1_800_000_010)
         self.assertEqual("901", result["playlist_id"])
-        self.assertEqual("每日推荐·曲库22", plex.playlist_state("901")["title"])
+        self.assertEqual("每日推荐", plex.playlist_state("901")["title"])
         self.assertEqual("每日推荐", plex.playlist_state("900")["title"])
+
+    def test_next_update_normalizes_a_verified_legacy_library_suffix(self):
+        plex = _DailyPlex(existing=True)
+        store, engine = self.make_engine(plex)
+        with patch("helper.daily.recommend_rotating", side_effect=_recommendation):
+            first = engine.preview_daily(now=1_800_000_000)
+        engine.publish_daily(first["id"], now=1_800_000_010)
+
+        plex.playlists_by_id["900"]["title"] = "每日推荐·曲库11"
+        managed = dict(store.get("daily_managed"))
+        managed["title"] = "每日推荐·曲库11"
+        store.set("daily_managed", managed)
+        store.set("daily_playlist_target", {
+            "title": "每日推荐·曲库11",
+            "scope": engine.daily_scope(),
+            "machine": "machine-a",
+        })
+
+        with patch("helper.daily.recommend_rotating", side_effect=_next_recommendation):
+            second = engine.preview_daily(now=1_800_086_400)
+        result = engine.publish_daily(second["id"], now=1_800_086_410)
+
+        self.assertEqual("900", result["playlist_id"])
+        self.assertEqual("每日推荐", plex.playlist_state("900")["title"])
+        self.assertEqual("每日推荐", store.get("daily_managed")["title"])
 
     def test_previewed_daily_cannot_be_adopted_after_another_library_claims_it(self):
         from helper.engine import SafetyError

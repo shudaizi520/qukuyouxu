@@ -198,7 +198,6 @@ class DailyMixin:
             playlists = p.playlists()
             same_name = next((row for row in playlists if row.get('title') == target_title), None)
             same_name_id = str((same_name or {}).get('id') or (same_name or {}).get('ratingKey') or '')
-            derived_target = False
             archived_claim = bool(same_name_id and claimed_by_archived_same_identity(
                 self.store, same_name_id, identity['machine']))
             if archived_claim:
@@ -206,21 +205,14 @@ class DailyMixin:
             if (same_name_id and not self.store.get('daily_playlist_target')
                     and not archived_claim
                     and claimed_by_another_profile(self.store, same_name_id, identity['machine'])):
-                # One Plex account can expose several music libraries. Keep the
-                # first library's existing list and give this library a stable,
-                # distinct target instead of adopting the other library's list.
-                target_title = '每日推荐·曲库' + str(cfg['section'])
-                self.store.set('daily_playlist_target', {
-                    'title': target_title, 'scope': self.daily_scope(),
-                    'machine': identity['machine'],
-                })
-                derived_target = True
-                same_name = next((row for row in playlists if row.get('title') == target_title), None)
-                same_name_id = str((same_name or {}).get('id') or (same_name or {}).get('ratingKey') or '')
+                # A Plex account can expose several music libraries. Scoped
+                # ownership markers let each library keep its own same-title
+                # daily playlist without adopting the sibling library's ID.
+                same_name = None
+                same_name_id = ''
             if same_name_id and not archived_claim:
                 candidate = p.playlist_state(same_name_id)
-                if (derived_target or claimed_by_another_profile(
-                        self.store, same_name_id, identity['machine'])):
+                if claimed_by_another_profile(self.store, same_name_id, identity['machine']):
                     blocked.append('同名每日推荐已由其他曲库管理，不会接管或覆盖')
                 elif (self.marker(DAILY_CID) in candidate.get('summary', '')
                         or legacy_pch_marker(candidate.get('summary', ''), DAILY_CID)):
