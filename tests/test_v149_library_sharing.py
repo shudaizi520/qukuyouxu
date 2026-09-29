@@ -521,9 +521,9 @@ def test_qq_toplist_is_rematched_into_every_other_library_and_drops_qq_prefix(sh
     )
     registry.create(
         name="经典音乐朋友", kind="shared", profile_id="classic-friend",
-        account={"id": "classic-friend"},
+        account={"id": "friend"},
         server={"machine": "server-a", "url": "http://plex"},
-        library={"id": "12", "name": "经典音乐"}, token="classic-friend-token",
+        library={"id": "12", "name": "经典音乐"}, token="friend-token",
     )
 
     catalogs = {
@@ -612,8 +612,14 @@ def test_qq_toplist_is_rematched_into_every_other_library_and_drops_qq_prefix(sh
     )
     assert [
         item["id"]
-        for item in data["classic-friend-token"]["playlists"][shared_chart["id"]]["items"]
+        for item in data["friend-token"]["playlists"][shared_chart["id"]]["items"]
     ] == ["101", "102"]
+    shared_account_copies = [
+        tuple(item["id"] for item in row["items"])
+        for row in data["friend-token"]["playlists"].values()
+        if row["title"] == "飙升榜"
+    ]
+    assert sorted(shared_account_copies) == [("1", "2"), ("101", "102")]
 
 
 def test_owner_ordinary_qq_import_stays_personal(shared_library):

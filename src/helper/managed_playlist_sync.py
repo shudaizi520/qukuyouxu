@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 import hashlib
+import re
 import time
 from typing import Mapping
 
@@ -104,6 +105,24 @@ def _is_target_candidate(row: Mapping[str, object], target: ManagedPlaylistTarge
     return target.marker in lines and _scope_marker(target) in lines
 
 
+def _is_same_installation_sibling(row: Mapping[str, object], target: ManagedPlaylistTarget) -> bool:
+    """Recognize another scoped playlist owned by this installation."""
+    match = re.fullmatch(
+        r"\[PCH:([A-Za-z0-9._-]{1,128}):[^\]\r\n]{1,300}\]",
+        target.marker,
+    )
+    if not match:
+        return False
+    lines = str(row.get("summary") or "").splitlines()
+    sibling_marker = re.compile(
+        rf"\[PCH:{re.escape(match.group(1))}:[^\]\r\n]{{1,300}}\]"
+    )
+    return (
+        any(sibling_marker.fullmatch(line) for line in lines)
+        and any(re.fullmatch(r"\[QKYX-SCOPE:[0-9a-f]{64}\]", line) for line in lines)
+    )
+
+
 def _assert_scope_compatible(state: Mapping[str, object], target: ManagedPlaylistTarget) -> None:
     lines = str(state.get("summary") or "").splitlines()
     scope_lines = [line for line in lines if line.startswith("[QKYX-SCOPE:")]
@@ -166,7 +185,7 @@ def _discover_or_create(plex, target: ManagedPlaylistTarget, adopt_existing: boo
         return plex.playlist_state(playlist_id), False
     if any(
         str(row.get("title") or "") == target.title
-        and target.marker not in str(row.get("summary") or "").splitlines()
+        and not _is_same_installation_sibling(row, target)
         for row in plex.playlists()
     ):
         raise ReconcileConflict("Plex 中存在同名但没有本应用管理标记的歌单")

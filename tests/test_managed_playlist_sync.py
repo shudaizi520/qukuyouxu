@@ -278,13 +278,38 @@ def test_reconcile_discovers_created_playlist_after_response_is_lost():
 
 
 def test_reconcile_can_create_a_separate_copy_beside_an_owned_sibling():
-    plex = MemoryPlex([state("44")])
+    sibling = state(
+        "44",
+        summary="[PCH:installation:external:other]\n" + scoped_summary().splitlines()[1],
+    )
+    plex = MemoryPlex([sibling])
 
     result = reconcile_managed_playlist(plex, target(), None, adopt_existing=False)
 
     assert result.status == "created"
     assert result.playlist["id"] == "100"
     assert set(plex.states) == {"44", "100"}
+
+
+@pytest.mark.parametrize(
+    "summary",
+    [
+        "[PCH:installation:smart:weekly]",
+        "[PCH:installation:external:other]\n[QKYX-SCOPE:]",
+        "[PCH:installation:external:other]\n[QKYX-SCOPE:abc123]",
+        "[PCH:installation:external:other]\n[QKYX-SCOPE:" + "g" * 64 + "]",
+        "[PCH:installation:]\n" + scoped_summary().splitlines()[1],
+        "[PCH:installation:x]junk]\n" + scoped_summary().splitlines()[1],
+        "[PCH:other-installation:external:other]\n" + scoped_summary().splitlines()[1],
+    ],
+)
+def test_reconcile_refuses_same_title_with_incomplete_or_foreign_managed_marker(summary):
+    plex = MemoryPlex([state("44", summary=summary)])
+
+    with pytest.raises(ReconcileConflict, match="同名"):
+        reconcile_managed_playlist(plex, target(), None, adopt_existing=False)
+
+    assert plex.calls == []
 
 
 def test_missing_record_never_adopts_same_marker_from_another_scope():
