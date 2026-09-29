@@ -13,6 +13,24 @@ sys.path.insert(0, str(ROOT / "src"))
 
 
 class PlaylistHubRowsTests(unittest.TestCase):
+    def test_shared_external_category_is_presented_as_a_sidebar_playlist(self):
+        from helper.playlist_inventory import assistant_playlist_row
+
+        shared_chart = assistant_playlist_row({
+            "kind": "category", "key": "external:x-chart",
+            "playlist_id": "105814", "title": "热歌榜", "count": 234,
+        })
+        ordinary_category = assistant_playlist_row({
+            "kind": "category", "key": "theme:drive",
+            "playlist_id": "88", "title": "开车精选", "count": 47,
+        })
+
+        self.assertEqual("category", shared_chart["kind"])
+        self.assertEqual("custom", shared_chart["section"])
+        self.assertEqual("personal", shared_chart["sidebar_group"])
+        self.assertEqual("library", ordinary_category["section"])
+        self.assertEqual("", ordinary_category["sidebar_group"])
+
     def test_assistant_playlist_count_is_backfilled_from_the_same_plex_playlist(self):
         from helper.playlist_inventory import merge_playlist_rows
 

@@ -41,12 +41,16 @@ def capabilities(*, source, smart):
 def assistant_playlist_row(row):
     result = dict(row)
     kind = str(result.get("kind") or "")
+    shared_external = (
+        kind == "category"
+        and str(result.get("key") or "").startswith("external:")
+    )
     source = "external" if kind == "external" else "assistant"
     section = "smart" if kind in {"daily", "smart"} else (
-        "library" if kind == "category" else "custom"
+        "library" if kind == "category" and not shared_external else "custom"
     )
     sidebar_group = "favorite" if kind == "favorite" else (
-        "personal" if kind == "external" else ""
+        "personal" if kind == "external" or shared_external else ""
     )
     result.update(
         section=section, source=source, smart=False, stale=False,
