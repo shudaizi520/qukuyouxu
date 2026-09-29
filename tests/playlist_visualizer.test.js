@@ -21,7 +21,7 @@ test('whitened frequency bands retain independent local detail',()=>{
 
  assert.equal(levels.length,121);
  assert.ok(visible.filter(value=>value>.04).length>=100);
- assert.ok(peaks.length>=5&&peaks.length<=18);
+ assert.ok(peaks.length>=12&&peaks.length<=28);
  assert.ok(averageStep>.006);
  assert.notDeepEqual(levels.slice(0,50),levels.slice(-50).reverse());
 });
@@ -30,7 +30,7 @@ test('per-frame smoothing reacts quickly and releases gradually',()=>{
  const previous=[.2,.8],target=[.8,.2];
  const next=smoothVisualizerLevels(previous,target);
  assert.ok(next[0]>.64&&next[0]<.8);
- assert.ok(next[1]>.55&&next[1]<.65);
+ assert.ok(next[1]>.64&&next[1]<.68);
  assert.ok(next[0]-.2>.8-next[1]);
 });
 
@@ -38,10 +38,10 @@ test('silence leaves only the visual baseline',()=>{
  assert.deepEqual(buildVisualizerLevels(new Uint8Array(512),5),[0,0,0,0,0]);
 });
 
-test('desktop visualizer uses a dense field of slender bars',()=>{
+test('desktop visualizer uses a compact field of slender bars',()=>{
  const geometry=visualizerGeometry(900);
  assert.ok(geometry.barWidth>=3&&geometry.barWidth<=4);
  assert.ok(geometry.gap>=5.5&&geometry.gap<=7);
- assert.ok(geometry.count>=76&&geometry.count<=92);
- assert.ok(geometry.span>=780&&geometry.span<=880);
+ assert.ok(geometry.count>=56&&geometry.count<=64);
+ assert.ok(geometry.span>=540&&geometry.span<=680);
 });
