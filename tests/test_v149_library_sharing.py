@@ -72,6 +72,13 @@ class FakePlex:
         removed = set(map(str, item_ids))
         row["items"] = [item for item in row["items"] if item["item_id"] not in removed]
 
+    def move_item(self, playlist_id, item_id, after=None):
+        items = self.data["playlists"][str(playlist_id)]["items"]
+        moving = next(item for item in items if item["item_id"] == str(item_id))
+        items.remove(moving)
+        index = -1 if after is None else next(i for i, item in enumerate(items) if item["item_id"] == str(after))
+        items.insert(index + 1, moving)
+
 
 @pytest.fixture
 def shared_library():
@@ -128,6 +135,7 @@ def test_owner_categories_default_to_recipient_without_qq_login(shared_library):
     copied = data["friend-token"]["playlists"][record["id"]]
     assert result["created"] == 1
     assert [item["id"] for item in copied["items"]] == ["1", "2"]
+
     assert record["shared_from"] == "default"
     assert child.get("qq_auth_credentials") is None
 
@@ -165,8 +173,49 @@ def test_owner_qq_toplist_is_copied_to_every_same_library_recipient(shared_libra
     record = child.get("managed")[category_id]
     copied = data["friend-token"]["playlists"][record["id"]]
     assert len(data["friend-token"]["playlists"]) == 2
+
     assert copied["title"] == "QQ飙升榜"
     assert [item["id"] for item in copied["items"]] == ["1", "2"]
+
+    original = data["owner-token"]["playlists"][playlist["id"]]
+    original["items"].reverse()
+    repository.save_managed("default", source["id"], {
+        "id": original["id"], "title": original["title"],
+        "fingerprint": fingerprint(original), "count": 2, "marker": marker,
+    })
+
+    runtime.sync_library_shares_due(now=2_000_000_101)
+
+    copied = data["friend-token"]["playlists"][record["id"]]
+    assert [item["id"] for item in copied["items"]] == ["2", "1"]
+    assert len(data["friend-token"]["playlists"]) == 2
+
+    # A brand-new child may be created successfully before sorting fails.
+    # Retain the exact verified identity, not an orphan to recreate on retry.
+    from helper.library_sharing import sync_recipient
+    del data["friend-token"]["playlists"][record["id"]]
+    child.set("managed", {key: value for key, value in child.get("managed").items() if key != category_id})
+
+    class IgnoreOrderPlex(FakePlex):
+        def create(self, title, ids, marker, description=None):
+            return super().create(title, list(reversed(ids)), marker, description)
+
+        def move_item(self, *args, **kwargs):
+            pass
+
+    runtime.engine("friend").plex_factory = lambda cfg: IgnoreOrderPlex(cfg["plex_token"], data)
+    first = sync_recipient(runtime, "default", "friend")
+    assert first.get("order_pending") is True
+    pending_id = child.get("managed")[category_id]["id"]
+    second = sync_recipient(runtime, "default", "friend")
+    assert second.get("order_pending") is True
+    assert len(data["friend-token"]["playlists"]) == 2
+    assert child.get("managed")[category_id]["id"] == pending_id
+    runtime.engine("friend").plex_factory = lambda cfg: FakePlex(cfg["plex_token"], data)
+    final = sync_recipient(runtime, "default", "friend")
+    assert final["errors"] == []
+    assert [item["id"] for item in data["friend-token"]["playlists"][pending_id]["items"]] == ["2", "1"]
+    assert len(data["friend-token"]["playlists"]) == 2
 
 
 def test_upgrade_cycle_immediately_renames_existing_toplist_and_copies_clean_title(shared_library):
@@ -312,6 +361,50 @@ def test_authorized_owner_gets_both_builtin_toplists_without_manual_import(tmp_p
     assert providers.calls == ["26", "62"]
     assert len(data["owner-token"]["playlists"]) == 2
     assert {row["title"] for row in data["friend-token"]["playlists"].values()} == {"热歌榜", "飙升榜"}
+
+    heat = next(row for row in sources if row["external_id"] == "26")
+    record = repository.get_managed("default", heat["id"])
+    playlist = data["owner-token"]["playlists"][record["id"]]
+    playlist["items"].reverse()
+    from helper.engine import fingerprint
+    repository.save_managed("default", heat["id"], {
+        **record, "order_attention": True, "fingerprint": fingerprint(playlist),
+    })
+
+    runtime.run_due(now=now + 2)
+
+    healed = repository.get_managed("default", heat["id"])
+    assert healed["order_attention"] is False
+    assert healed["order_pending"] is False
+    assert [item["id"] for item in playlist["items"]] == ["1", "2"]
+    assert providers.calls == ["26", "62"]
+    assert len(data["owner-token"]["playlists"]) == 2
+
+
+def test_share_order_failure_keeps_automatic_retries_after_backoff_limit(shared_library):
+    from helper.library_sharing import STATE_KEY
+    from helper.managed_playlist_sync import PlaylistOrderPending
+    from helper.scoped_store import ScopedStore
+
+    base, _registry, runtime, data = shared_library
+
+    class PendingOrderPlex(FakePlex):
+        def create(self, *args, **kwargs):
+            raise PlaylistOrderPending({})
+
+    runtime.engine("friend").plex_factory = lambda cfg: PendingOrderPlex(cfg["plex_token"], data)
+    child = ScopedStore(base, "friend")
+    now = 1000
+    for _ in range(5):
+        runtime.sync_library_shares_due(now=now)
+        waiting = child.get(STATE_KEY)
+        assert waiting["status"] == "waiting_retry"
+        assert waiting["retry_at"] > now
+        now = waiting["retry_at"]
+
+    runtime.engine("friend").plex_factory = lambda cfg: FakePlex(cfg["plex_token"], data)
+    runtime.sync_library_shares_due(now=now)
+    assert child.get(STATE_KEY)["status"] == "normal"
 
 
 def test_builtin_toplists_wait_for_qq_authorization(shared_library):

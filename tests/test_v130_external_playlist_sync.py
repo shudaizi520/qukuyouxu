@@ -273,16 +273,143 @@ class ExternalPlaylistSyncV130Tests(unittest.TestCase):
         self.assertEqual([], plex.created)
         self.assertEqual(2, len([row for row in plex.mutations if row[0] == "append"]))
 
-    def test_ignored_move_keeps_membership_and_returns_attention(self):
+    def test_ignored_move_is_retryable_not_a_success_or_manual_attention(self):
         from helper.external_playlist_sync import create_or_reconcile_external_playlist
+        from helper.managed_playlist_sync import PlaylistOrderPending
 
         state = owned_state(track_ids=["2", "1"])
         plex = FakePlex(states=[state], ignore_moves=True)
-        after, managed = create_or_reconcile_external_playlist(
-            plex, INSTALL, SOURCE, managed_for(state), ["1", "2"]
+        with self.assertRaises(PlaylistOrderPending) as pending:
+            create_or_reconcile_external_playlist(
+                plex, INSTALL, SOURCE, managed_for(state), ["1", "2"]
+            )
+        self.assertEqual({"1", "2"}, set(ids(pending.exception.state)))
+        self.assertEqual(3, len(plex.mutations))
+        self.assertTrue(pending.exception.managed["order_pending"])
+
+    def test_legacy_attention_is_reordered_and_cleared_even_without_membership_changes(self):
+        from helper.external_playlist_sync import create_or_reconcile_external_playlist
+
+        for actual in (["2", "1"], ["1", "2"]):
+            state = owned_state(track_ids=actual)
+            after, managed = create_or_reconcile_external_playlist(
+                FakePlex(states=[state]), INSTALL, SOURCE,
+                managed_for(state, order_attention=True), ["1", "2"],
+            )
+            self.assertEqual(["1", "2"], ids(after))
+            self.assertFalse(managed["order_attention"])
+
+    def test_one_ignored_move_is_automatically_retried(self):
+        from helper.external_playlist_sync import create_or_reconcile_external_playlist
+
+        class IgnoreOnce(FakePlex):
+            def move_item(self, *args, **kwargs):
+                super().move_item(*args, **kwargs)
+                self.ignore_moves = False
+
+        state = owned_state(track_ids=["3", "2", "1"])
+        plex = IgnoreOnce(states=[state], ignore_moves=True)
+        after, record = create_or_reconcile_external_playlist(
+            plex, INSTALL, SOURCE, managed_for(state), ["1", "2", "3"],
         )
-        self.assertEqual({"1", "2"}, set(ids(after)))
-        self.assertTrue(managed["order_attention"])
+        self.assertEqual(["1", "2", "3"], ids(after))
+        self.assertFalse(record["order_attention"])
+        self.assertEqual(3, len(plex.mutations))
+
+    def test_lost_move_response_is_verified_before_another_move(self):
+        from helper.clients import PlexError
+        from helper.external_playlist_sync import create_or_reconcile_external_playlist
+
+        class LostResponse(FakePlex):
+            def move_item(self, *args, **kwargs):
+                super().move_item(*args, **kwargs)
+                raise PlexError("response lost after committed move")
+
+        state = owned_state(track_ids=["2", "1"])
+        plex = LostResponse(states=[state])
+        after, _ = create_or_reconcile_external_playlist(
+            plex, INSTALL, SOURCE, managed_for(state), ["1", "2"],
+        )
+        self.assertEqual(["1", "2"], ids(after))
+        self.assertEqual(1, len(plex.mutations))
+
+    def test_full_chart_avoids_neighbor_insertions_that_plex_can_ignore(self):
+        from helper.external_playlist_sync import create_or_reconcile_external_playlist
+
+        class TailOnlyPlex(FakePlex):
+            def move_item(self, playlist_id, item_id, after=None):
+                # Real 215-song probe reproduced ignored neighbour insertions;
+                # moving after the current last item remained reliable.
+                self.assert_tail = str(after) == self.states[str(playlist_id)]["items"][-1]["item_id"]
+                if not self.assert_tail:
+                    return
+                super().move_item(playlist_id, item_id, after=after)
+
+        desired = [str(value) for value in range(1, 216)]
+        actual = desired[:115] + desired[130:] + desired[115:130]
+        state = owned_state(track_ids=actual)
+        plex = TailOnlyPlex(states=[state])
+        after, record = create_or_reconcile_external_playlist(
+            plex, INSTALL, SOURCE, managed_for(state), desired,
+        )
+        self.assertEqual(desired, ids(after))
+        self.assertFalse(record["order_pending"])
+        self.assertLess(len(plex.mutations), len(desired))
+
+    def test_every_small_permutation_converges_without_membership_writes(self):
+        from itertools import permutations
+        from helper.external_playlist_sync import create_or_reconcile_external_playlist
+
+        desired = ["1", "2", "3", "4"]
+        for values in permutations(desired):
+            with self.subTest(actual=values):
+                state = owned_state(track_ids=list(values))
+                plex = FakePlex(states=[state])
+                after, _ = create_or_reconcile_external_playlist(
+                    plex, INSTALL, SOURCE, managed_for(state), desired,
+                )
+                self.assertEqual(desired, ids(after))
+                self.assertTrue(all(row[0] == "move" for row in plex.mutations))
+                self.assertLess(len(plex.mutations), len(desired))
+
+    def test_identity_or_membership_changes_during_sort_stop_further_writes(self):
+        from helper.engine import SafetyError
+        from helper.external_playlist_sync import create_or_reconcile_external_playlist
+
+        for change in ("title", "summary", "members"):
+            class DriftPlex(FakePlex):
+                def move_item(self, playlist_id, *args, **kwargs):
+                    super().move_item(playlist_id, *args, **kwargs)
+                    row = self.states[str(playlist_id)]
+                    if change == "members":
+                        row["items"].append({"id": "9", "item_id": "manual"})
+                    else:
+                        row[change] = "changed externally"
+
+            state = owned_state(track_ids=["3", "2", "1"])
+            plex = DriftPlex(states=[state])
+            with self.subTest(change=change), self.assertRaises(SafetyError):
+                create_or_reconcile_external_playlist(
+                    plex, INSTALL, SOURCE, managed_for(state), ["1", "2", "3"],
+                )
+            self.assertEqual(1, len(plex.mutations))
+
+    def test_ownership_change_during_append_stops_before_sorting(self):
+        from helper.engine import SafetyError
+        from helper.external_playlist_sync import create_or_reconcile_external_playlist
+
+        class DriftOnAppend(FakePlex):
+            def append(self, playlist_id, track_ids):
+                super().append(playlist_id, track_ids)
+                self.states[str(playlist_id)]["summary"] = "no longer app-owned"
+
+        state = owned_state(track_ids=["1", "3"])
+        plex = DriftOnAppend(states=[state])
+        with self.assertRaises(SafetyError):
+            create_or_reconcile_external_playlist(
+                plex, INSTALL, SOURCE, managed_for(state), ["1", "2", "3"],
+            )
+        self.assertEqual(["append"], [row[0] for row in plex.mutations])
 
     def test_delete_requires_matching_id_title_marker_and_unchanged_fingerprint(self):
         from helper.engine import SafetyError

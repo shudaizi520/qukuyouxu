@@ -306,6 +306,15 @@ class ExternalRepository:
             )
             return self._require_source(db, profile_id, source_id)
 
+    def clear_failure(self, profile_id: str, source_id: str) -> None:
+        profile_id = self._profile(profile_id)
+        with self.store.lock, self.store._db() as db:
+            self._require_source(db, profile_id, source_id)
+            db.execute(
+                "UPDATE external_source SET last_error='',failure_count=0,next_retry_at=NULL WHERE profile_id=? AND id=?",
+                (profile_id, str(source_id)),
+            )
+
     def list_sources(self, profile_id: str) -> list[dict]:
         profile_id = self._profile(profile_id)
         with self.store.lock, self.store._db() as db:

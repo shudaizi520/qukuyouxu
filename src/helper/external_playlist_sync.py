@@ -6,6 +6,7 @@ import json
 import re
 
 from .clients import PlexNotFound
+from .managed_playlist_sync import PlaylistOrderPending, ReconcileConflict, reconcile_playlist_order
 
 
 def _safety(message):
@@ -105,14 +106,15 @@ def _owned_state(state, playlist_id, title, marker):
     )
 
 
-def _managed_record(state, source, marker, order_attention=False):
+def _managed_record(state, source, marker, order_pending=False):
     return {
         "id": str(state["id"]),
         "title": str(state["title"]),
         "fingerprint": playlist_fingerprint(state),
         "revision": str(source.get("revision") or ""),
         "marker": marker,
-        "order_attention": bool(order_attention),
+        "order_attention": False,
+        "order_pending": bool(order_pending),
         "count": len(state.get("items") or []),
     }
 
@@ -173,7 +175,7 @@ def _initial_state(plex, source, marker, managed, desired):
     return current, source_title
 
 
-def create_or_reconcile_external_playlist(plex, installation_id, source, managed, desired_ids):
+def create_or_reconcile_external_playlist(plex, installation_id, source, managed, desired_ids, *, checkpoint=None, progress=None):
     desired = _validate_desired(desired_ids)
     source_id, _ = _validate_source(source)
     marker = external_marker(installation_id, source_id)
@@ -182,8 +184,6 @@ def create_or_reconcile_external_playlist(plex, installation_id, source, managed
     actual = _ids(current)
     if len(actual) != len(set(actual)):
         raise _safety("Plex 外部歌单已有重复曲目，请先手工核对")
-    if managed and managed.get("order_attention") and set(actual) == set(desired):
-        return current, _managed_record(current, source, marker, order_attention=True)
 
     desired_set = set(desired)
     stale = [row for row in current["items"] if str(row["id"]) not in desired_set]
@@ -216,28 +216,21 @@ def create_or_reconcile_external_playlist(plex, installation_id, source, managed
 
     if set(_ids(current)) != desired_set or len(_ids(current)) != len(desired):
         raise _safety("Plex 歌单成员与外部歌单匹配结果不一致")
+    if not _owned_state(current, playlist_id, title, marker):
+        raise _safety("补充歌曲后歌单归属发生变化，停止排序")
 
-    order_attention = False
-    for target_index, target_id in enumerate(desired):
-        actual = _ids(current)
-        if actual == desired:
-            break
-        current_index = actual.index(target_id)
-        if current_index == target_index:
-            continue
-        moving = current["items"][current_index]
-        after = None if target_index == 0 else current["items"][actual.index(desired[target_index - 1])]["item_id"]
-        plex.move_item(playlist_id, moving["item_id"], after=after)
-        previous = actual
-        current = _observe(plex, playlist_id, lambda row, old=previous: _ids(row) != old)
-        if set(_ids(current)) != desired_set or len(_ids(current)) != len(desired):
-            raise _safety("调整顺序后成员发生变化，停止后续修改")
-        if _ids(current) == previous:
-            order_attention = True
-            break
-    if _ids(current) != desired:
-        order_attention = True
-    return current, _managed_record(current, source, marker, order_attention=order_attention)
+    if _ids(current) != desired and checkpoint:
+        # Persist membership before sorting, so interrupted moves cannot make
+        # newly matched songs look like the user's manual inclusions.
+        checkpoint(_managed_record(current, source, marker, order_pending=True))
+    try:
+        current = reconcile_playlist_order(plex, current, desired, progress=progress)
+    except PlaylistOrderPending as exc:
+        exc.managed = _managed_record(exc.state, source, marker, order_pending=True)
+        raise
+    except ReconcileConflict as exc:
+        raise _safety(str(exc)) from None
+    return current, _managed_record(current, source, marker)
 
 
 def rename_owned_external_playlist(plex, installation_id, source_id, managed, title):

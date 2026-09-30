@@ -7,12 +7,23 @@ import re
 import time
 from typing import Mapping
 
+from .clients import PlexError
+
 
 SUCCESS_STATUSES = frozenset({"unchanged", "updated", "created"})
 
 
 class ReconcileConflict(RuntimeError):
     """The remote state cannot be safely attributed to this installation."""
+
+
+class PlaylistOrderPending(PlexError):
+    """Membership is intact; a verified ordering checkpoint can be retried."""
+
+    def __init__(self, state):
+        super().__init__("Plex 歌单排序暂未完成，程序将自动重试")
+        self.state = state
+        self.managed = None
 
 
 @dataclass(frozen=True)
@@ -24,6 +35,7 @@ class ManagedPlaylistTarget:
     machine: str
     scope: str
     description: str = ""
+    ordered: bool = False
 
 
 @dataclass(frozen=True)
@@ -86,6 +98,70 @@ def _member_ids(state: Mapping[str, object]) -> list[str]:
     return [str(row.get("id") or "") for row in state.get("items", [])]
 
 
+def reconcile_playlist_order(plex, current, desired_ids, *, progress=None):
+    """Place a desired suffix at the tail, avoiding dense neighbour insertions.
+
+    Plex can accept a move between neighbours yet retain the previous order
+    after repeated such insertions. Tail placement avoids that failure. Keep
+    the longest desired prefix already present as a subsequence; move only
+    the remaining songs, verifying the exact resulting order after each move.
+    """
+    desired = list(desired_ids)
+    identity = tuple(current.get(key) for key in ("id", "title", "summary"))
+
+    def validate(row):
+        actual = _member_ids(row)
+        if (tuple(row.get(key) for key in ("id", "title", "summary")) != identity
+                or len(actual) != len(desired) or set(actual) != set(desired)):
+            raise ReconcileConflict("排序期间歌单标识、名称或成员发生变化，停止写入")
+
+    validate(current)
+    prefix = 0
+    for value in _member_ids(current):
+        if prefix < len(desired) and value == desired[prefix]:
+            prefix += 1
+    for completed, target_id in enumerate(desired[prefix:], prefix + 1):
+        for attempt in range(3):
+            actual = _member_ids(current)
+            expected = [value for value in actual if value != target_id] + [target_id]
+            if actual == expected:
+                break
+            moving = next(item for item in current["items"] if str(item["id"]) == target_id)
+            after = current["items"][-1].get("item_id")
+            if not moving.get("item_id") or not after:
+                raise ReconcileConflict("Plex 歌单条目标识缺失，停止排序")
+            try:
+                plex.move_item(current["id"], moving["item_id"], after=after)
+            except PlexError:
+                # A lost response does not prove a failed write. Observe first;
+                # assigning the same item after the tail is safe to retry.
+                pass
+
+            def placed(row):
+                validate(row)
+                return _member_ids(row) == expected
+
+            try:
+                if hasattr(plex, "read_playlist_until"):
+                    current = plex.read_playlist_until(current["id"], placed, attempts=4, delay=0.25)
+                else:
+                    for _ in range(4):
+                        current = plex.playlist_state(current["id"])
+                        if placed(current):
+                            break
+            except PlexError:
+                raise PlaylistOrderPending(current) from None
+            if placed(current):
+                break
+            if attempt == 2:
+                raise PlaylistOrderPending(current)
+        if progress:
+            progress(completed, len(desired))
+    if _member_ids(current) != desired:
+        raise PlaylistOrderPending(current)
+    return current
+
+
 def _expected_summary(target: ManagedPlaylistTarget) -> str:
     return "\n".join(filter(None, (
         target.marker,
@@ -137,6 +213,7 @@ def _matches(state: Mapping[str, object], target: ManagedPlaylistTarget) -> bool
         and str(state.get("summary") or "") == _expected_summary(target)
         and len(actual) == len(target.member_ids)
         and set(actual) == set(target.member_ids)
+        and (not target.ordered or actual == list(target.member_ids))
     )
 
 
@@ -220,6 +297,8 @@ def reconcile_managed_playlist(
     managed_record: Mapping[str, object] | None,
     *,
     adopt_existing: bool = True,
+    checkpoint=None,
+    progress=None,
 ) -> ManagedPlaylistResult:
     """Converge one ordinary Plex playlist without adopting unowned names."""
     from .clients import PlexNotFound
@@ -246,7 +325,31 @@ def reconcile_managed_playlist(
         raise ReconcileConflict("托管歌单缺少 Plex ID")
     _assert_scope_compatible(current, target)
 
+    def order_verified(current):
+        membership_target = replace(target, ordered=False)
+        # A newly created playlist already has a verified identity even when
+        # its order is wrong. Save it before further reads or moves can fail.
+        if checkpoint and _matches(current, membership_target):
+            checkpoint(current)
+        current = _read_verified(plex, playlist_id, membership_target)
+        if checkpoint:
+            checkpoint(current)
+        try:
+            return reconcile_playlist_order(plex, current, target.member_ids, progress=progress)
+        except PlaylistOrderPending as exc:
+            if checkpoint:
+                checkpoint(exc.state)
+            raise
+
     if created:
+        if target.ordered:
+            if checkpoint:
+                if (str(current.get("title") or "") != target.title
+                        or str(current.get("summary") or "") != _expected_summary(target)
+                        or current.get("smart")):
+                    raise ReconcileConflict("新歌单归属回读不一致，停止排序")
+                checkpoint(current)
+            order_verified(current)
         verified = _read_verified(plex, playlist_id, target)
         return ManagedPlaylistResult(status="created", playlist=verified, before_playlist=None)
 
@@ -287,6 +390,12 @@ def reconcile_managed_playlist(
     if missing:
         plex.append(playlist_id, missing)
         changed = True
+
+    if target.ordered:
+        current = _read_verified(plex, playlist_id, replace(target, ordered=False))
+        if _member_ids(current) != list(target.member_ids):
+            current = order_verified(current)
+            changed = True
 
     if not changed and _matches(current, target):
         return ManagedPlaylistResult(

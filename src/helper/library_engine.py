@@ -32,6 +32,7 @@ class LibraryEngine(SingleMixin, BaseMixin, Engine):
         self.external = ExternalPlaylistService(
             store, self.plex_factory,
             ExternalProviderRegistry(self.qq, SafeSourceHttp()),
+            progress=self.workflow_progress,
         )
 
     def analyze_library(self, force_sources=True):

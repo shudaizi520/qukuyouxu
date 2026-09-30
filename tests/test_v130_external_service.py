@@ -111,6 +111,106 @@ class ExternalServiceV130Tests(unittest.TestCase):
         self.assertEqual(["10", "20", "30"], self.plex.playlist_ids(published["playlist_id"]))
         self.assertEqual(0, result["missing"])
 
+    def test_legacy_order_flag_does_not_freeze_source_additions_or_removals(self):
+        imported = self.service.import_source(value=QQ_URL)
+        published = self.service.publish(imported["id"], "百万收藏", imported["revision"])
+        managed = self.service.repository.get_managed("default", imported["id"])
+        self.service.repository.save_managed("default", imported["id"], {
+            **managed, "order_attention": True,
+        })
+        self.plex.catalog.append(local("20", "缺失歌", "歌手乙"))
+        self.providers.results.append(snapshot([
+            source_track("c", "已有三", ["歌手丙"], 0),
+            source_track("b", "缺失歌", ["歌手乙"], 1),
+        ], revision="source-r2"))
+
+        result = self.service.refresh(imported["id"], force=True)
+
+        self.assertEqual("updated", result["sync"]["status"])
+        self.assertEqual(["30", "20"], self.plex.playlist_ids(published["playlist_id"]))
+        self.assertFalse(self.service.repository.get_managed("default", imported["id"])["order_attention"])
+
+    def test_pending_order_saves_progress_and_recovers_without_false_manual_edits(self):
+        from helper.managed_playlist_sync import PlaylistOrderPending
+        from helper.external_playlist_sync import playlist_fingerprint
+
+        imported = self.service.import_source(value=QQ_URL)
+        published = self.service.publish(imported["id"], "百万收藏", imported["revision"])
+        self.plex.catalog.append(local("20", "缺失歌", "歌手乙"))
+        self.providers.results.append(snapshot(revision="source-r2"))
+        self.plex.ignore_moves = True
+
+        with self.assertRaises(PlaylistOrderPending):
+            self.service.refresh(imported["id"], force=True)
+
+        pending = self.service.repository.get_managed("default", imported["id"])
+        self.assertTrue(pending["order_pending"])
+        self.assertFalse(pending["order_attention"])
+        self.assertEqual(["10", "20", "30"], pending["source_ids"])
+        self.assertEqual(playlist_fingerprint(self.plex.playlist_state(published["playlist_id"])), pending["fingerprint"])
+        self.assertTrue(self.service.repository.get_source("default", imported["id"])["next_retry_at"])
+        self.assertEqual({}, self.store.get("playlist_manual_edits", {}) or {})
+        self.plex.ignore_moves = False
+        self.now += 1000
+
+        outcome = self.service.retry_pending_orders()
+
+        self.assertEqual(1, outcome["updated"])
+        self.assertEqual(["10", "20", "30"], self.plex.playlist_ids(published["playlist_id"]))
+        self.assertFalse(self.service.repository.get_managed("default", imported["id"])["order_pending"])
+        self.assertEqual(1, len(self.plex.created))
+        self.assertEqual({}, self.store.get("playlist_manual_edits", {}) or {})
+        self.assertEqual("", self.service.repository.get_source("default", imported["id"])["last_error"])
+
+    def test_order_retry_waits_until_due_and_does_not_refetch_source(self):
+        imported = self.service.import_source(value=QQ_URL)
+        self.service.publish(imported["id"], "百万收藏", imported["revision"])
+        record = self.service.repository.get_managed("default", imported["id"])
+        self.service.repository.save_managed("default", imported["id"], {**record, "order_pending": True})
+        self.service.repository.record_failure("default", imported["id"], "排序等待重试", self.now)
+        calls = len(self.plex.mutations)
+        outcome = self.service.retry_pending_orders()
+        self.assertEqual(0, outcome["updated"])
+        self.assertEqual(calls, len(self.plex.mutations))
+        self.assertEqual(1, self.providers.calls)
+
+    def test_catalog_outage_backs_off_pending_order_without_repeated_calls(self):
+        from helper.clients import PlexError
+        from unittest.mock import Mock
+
+        imported = self.service.import_source(value=QQ_URL)
+        self.service.publish(imported["id"], "百万收藏", imported["revision"])
+        record = self.service.repository.get_managed("default", imported["id"])
+        self.service.repository.save_managed("default", imported["id"], {**record, "order_pending": True})
+        self.plex.tracks = Mock(side_effect=PlexError("catalog temporarily unavailable"))
+
+        outcome = self.service.retry_pending_orders()
+
+        self.assertEqual(1, len(outcome["errors"]))
+        retry = self.service.repository.get_source("default", imported["id"])
+        self.assertGreater(retry["next_retry_at"], self.now)
+        self.now += 60
+        self.service.retry_pending_orders()
+        self.plex.tracks.assert_called_once()
+
+    def test_ordering_reports_verified_progress_for_scheduler_heartbeat(self):
+        from helper.external_service import ExternalPlaylistService
+
+        observed = []
+        self.service = ExternalPlaylistService(
+            self.store, lambda cfg: self.plex, self.providers, clock=lambda: self.now,
+            progress=lambda current, total: observed.append((current, total)),
+        )
+        imported = self.service.import_source(value=QQ_URL)
+        self.service.publish(imported["id"], "百万收藏", imported["revision"])
+        observed.clear()
+        self.plex.catalog.append(local("20", "缺失歌", "歌手乙"))
+
+        self.service.rematch_missing()
+
+        self.assertEqual((3, 3), observed[-1])
+        self.assertTrue(all(current <= total == 3 for current, total in observed))
+
     def test_legacy_refresh_does_not_treat_a_new_source_track_as_a_manual_exclusion(self):
         imported = self.service.import_source(value=QQ_URL)
         published = self.service.publish(imported["id"], "百万收藏", imported["revision"])

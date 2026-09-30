@@ -30,7 +30,7 @@ function providerName(value){return value==='qq'?'QQ 音乐':value==='netease'?'
 function count(name){return Number(current?.counts?.[name]||0);}
 function stateText(source){
  if(source.needs_confirmation)return '来源变更待确认';
- if(source.managed?.order_attention)return '顺序待核对';
+ if(source.managed?.order_pending||source.managed?.order_attention)return '排序等待自动重试';
  if(source.managed)return '已同步 Plex';
  return '未发布';
 }

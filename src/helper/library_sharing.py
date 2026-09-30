@@ -15,7 +15,7 @@ from .engine import fingerprint, state_ids
 STATE_KEY = "library_share_v1"
 REVISIONS_KEY = "library_share_revisions_v2"
 MIRRORED_TOPLISTS_KEY = "mirrored_qq_toplists_v1"
-SHARE_POLICY_REVISION = "scoped-playlist-ownership-v2"
+SHARE_POLICY_REVISION = "scoped-playlist-ownership-v3-ordered-charts"
 
 
 def _is_qq_toplist(source):
@@ -292,11 +292,14 @@ def _category_enabled(owner_store, category_id):
 
 def _record_error(result, label, exc):
     from .engine import safe_error
+    from .managed_playlist_sync import PlaylistOrderPending
 
     message = str(label) + "：" + safe_error(exc)
     result["errors"].append(message)
     bucket = "retryable_errors" if isinstance(exc, PlexError) else "conflicts"
     result[bucket].append(message)
+    if isinstance(exc, PlaylistOrderPending):
+        result["order_pending"] = True
 
 
 def reconcile_owner_revision(runtime, owner_id):
@@ -491,6 +494,9 @@ def sync_recipient(runtime, owner_id, recipient_id, *, now=None):
             continue
         if not isinstance(source, dict) or not source.get("id") or not source.get("title"):
             continue
+        if source.get("order_pending") or source.get("order_attention"):
+            result["skipped"] += 1
+            continue
         record = managed.get(category_id)
         if record and record.get("shared_from") != owner_id:
             result["skipped"] += 1
@@ -513,23 +519,30 @@ def sync_recipient(runtime, owner_id, recipient_id, *, now=None):
                 category_id=category_id,title=original["title"],
                 marker=child_engine.marker(category_id),member_ids=tuple(desired),
                 machine=machine,scope=scope,
+                ordered=category_id.startswith("external:"),
                 description="由曲库有序管理；内容与主账户已确认的曲库分类保持一致。",
             )
+
+            def save_verified(after):
+                managed[category_id] = {
+                    "id": after["id"], "title": after["title"],
+                    "fingerprint": fingerprint(after), "count": len(after.get("items", [])),
+                    "shared_from": owner_id, "shared_source_id": str(source["id"]),
+                    "machine": machine, "scope": scope,
+                    "marker": child_engine.marker(category_id),
+                }
+                child_store.set("managed", managed)
+
             reconciled=reconcile_managed_playlist(
                 child_plex,target,trusted or None,adopt_existing=bool(trusted),
+                checkpoint=save_verified,
+                progress=child_engine.workflow_progress,
             )
             after=dict(reconciled.playlist)
             if reconciled.status=="created":result["created"]+=1
             elif reconciled.status=="updated":result["updated"]+=1
             else:result["unchanged"]+=1
-            managed[category_id] = {
-                "id": after["id"], "title": after["title"],
-                "fingerprint": fingerprint(after), "count": len(after.get("items", [])),
-                "shared_from": owner_id, "shared_source_id": str(source["id"]),
-                "machine": machine, "scope": scope,
-                "marker": child_engine.marker(category_id),
-            }
-            child_store.set("managed", managed)
+            save_verified(after)
             for revision in _pending_revisions(owner_store, category_id, recipient_id):
                 if revision.get("action") == "publish" and revision.get("confirmed"):
                     if str(source["id"]) == revision["source_id"]:

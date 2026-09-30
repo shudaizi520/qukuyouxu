@@ -183,6 +183,70 @@ class MemoryPlex:
             for index, track_id in enumerate(ids)
         )
 
+    def move_item(self, playlist_id, item_id, after=None):
+        self.calls.append(("move", str(playlist_id), str(item_id), after))
+        items = self.states[str(playlist_id)]["items"]
+        moving = next(item for item in items if item["item_id"] == str(item_id))
+        items.remove(moving)
+        index = -1 if after is None else next(i for i, item in enumerate(items) if item["item_id"] == str(after))
+        items.insert(index + 1, moving)
+
+
+def test_ordered_target_waits_for_membership_after_append(monkeypatch):
+    class StaleReadPlex(MemoryPlex):
+        stale = None
+
+        def append(self, playlist_id, ids):
+            self.stale = self.playlist_state(playlist_id)
+            super().append(playlist_id, ids)
+
+        def playlist_state(self, playlist_id):
+            if self.stale:
+                row, self.stale = self.stale, None
+                return row
+            return super().playlist_state(playlist_id)
+
+    monkeypatch.setattr("helper.managed_playlist_sync.time.sleep", lambda _: None)
+    plex = StaleReadPlex([state(ids=("11", "22"))])
+    result = reconcile_managed_playlist(
+        plex, target(member_ids=("11", "33", "22"), ordered=True), managed(),
+    )
+    assert result.status == "updated"
+    assert [item["id"] for item in result.playlist["items"]] == ["11", "33", "22"]
+
+
+def test_new_ordered_playlist_identity_survives_partial_create_then_read_timeout():
+    from helper.clients import PlexError
+
+    class PartialCreatePlex(MemoryPlex):
+        unreadable = False
+
+        def create(self, *args, **kwargs):
+            row = super().create(*args, **kwargs)
+            self.unreadable = True
+            row["items"] = row["items"][:1]
+            return row
+
+        def playlist_state(self, playlist_id):
+            if self.unreadable:
+                raise PlexError("validation read timeout after creation")
+            return super().playlist_state(playlist_id)
+
+    plex = PartialCreatePlex()
+    desired = target(ordered=True)
+    saved = []
+
+    def checkpoint(row):
+        saved.append({"id": row["id"], "title": row["title"], "machine": desired.machine, "scope": desired.scope})
+
+    with pytest.raises(PlexError):
+        reconcile_managed_playlist(plex, desired, None, adopt_existing=False, checkpoint=checkpoint)
+    assert saved
+    with pytest.raises(PlexError):
+        reconcile_managed_playlist(plex, desired, saved[-1], adopt_existing=True, checkpoint=checkpoint)
+    assert len(plex.states) == 1
+    assert len([call for call in plex.calls if call[0] == "create"]) == 1
+
 
 def scoped_summary(scope="profile:library", description="由曲库有序管理"):
     digest = hashlib.sha256(f"plex-machine\0{scope}".encode()).hexdigest()

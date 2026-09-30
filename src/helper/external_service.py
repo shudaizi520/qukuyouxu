@@ -14,6 +14,7 @@ from .external_playlist_sync import (
 from .external_sources import ExternalSourceError, parse_uploaded_playlist, recognize_source, refresh_needs_confirmation
 from .external_store import ExternalRepository
 from .match import Catalog
+from .managed_playlist_sync import PlaylistOrderPending
 
 
 def _safety(message):
@@ -43,13 +44,14 @@ def _counts(rows):
 
 
 class ExternalPlaylistService:
-    def __init__(self, store, plex_factory, providers, clock=time.time):
+    def __init__(self, store, plex_factory, providers, clock=time.time, *, progress=None):
         self.store = store
         self.profile_id = str(getattr(store, "profile_id", "default") or "default")
         self.repository = ExternalRepository(store)
         self.plex_factory = plex_factory
         self.providers = providers
         self.clock = clock
+        self.progress = progress
 
     def _settings(self):
         settings = self.store.get("settings", {}) or {}
@@ -155,8 +157,6 @@ class ExternalPlaylistService:
         managed = self._adopt_live_managed(source, plex)
         if not managed:
             return None
-        if managed.get("order_attention"):
-            return {"status": "order_attention", "playlist_id": managed["id"]}
         by_key = {row["source_track_key"]: row for row in rows}
         desired = []
         seen = set()
@@ -174,15 +174,29 @@ class ExternalPlaylistService:
         if not desired:
             return {"status": "no_matches", "playlist_id": managed["id"]}
         sync_source = {**source, "title": managed["title"]}
-        after, revised = create_or_reconcile_external_playlist(
-            plex, self.store.get("installation_id"), sync_source, managed, desired
-        )
-        revised = {**revised, "source_ids": source_ids}
-        self.repository.save_managed(self.profile_id, source["id"], revised)
+        after, revised = self._reconcile(plex, sync_source, managed, desired, source_ids)
+        if managed.get("order_pending") or managed.get("order_attention"):
+            self.repository.clear_failure(self.profile_id, source["id"])
         return {
-            "status": "attention" if revised.get("order_attention") else "updated",
+            "status": "updated",
             "playlist_id": after["id"], "count": len(after["items"]),
         }
+
+    def _reconcile(self, plex, source, managed, desired, source_ids):
+        def checkpoint(record):
+            self.repository.save_managed(self.profile_id, source["id"], {
+                **record, "source_ids": source_ids,
+            })
+        try:
+            after, record = create_or_reconcile_external_playlist(
+                plex, self.store.get("installation_id"), source, managed, desired,
+                checkpoint=checkpoint, progress=self.progress,
+            )
+        except PlaylistOrderPending as exc:
+            checkpoint(exc.managed)
+            raise
+        checkpoint(record)
+        return after, record
 
     def import_source(self, value=None, filename=None, content=None):
         if bool(value) == bool(filename or content is not None):
@@ -315,13 +329,14 @@ class ExternalPlaylistService:
         if not desired:
             raise _safety("个人调整后没有可写入的歌曲")
         managed = self.repository.get_managed(self.profile_id, source["id"])
-        after, record = create_or_reconcile_external_playlist(
-            plex, self.store.get("installation_id"), {**source, "title": title}, managed, desired
-        )
-        record = {**record, "source_ids": source_ids}
-        self.repository.save_managed(self.profile_id, source["id"], record)
-        status = "attention" if record.get("order_attention") else "completed"
-        self._record(source["id"], "publish", status, started, "发布完成", playlist_id=after["id"])
+        try:
+            after, record = self._reconcile(plex, {**source, "title": title}, managed, desired, source_ids)
+        except PlaylistOrderPending as exc:
+            self.repository.record_failure(self.profile_id, source["id"], str(exc), self.clock())
+            self._record(source["id"], "publish", "error", started, str(exc))
+            raise
+        self.repository.clear_failure(self.profile_id, source["id"])
+        self._record(source["id"], "publish", "completed", started, "发布完成", playlist_id=after["id"])
         return {"playlist_id": after["id"], "count": len(after["items"]), "order_attention": record.get("order_attention", False)}
 
     def refresh(self, source_id, *, force=False, bypass_retry=False):
@@ -381,6 +396,45 @@ class ExternalPlaylistService:
                 result["errors"].append({"source_id": source["id"], "error": type(exc).__name__})
         return result
 
+    def pending_order_sources(self, now=None):
+        now = self.clock() if now is None else float(now)
+        pending = []
+        for source in self.repository.list_sources(self.profile_id):
+            record = self.repository.get_managed(self.profile_id, source["id"]) or {}
+            if ((record.get("order_pending") or record.get("order_attention"))
+                    and float(source.get("next_retry_at") or 0) <= now):
+                pending.append(source)
+        return pending
+
+    def retry_pending_orders(self, now=None):
+        """Resume verified ordering checkpoints, without fetching QQ again."""
+        sources = self.pending_order_sources(now)
+        result = {"updated": 0, "errors": []}
+        if not sources:
+            return result
+        try:
+            plex, tracks, revision = self._catalog()
+        except Exception as exc:
+            for source in sources:
+                self.repository.record_failure(self.profile_id, source["id"], str(exc)[:300], self.clock())
+                self._record(source["id"], "order_retry", "error", self.clock(), str(exc)[:300])
+                result["errors"].append({"source_id": source["id"], "error": type(exc).__name__})
+            return result
+        for source in sources:
+            started = self.clock()
+            try:
+                rows = self._match_with_catalog(source["id"], tracks, revision)
+                sync = self._sync_managed(source, plex, rows)
+                if sync and sync["status"] == "updated":
+                    self.repository.clear_failure(self.profile_id, source["id"])
+                    self._record(source["id"], "order_retry", "completed", started, "顺序已自动对齐")
+                    result["updated"] += 1
+            except Exception as exc:
+                self.repository.record_failure(self.profile_id, source["id"], str(exc)[:300], self.clock())
+                self._record(source["id"], "order_retry", "error", started, str(exc)[:300])
+                result["errors"].append({"source_id": source["id"], "error": type(exc).__name__})
+        return result
+
     def auto_refresh(self):
         result = {"sources": [], "updated": 0, "errors": 0}
         for source in self.repository.list_sources(self.profile_id):
@@ -416,5 +470,5 @@ class ExternalPlaylistService:
             )
         return {
             **source, "counts": _counts(public_tracks), "tracks": public_tracks,
-            "managed": ({"id": managed["id"], "title": managed["title"], "order_attention": bool(managed.get("order_attention"))} if managed else None),
+            "managed": ({"id": managed["id"], "title": managed["title"], "order_attention": bool(managed.get("order_attention")), "order_pending": bool(managed.get("order_pending"))} if managed else None),
         }

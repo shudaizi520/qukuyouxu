@@ -142,6 +142,7 @@ class ProfileRuntime:
             if (isinstance(state, dict) and state.get("status") != "done"
                     and float(state.get("next_retry_at") or 0) <= now):
                 prepare_new_profile(self, profile["id"])
+        self.sync_external_orders_due(now)
         self.sync_builtin_toplists_due(now)
         settings = automation_settings(self.base_store, self.registry, self, now=now)
         results = []
@@ -246,6 +247,27 @@ class ProfileRuntime:
             self.sync_library_shares_due(now)
         return results
 
+    def sync_external_orders_due(self, now):
+        """Resume interrupted orders under the same serial mutation gates."""
+        for profile in self.registry.list_public(enabled_only=True):
+            engine = self.engine(profile["id"])
+            if (engine.store.get("profile_removal_v1") or not getattr(engine, "external", None)
+                    or not engine.external.pending_order_sources(now)):
+                continue
+
+            def resume(engine=engine):
+                with self.operation_gate:
+                    return engine.external.retry_pending_orders(now=now)
+
+            try:
+                outcome = self._run_job(engine, "external_order_retry", resume, now)
+                if outcome.get("errors"):
+                    with engine.status_lock:
+                        engine.job["message"] = "歌单排序等待自动重试"
+            except Exception as exc:
+                from .engine import safe_error
+                engine.store.log("歌单排序将在下次自动重试：" + safe_error(exc), "error")
+
     def sync_builtin_toplists_due(self, now):
         """Install or migrate public charts as soon as Plex and QQ are ready."""
         from .builtin_toplists import builtin_toplists_due, ensure_builtin_toplists
@@ -342,9 +364,14 @@ class ProfileRuntime:
                     if outcome.get("retryable_errors"):
                         share["status"] = "waiting_retry"
                         if not schedule_retry(share, now):
-                            clear_retry(share)
-                            share["status"] = "needs_attention"
-                            share["owner_digest"] = revision
+                            if outcome.get("order_pending"):
+                                from .scheduler_retry import RETRY_DELAYS
+                                share["failure_count"] = len(RETRY_DELAYS) - 1
+                                schedule_retry(share, now)
+                            else:
+                                clear_retry(share)
+                                share["status"] = "needs_attention"
+                                share["owner_digest"] = revision
                     elif outcome.get("conflicts") or outcome.get("errors"):
                         clear_retry(share)
                         share.pop("next_at", None)
