@@ -55,6 +55,7 @@ export function createNowPlaying({document,requestJson,getProfileId,lyricsUrl,ar
  const artwork=byId('nowPlayingArtwork'),title=byId('nowPlayingTitle'),meta=byId('nowPlayingMeta');
  const lyrics=byId('nowPlayingLyrics'),status=byId('nowPlayingLyricsStatus'),visualizer=byId('nowPlayingVisualizer');
  const waveform=createPlaybackVisualizer({canvas:visualizer,media:byId('playerAudio'),view:document.defaultView||globalThis});
+ const syncVisibility=()=>waveform.setVisible(!root.hidden&&!document.hidden);
  const cache=createBoundedCache(20);
  let snapshot=null,currentKey='',currentLyrics={kind:'none',lines:[]},lineNodes=[];
  let activeIndex=-1,manualScrollUntil=0,returnFocus=null;
@@ -122,17 +123,20 @@ export function createNowPlaying({document,requestJson,getProfileId,lyricsUrl,ar
  function open(){
   if(!snapshot?.track)return;
   returnFocus=document.activeElement;root.hidden=false;document.body.classList.add('now-playing-open');root.focus({preventScroll:true});
+  syncVisibility();
  }
  function close(){
   if(root.hidden)return;
   root.hidden=true;document.body.classList.remove('now-playing-open');
+  syncVisibility();
   if(returnFocus&&returnFocus.isConnected)returnFocus.focus();
  }
  function reset(){
   close();snapshot=null;root.dataset.playing='false';waveform.setPlaying(false);currentKey='';loader.cancel();renderLyrics({kind:'none',lines:[]});paintTrack(null,'');
  }
  function mount(){
-  waveform.mount();root.dataset.playing='false';trigger.onclick=open;
+  syncVisibility();waveform.mount();root.dataset.playing='false';trigger.onclick=open;
+  document.addEventListener('visibilitychange',syncVisibility);
   closeButton.onclick=close;
   const hold=()=>{manualScrollUntil=Date.now()+4000;};lyrics.onwheel=hold;lyrics.onpointerdown=hold;lyrics.ontouchstart=hold;
   (document.defaultView||globalThis).addEventListener('keydown',event=>{

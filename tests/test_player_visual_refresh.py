@@ -173,6 +173,57 @@ def test_playlist_heading_icons_are_large_click_targets_with_color_only_hover():
         browser.close()
 
 
+def test_visualizer_visibility_follows_player_and_browser_tab_without_pausing_audio():
+    source = (STATIC / "playlists.html").read_text(encoding="utf-8")
+    start = source.index('<section id="nowPlaying"')
+    end = source.index("</section>", start) + len("</section>")
+    document = '<button id="playerDetail">详情</button><audio id="playerAudio"></audio>' + source[start:end]
+
+    prepare_playwright_environment(ROOT)
+    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(ROOT / ".playwright"))
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+
+        def serve(route):
+            name = route.request.url.rsplit("/", 1)[-1]
+            if name.endswith(".js"):
+                route.fulfill(content_type="text/javascript", body=(STATIC / name).read_text(encoding="utf-8"))
+            else:
+                route.fulfill(content_type="text/html", body=document)
+
+        page.route("http://player.test/**", serve)
+        page.goto("http://player.test/")
+        page.evaluate("""async () => {
+          window.AudioContext = window.webkitAudioContext = undefined;
+          window.framesPending = new Map(); let nextFrame = 0;
+          window.requestAnimationFrame = callback => {framesPending.set(++nextFrame, callback); return nextFrame;};
+          window.cancelAnimationFrame = id => framesPending.delete(id);
+          window.tabHidden = false;
+          Object.defineProperty(document, 'hidden', {get: () => window.tabHidden});
+          window.audioPauses = 0;
+          document.querySelector('#playerAudio').pause = () => {window.audioPauses += 1;};
+          const {createNowPlaying} = await import('/playlist-now-playing.js');
+          window.player = createNowPlaying({document, requestJson: async () => ({kind:'none',lines:[]}),
+            getProfileId: () => 'default', lyricsUrl: () => '/lyrics', artworkUrl: () => ''});
+          player.mount();
+          player.update({track:{id:'7',title:'测试'},playing:true,currentTime:0});
+        }""")
+        assert page.evaluate("framesPending.size") == 0
+        page.locator("#playerDetail").click()
+        assert page.evaluate("framesPending.size") == 1
+        page.evaluate("tabHidden = true; document.dispatchEvent(new Event('visibilitychange'))")
+        assert page.evaluate("framesPending.size") == 0
+        page.evaluate("tabHidden = false; document.dispatchEvent(new Event('visibilitychange'))")
+        assert page.evaluate("framesPending.size") == 1
+        page.locator("#nowPlayingClose").click()
+        assert page.evaluate("framesPending.size") == 0
+        page.evaluate("player.update({track:{id:'7',title:'测试'},playing:true,currentTime:2})")
+        assert page.evaluate("framesPending.size") == 0
+        assert page.evaluate("audioPauses") == 0
+        browser.close()
+
+
 def test_fullscreen_player_has_qq_like_proportions_and_a_play_state_visualizer():
     page = (STATIC / "playlists.html").read_text(encoding="utf-8")
     script = (STATIC / "playlist-now-playing.js").read_text(encoding="utf-8")

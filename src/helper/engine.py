@@ -81,10 +81,12 @@ class Engine(RenamingMixin, DailyMixin):
     def marker(self,cid):return f"[PCH:{self.store.get('installation_id')}:{cid}]"
     def progress(self,message):
         with self.status_lock:self.job['message']=message
+        if runtime:=getattr(self,'profile_runtime',None):runtime.note_scheduler_progress()
     def workflow_progress(self,current,total):
         with self.status_lock:
             self.job['progress_current']=max(0,int(current or 0))
             self.job['progress_total']=max(0,int(total or 0))
+        if runtime:=getattr(self,'profile_runtime',None):runtime.note_scheduler_progress()
     def _record_workflow_pause(self,kind,message):
         self.store.set('workflow_pause_state',{
             'active':True,'kind':kind if kind in ('preview','incremental') else 'preview',

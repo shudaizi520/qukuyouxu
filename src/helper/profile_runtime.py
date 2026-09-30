@@ -448,6 +448,11 @@ class ProfileRuntime:
         with self._scheduler_lock:
             self._scheduler_state.update(changes)
 
+    def note_scheduler_progress(self):
+        """Only the scheduler's own work may refresh its progress heartbeat."""
+        if threading.current_thread() is self._scheduler_thread:
+            self._update_scheduler_state(heartbeat_at=time.time())
+
     def scheduler_status(self, now=None):
         with self._scheduler_lock:
             return dict(self._scheduler_state)

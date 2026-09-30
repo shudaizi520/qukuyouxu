@@ -569,7 +569,7 @@ def search_library_live(engine, query, limit=40):
         raise ValueError("请先选择 Plex 音乐库")
     if not str(query or "").strip() or len(str(query).strip()) > 100:
         raise ValueError("请输入 1—100 个字搜索")
-    return _search_library_rows(engine.plex_factory(settings).tracks(section), query, limit)
+    return _search_library_rows(engine.plex_factory(settings).search_tracks(section,query,limit), query, limit)
 
 
 def favorite_playlist_detail(store, catalog=None):
@@ -599,7 +599,7 @@ def favorite_playlist_detail(store, catalog=None):
 def favorite_playlist_detail_live(engine):
     settings = engine.store.get("settings") or {}
     section = str(settings.get("section") or "")
-    catalog = engine.plex_factory(settings).tracks(section) if section.isdigit() else []
+    catalog = engine.plex_factory(settings).liked_tracks(section) if section.isdigit() else []
     return favorite_playlist_detail(engine.store, catalog)
 
 

@@ -78,7 +78,7 @@ class DirectPlexTests(unittest.TestCase):
         from helper.playlist_hub import search_library_live
 
         class Plex:
-            def tracks(self, section):
+            def search_tracks(self, section, query, limit):
                 self.section = section
                 return [{"id": "7", "title": "一首歌", "artist": "歌手", "album": "专辑", "user_rating": 10}]
 
@@ -292,7 +292,7 @@ class DirectPlexTests(unittest.TestCase):
                 return [self.get("default")]
 
         class Plex:
-            def tracks(self, section):
+            def liked_tracks(self, section):
                 self.section = section
                 return [{"id": "7", "title": "已喜欢", "artist": "歌手", "user_rating": 10,
                          "available": True},
@@ -317,7 +317,7 @@ class DirectPlexTests(unittest.TestCase):
                 return [self.get("default")]
 
         class Plex:
-            def tracks(self, section):
+            def liked_tracks(self, section):
                 return [{"id": "7", "title": "Plex 新喜欢", "user_rating": 10,
                          "available": True}]
 
@@ -332,7 +332,7 @@ class DirectPlexTests(unittest.TestCase):
         from helper.playlist_hub import playlist_detail
 
         class Plex:
-            def tracks(self, section):
+            def liked_tracks(self, section):
                 return [{"id": "7", "title": "Plex 歌曲", "user_rating": 10,
                          "available": True}]
 

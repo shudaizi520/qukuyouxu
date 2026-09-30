@@ -288,7 +288,7 @@ class _FavoriteRuntime:
         upstream = self.plex or _RatingPlex()
 
         class ScopedPlex:
-            def tracks(self, _section):
+            def liked_tracks(self, _section):
                 return store.get("catalog")
 
             def track_section(self, track_id):

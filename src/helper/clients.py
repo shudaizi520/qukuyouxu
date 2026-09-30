@@ -303,6 +303,33 @@ class PlexClient:
         if not str(section).isdigit():raise ValueError('音乐资料库ID无效')
         return [parse_plex_track(e) for e in self._page(f'/library/sections/{section}/all','Track',{'type':10})]
 
+    def search_tracks(self,section,query,limit=40):
+        """Let Plex filter each word across title/artist/album before sending rows."""
+        if not str(section).isdigit():raise ValueError('音乐资料库ID无效')
+        query=str(query or '').strip()
+        if not 1<=len(query)<=100:raise ValueError('请输入 1—100 个字搜索')
+        limit=max(1,min(int(limit),100))
+        params=[('type',10),('X-Plex-Container-Start',0),('X-Plex-Container-Size',limit),('push',1)]
+        for index,token in enumerate(query.split()):
+            if index:params.append(('and',1))
+            params.append(('push',1))
+            for field_index,field in enumerate(('track.title','artist.title','album.title')):
+                if field_index:params.append(('or',1))
+                params.append((field,token))
+            params.append(('pop',1))
+        params.append(('pop',1))
+        rows=self._xml(f'/library/sections/{section}/all',params=params).findall('Track')
+        if len(rows)>limit:raise PlexError('Plex搜索响应超出请求上限')
+        if any(row.get('librarySectionID',str(section))!=str(section) for row in rows):
+            raise PlexError('Plex搜索返回了其他音乐库的歌曲')
+        return [parse_plex_track(row) for row in rows]
+
+    def liked_tracks(self,section):
+        """Read all favorite pages; keep the existing four/five-star rule."""
+        if not str(section).isdigit():raise ValueError('音乐资料库ID无效')
+        rows=self._page(f'/library/sections/{section}/all','Track',{'type':10,'track.userRating>':8})
+        return [parse_plex_track(row) for row in rows]
+
     def track_metadata(self,track_id):
         track_id=str(track_id or '')
         if not track_id.isdigit():raise PlexError('曲目ID无效')

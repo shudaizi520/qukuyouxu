@@ -112,6 +112,40 @@ def test_close_wakes_and_joins_waiting_scheduler(tmp_path):
     assert runtime.scheduler_status()["alive"] is False
 
 
+def test_long_scheduled_work_keeps_heartbeat_fresh_only_while_making_progress(tmp_path):
+    import threading
+    from unittest.mock import patch
+    from helper.status_summary import scheduler_health
+
+    runtime = configured_runtime(tmp_path)
+    engine = runtime.engine("default")
+    runtime._scheduler_thread = threading.current_thread()
+    with patch("helper.profile_runtime.time.time", return_value=1000):
+        runtime._mark_scheduler_started()
+    engine.job = {"running": True, "kind": "library"}
+    with patch("helper.profile_runtime.time.time", return_value=1300):
+        engine.progress("正在处理新增歌曲")
+    assert scheduler_health(runtime, engine.store, engine, now=1301)["state"] == "running"
+    with patch("helper.profile_runtime.time.time", return_value=1450):
+        engine.workflow_progress(20, 100)
+    assert scheduler_health(runtime, engine.store, engine, now=1451)["state"] == "running"
+    assert scheduler_health(runtime, engine.store, engine, now=1631)["state"] == "error"
+
+
+def test_manual_work_cannot_hide_a_stale_scheduler(tmp_path):
+    from unittest.mock import patch
+    from helper.status_summary import scheduler_health
+
+    runtime = configured_runtime(tmp_path)
+    engine = runtime.engine("default")
+    with patch("helper.profile_runtime.time.time", return_value=1000):
+        runtime._mark_scheduler_started()
+    engine.job = {"running": True, "kind": "preview"}
+    with patch("helper.profile_runtime.time.time", return_value=1300):
+        engine.progress("手动任务仍在运行")
+    assert scheduler_health(runtime, engine.store, engine, now=1301)["state"] == "error"
+
+
 def test_lifespan_closes_runtime_when_application_body_raises(tmp_path):
     from helper.store import Store
     from helper.web import create_app

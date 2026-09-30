@@ -78,8 +78,8 @@ export function visualizerGeometry(width){
 
 export function createPlaybackVisualizer({canvas,media,view=globalThis}){
  const context=canvas?.getContext('2d');
- if(!context)return {mount(){},setPlaying(){},destroy(){}};
- let playing=false,frame=0,width=0,height=0,resizeObserver=null,displayLevels=[];
+ if(!context)return {mount(){},setPlaying(){},setVisible(){},destroy(){}};
+ let playing=false,visible=true,frame=0,width=0,height=0,resizeObserver=null,displayLevels=[];
  let audioContext=null,source=null,analyser=null,frequencyData=null,audioUnavailable=false;
  const reducedMotion=!!view.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
@@ -116,7 +116,8 @@ export function createPlaybackVisualizer({canvas,media,view=globalThis}){
   context.restore();
  }
  function paint(){
-  fit();context.clearRect(0,0,width,height);
+  if(!visible)return false;
+  context.clearRect(0,0,width,height);
   const {barWidth,gap,count,start}=visualizerGeometry(width);
   if(analyser&&frequencyData&&playing)analyser.getByteFrequencyData(frequencyData);
   const target=buildVisualizerLevels(frequencyData&&playing?frequencyData:null,count);
@@ -139,22 +140,31 @@ export function createPlaybackVisualizer({canvas,media,view=globalThis}){
  function tick(){
   frame=0;
   const hasEnergy=paint();
-  if(!reducedMotion&&(playing||hasEnergy))frame=view.requestAnimationFrame(tick);
+  if(visible&&!reducedMotion&&(playing||hasEnergy))frame=view.requestAnimationFrame(tick);
  }
  function setPlaying(next){
   playing=!!next;
   if(frame){view.cancelAnimationFrame(frame);frame=0;}
   if(playing){ensureAnalyser();audioContext?.resume?.().catch?.(()=>{});}
+  if(!visible)return;
   if(!reducedMotion)frame=view.requestAnimationFrame(tick);else paint();
  }
+ function resize(){fit();paint();}
+ function setVisible(next){
+  next=!!next;
+  if(next===visible)return;
+  visible=next;
+  if(frame){view.cancelAnimationFrame(frame);frame=0;}
+  if(visible){fit();setPlaying(playing);}
+ }
  function mount(){
-  if(view.ResizeObserver){resizeObserver=new view.ResizeObserver(paint);resizeObserver.observe(canvas);}
-  else view.addEventListener?.('resize',paint);
-  paint();
+  if(view.ResizeObserver){resizeObserver=new view.ResizeObserver(resize);resizeObserver.observe(canvas);}
+  else view.addEventListener?.('resize',resize);
+  resize();
  }
  function destroy(){
-  if(frame)view.cancelAnimationFrame(frame);frame=0;resizeObserver?.disconnect();view.removeEventListener?.('resize',paint);
+  if(frame)view.cancelAnimationFrame(frame);frame=0;resizeObserver?.disconnect();view.removeEventListener?.('resize',resize);
   try{source?.disconnect();analyser?.disconnect();}catch(_error){}audioContext?.close?.();source=null;analyser=null;audioContext=null;frequencyData=null;displayLevels=[];
  }
- return {mount,setPlaying,destroy};
+ return {mount,setPlaying,setVisible,destroy};
 }
