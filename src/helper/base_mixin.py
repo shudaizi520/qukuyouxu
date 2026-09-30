@@ -80,7 +80,7 @@ class BaseMixin:
         scope=self.daily_scope()
         for g in raw:
             cid=g['id'];title=managed.get(cid,{}).get('title') or g['title']
-            from .playlist_hub import apply_manual_edits
+            from .playlist_edits import apply_manual_edits
             desired=apply_manual_edits(self.store,'category',cid,list(g['desired']));blocked=[];current=None;add=desired[:];action='create'
             if cid in disabled:blocked.append('已停止维护：保留 Plex 中现有歌单，不再自动写入')
             record=managed.get(cid) or {}

@@ -310,23 +310,7 @@ def reconcile_managed_playlist(engine, category_id, action):
                 message = "已恢复被外部删除的歌曲；歌单和音乐文件均未重建。"
             else:
                 after = current
-                edits_all = dict(store.get("playlist_manual_edits", {}) or {})
-                edit_key = "category:" + category_id
-                edits = dict(edits_all.get(edit_key, {}) or {})
-                excluded = [
-                    str(value) for value in edits.get("exclude", [])
-                    if str(value).isdigit()
-                ]
-                for value in removed:
-                    if value not in excluded:
-                        excluded.append(value)
-                edits_all[edit_key] = {
-                    "include": [str(value) for value in edits.get("include", []) if str(value).isdigit()],
-                    "exclude": excluded,
-                    "updated_at": time.time(),
-                }
-                store.set("playlist_manual_edits", edits_all)
-                message = "已接受并保留当前改动；被删除的歌曲会保持排除，不会被自动加回。"
+                message = "已保留本次改动；下次整理更新会按生成规则覆盖，不会修改音乐文件。"
             snapshot.update(status="applied", after=after)
             engine._save_snapshot(snapshot)
             managed[category_id] = {

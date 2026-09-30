@@ -61,6 +61,8 @@ def retain_snapshots(rows,referenced_ids,now,days=365,per_stream=50):
 
 class Engine(RenamingMixin, DailyMixin):
     def __init__(self,store,plex_factory=None,qq=None):
+        from .playlist_edits import clear_generated_manual_edits
+        clear_generated_manual_edits(store)
         self.store=store;self.gate=threading.Lock();self.job_gate=threading.Lock();self.stop=threading.Event();self.workflow_pause=threading.Event()
         self.plex_factory=plex_factory or (lambda cfg:PlexClient(cfg['plex_url'],cfg['plex_token'],store=self.store))
         self.qq=qq or QQClient();self.status_lock=threading.RLock();self.job={'running':False,'message':'尚未运行','error':''}
@@ -173,7 +175,7 @@ class Engine(RenamingMixin, DailyMixin):
                 else:
                     row['candidate_details']=[catalog.by_id[k] for k in r['candidates'] if k in catalog.by_id]
                     unmatched.append(row)
-            from .playlist_hub import apply_manual_edits
+            from .playlist_edits import apply_manual_edits
             desired=apply_manual_edits(self.store,'category',cid,desired);matches=set(desired)
             current=None;action='create';add=desired[:]
             record=managed.get(cid) or {}

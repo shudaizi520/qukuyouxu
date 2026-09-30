@@ -315,7 +315,7 @@ def publish_smart_mix(engine, plan_id, now=None):
             raise SafetyError("Plex 身份或资料库已变化，停止写入")
         ids = [str(row["id"]) for row in plan.get("items", [])]
         planned_ids = list(ids)
-        from .playlist_hub import apply_manual_edits
+        from .playlist_edits import apply_manual_edits
         ids = apply_manual_edits(engine.store, "smart", plan["kind"], ids)
         fresh_rows = plex.tracks(cfg["section"])
         fresh = {str(row["id"]): track_fingerprint(row) for row in fresh_rows}

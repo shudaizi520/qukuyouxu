@@ -119,7 +119,7 @@
     actions.append(button('清除记录','managed-playlist-action danger-text',async()=>{if(!await PCHUI.confirm('Plex 中已经找不到“'+row.title+'”。只清除助手里的历史记录，不删除歌曲或音乐文件。确定继续？'))return;await action(async()=>{const r=await post('/api/managed/forget',{confirm:true,category_id:row.category_id,playlist_id:row.playlist_id,title:row.title});note(r.message);await loadManaged(true);await refresh();});}));
    }else{
     if(row.can_accept_changes){
-     actions.append(button('接受改动','managed-playlist-action',async()=>{if(!await PCHUI.confirm('接受“'+row.title+'”当前在 Plex 里的删除结果？\n\n被删掉的歌曲以后也不会被自动加回；不会修改音乐文件。'))return;await action(async()=>{const r=await post('/api/managed/reconcile',{confirm:true,category_id:row.category_id,action:'accept'});note(r.message);await loadManaged(true);await refresh();});}));
+     actions.append(button('接受改动','managed-playlist-action',async()=>{if(!await PCHUI.confirm('保留“'+row.title+'”本次在 Plex 里的删除结果？\n\n下次整理更新会按生成规则覆盖；不会修改音乐文件。'))return;await action(async()=>{const r=await post('/api/managed/reconcile',{confirm:true,category_id:row.category_id,action:'accept'});note(r.message);await loadManaged(true);await refresh();});}));
     }
     if(row.can_restore_changes){
      actions.append(button('恢复原状','managed-playlist-action',async()=>{if(!await PCHUI.confirm('把“'+row.title+'”在 Plex 外部删除的歌曲加回来？不会重建歌单，也不会修改音乐文件。'))return;await action(async()=>{const r=await post('/api/managed/reconcile',{confirm:true,category_id:row.category_id,action:'restore'});note(r.message);await loadManaged(true);await refresh();});}));

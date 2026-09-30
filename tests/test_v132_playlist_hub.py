@@ -898,25 +898,67 @@ class PlaylistHubPlaybackTests(unittest.TestCase):
 
         self.assertEqual([], self.plex.deleted)
 
-    def test_generated_playlist_rejects_manual_add_but_keeps_existing_removal(self):
+    def test_generated_playlist_removal_is_immediate_but_not_a_permanent_exclusion(self):
         from helper.playlist_hub import edit_playlist_track
 
         added = edit_playlist_track(self.engine, "daily", "daily", "20", "remove")
         self.assertEqual(["10"], [row["id"] for row in self.state["items"]])
-        self.assertEqual(["20"], self.store.get("playlist_manual_edits")["daily:daily"]["exclude"])
+        self.assertNotIn("daily:daily", self.store.get("playlist_manual_edits", {}))
         self.assertTrue(added["message"])
         with self.assertRaisesRegex(ValueError, "自动生成"):
             edit_playlist_track(self.engine, "daily", "daily", "20", "add")
         self.assertEqual(["10"], [row["id"] for row in self.state["items"]])
-        self.assertEqual(["20"], self.store.get("playlist_manual_edits")["daily:daily"]["exclude"])
+        self.assertNotIn("daily:daily", self.store.get("playlist_manual_edits", {}))
 
-    def test_manual_overrides_keep_additions_and_exclusions_during_regeneration(self):
+    def test_private_external_overrides_keep_additions_and_exclusions_during_regeneration(self):
         from helper.playlist_hub import apply_manual_edits
 
         self.store.set("playlist_manual_edits", {
-            "daily:daily": {"include": ["20"], "exclude": ["10"]},
+            "external:private": {"include": ["20"], "exclude": ["10"]},
         })
-        self.assertEqual(["20"], apply_manual_edits(self.store, "daily", "daily", ["10"]))
+        self.assertEqual(["20"], apply_manual_edits(self.store, "external", "private", ["10"]))
+
+    def test_generated_members_ignore_legacy_exclusions_and_additions_without_mutating_preview(self):
+        from helper.playlist_hub import apply_manual_edits
+
+        legacy = {
+            kind + ":example": {"include": ["20"], "exclude": ["10"], "updated_at": 1}
+            for kind in ("daily", "smart", "category")
+        }
+        self.store.set("playlist_manual_edits", legacy)
+        for kind in ("daily", "smart", "category"):
+            with self.subTest(kind=kind):
+                self.assertEqual(["10"], apply_manual_edits(self.store, kind, "example", ["10", "10", "999"]))
+        self.assertEqual(legacy, self.store.get("playlist_manual_edits"))
+
+    def test_engine_upgrade_cleans_only_generated_edits_in_its_own_profile(self):
+        from helper.engine import Engine
+        from helper.scoped_store import ScopedStore
+
+        edits = {
+            "daily:daily": {"exclude": ["10"]},
+            "smart:weekly": {"exclude": ["10"]},
+            "category:base:国语": {"exclude": ["10"]},
+            "external:private": {"include": ["20"], "exclude": ["10"]},
+            "plex:800": {"exclude": ["10"]},
+        }
+        other = ScopedStore(self.base, "other")
+        self.store.set("playlist_manual_edits", edits)
+        other.set("playlist_manual_edits", edits)
+        settings = self.store.get("settings")
+        self.store.set("daily_settings", {"enabled": False})
+        completed = {"id": "completed-theme", "applied": True, "groups": [{"desired": ["10"]}]}
+        self.store.set("plan", completed)
+        before = self.plex.playlist_state("900")
+        with patch.object(self.plex, "playlist_state", side_effect=AssertionError("upgrade must not contact Plex")):
+            Engine(self.store, plex_factory=lambda _cfg: self.plex)
+            Engine(self.store, plex_factory=lambda _cfg: self.plex)
+        self.assertEqual({"external:private": edits["external:private"], "plex:800": edits["plex:800"]}, self.store.get("playlist_manual_edits"))
+        self.assertEqual(edits, other.get("playlist_manual_edits"))
+        self.assertEqual(settings, self.store.get("settings"))
+        self.assertEqual({"enabled": False}, self.store.get("daily_settings"))
+        self.assertEqual(completed, self.store.get("plan"))
+        self.assertEqual(before, self.plex.playlist_state("900"))
 
 
 class PlaylistHubPageTests(unittest.TestCase):

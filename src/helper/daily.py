@@ -309,7 +309,7 @@ class DailyMixin:
             raise SafetyError('儿童音乐识别证据在预览后变化，请重新生成每日推荐')
         ids = [x['id'] for x in plan['items']]
         planned_ids = list(ids)
-        from .playlist_hub import apply_manual_edits
+        from .playlist_edits import apply_manual_edits
         ids = apply_manual_edits(self.store, 'daily', 'daily', ids)
         if (not ids or any(k not in fresh for k in ids)
                 or any((fresh.get(k) != plan['track_fingerprints'].get(k) for k in planned_ids))):

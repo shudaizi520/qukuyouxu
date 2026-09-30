@@ -63,6 +63,12 @@ class FakePlex:
         state = self.states[str(pid)]
         return {**state, "items": [dict(row) for row in state["items"]]}
 
+    def read_playlist_until(self, pid, predicate, attempts=8, delay=0.25):
+        state = self.playlist_state(pid)
+        if not predicate(state):
+            raise AssertionError("Plex did not confirm the expected state")
+        return state
+
     def delete_playlist(self, pid):
         del self.states[str(pid)]
 
@@ -109,6 +115,27 @@ class SmartMixLifecycleV047Tests(unittest.TestCase):
         managed = self.store.get("smart_mix_managed")
         self.assertIn("recent_additions", managed)
         self.assertEqual("applied", self.store.get("snapshots")[-1]["status"])
+
+    def test_next_smart_publish_restores_app_removed_song_despite_legacy_exclusion(self):
+        from helper.playlist_hub import edit_playlist_track
+        from helper.smart_mix_web import preview_smart_mix, publish_smart_mix
+
+        kind = "recent_additions"
+        plan = preview_smart_mix(self.engine, kind, {"size": 10}, now=NOW)
+        result = publish_smart_mix(self.engine, plan["id"], now=NOW + 1)
+        playlist_id = result["playlist_id"]
+        desired = [row["id"] for row in plan["items"]]
+        removed = desired[0]
+        self.store.set("catalog", self.plex.tracks("15"))
+        edit_playlist_track(self.engine, "smart", kind, removed, "remove")
+        self.assertNotIn(removed, [row["id"] for row in self.plex.playlist_state(playlist_id)["items"]])
+        self.store.set("playlist_manual_edits", {"smart:" + kind: {"exclude": [removed]}})
+        second = preview_smart_mix(self.engine, kind, {"size": 10}, now=NOW + 86400)
+        published = publish_smart_mix(self.engine, second["id"], now=NOW + 86401)
+
+        self.assertEqual(playlist_id, published["playlist_id"])
+        self.assertEqual(set(desired), {row["id"] for row in self.plex.playlist_state(playlist_id)["items"]})
+        self.assertEqual(1, self.plex.created)
 
     def test_preview_uses_verified_single_evidence_before_selecting(self):
         from helper.library_engine import LibraryEngine

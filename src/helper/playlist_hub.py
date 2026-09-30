@@ -23,6 +23,7 @@ from .external_store import ExternalRepository
 from .favorite_smart import ensure_profile_favorites
 from .lyrics import read_track_lyrics
 from .playlist_inventory import assistant_playlist_row, merge_playlist_rows
+from .playlist_edits import GENERATED_KINDS, apply_manual_edits
 from .playlist_ownership import legacy_external_marker, legacy_pch_marker, replace_marker
 from .profiles import profile_identity
 from .restart import normalize_daily_title
@@ -337,27 +338,6 @@ def _manual_key(kind, key):
     return str(kind) + ":" + str(key)
 
 
-def apply_manual_edits(store, kind, key, desired):
-    """Apply stable user inclusions/exclusions without introducing duplicates."""
-    edits = (store.get("playlist_manual_edits", {}) or {}).get(_manual_key(kind, key), {}) or {}
-    excluded = {str(value) for value in edits.get("exclude", []) if str(value).isdigit()}
-    included = [str(value) for value in edits.get("include", []) if str(value).isdigit()]
-    catalog = list(store.get("catalog", []) or [])
-    available = {
-        str(row.get("id")) for row in catalog
-        if isinstance(row, dict) and row.get("available", True) and str(row.get("id") or "").isdigit()
-    }
-    if not catalog:
-        available = {str(value) for value in [*(desired or []), *included] if str(value).isdigit()}
-    result, seen = [], set()
-    for value in [*map(str, desired or []), *included]:
-        if value in excluded or value in seen or value not in available:
-            continue
-        result.append(value)
-        seen.add(value)
-    return result
-
-
 def _save_playlist_record(engine, kind, key, record):
     store = engine.store
     if kind == "daily":
@@ -481,7 +461,7 @@ def edit_playlist_track(engine, kind, key, track_id, operation, hidden_playlist_
     kind, key, track_id = str(kind or ""), _safe_key(key), str(track_id or "")
     if operation not in ("add", "remove") or not track_id.isdigit():
         raise ValueError("歌曲调整请求无效")
-    if operation == "add" and kind in {"daily", "smart", "category"}:
+    if operation == "add" and kind in GENERATED_KINDS:
         raise ValueError("自动生成的歌单不能手动添加歌曲，请调整生成规则")
     catalog = {
         str(row.get("id")): row for row in (engine.store.get("catalog", []) or [])
@@ -522,16 +502,17 @@ def edit_playlist_track(engine, kind, key, track_id, operation, hidden_playlist_
     actual = any(str(row.get("id")) == track_id for row in after.get("items", []))
     if actual != (operation == "add"):
         raise SafetyError("Plex 没有确认这次歌曲调整，请刷新后核对")
-    edits_all = dict(engine.store.get("playlist_manual_edits", {}) or {})
-    edit_key = _manual_key(kind, key)
-    edits = dict(edits_all.get(edit_key, {}) or {})
-    includes = [str(value) for value in edits.get("include", []) if str(value).isdigit() and str(value) != track_id]
-    excludes = [str(value) for value in edits.get("exclude", []) if str(value).isdigit() and str(value) != track_id]
-    (includes if operation == "add" else excludes).append(track_id)
-    edits_all[edit_key] = {"include": includes, "exclude": excludes, "updated_at": time.time()}
     revised = {**record, "fingerprint": fingerprint(after), "count": len(after.get("items", []))}
     _save_playlist_record(engine, kind, key, revised)
-    engine.store.set("playlist_manual_edits", edits_all)
+    if kind not in GENERATED_KINDS:
+        edits_all = dict(engine.store.get("playlist_manual_edits", {}) or {})
+        edit_key = _manual_key(kind, key)
+        edits = dict(edits_all.get(edit_key, {}) or {})
+        includes = [str(value) for value in edits.get("include", []) if str(value).isdigit() and str(value) != track_id]
+        excludes = [str(value) for value in edits.get("exclude", []) if str(value).isdigit() and str(value) != track_id]
+        (includes if operation == "add" else excludes).append(track_id)
+        edits_all[edit_key] = {"include": includes, "exclude": excludes, "updated_at": time.time()}
+        engine.store.set("playlist_manual_edits", edits_all)
     engine.store.log(("已手动加入歌曲：" if operation == "add" else "已从歌单移除歌曲：") + str(catalog[track_id].get("title") or track_id))
     return {"message": "已加入歌单" if operation == "add" else "已从歌单移除", "count": len(after.get("items", []))}
 

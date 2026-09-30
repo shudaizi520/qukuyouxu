@@ -102,7 +102,7 @@ class RecoveryRegressionTests(unittest.TestCase):
         ])
         return store, engine, plex, expected
 
-    def test_accepting_external_removal_records_a_stable_manual_exclusion(self):
+    def test_accepting_category_removal_preserves_current_state_only(self):
         from helper.daily_mix_v036 import managed_playlist_rows, reconcile_managed_playlist
         from helper.engine import fingerprint
 
@@ -115,7 +115,10 @@ class RecoveryRegressionTests(unittest.TestCase):
             result = reconcile_managed_playlist(engine, "base:djmix", "accept")
 
             self.assertIn("保留", result["message"])
-            self.assertEqual(["2"], store.get("playlist_manual_edits")["category:base:djmix"]["exclude"])
+            self.assertNotIn("category:base:djmix", store.get("playlist_manual_edits", {}))
+            from helper.playlist_hub import apply_manual_edits
+            store.set("catalog", [{"id": value, "available": True} for value in ("1", "2", "3")])
+            self.assertEqual(["1", "2", "3"], apply_manual_edits(store, "category", "base:djmix", ["1", "2", "3"]))
             self.assertEqual(fingerprint(plex.playlist_state("p1")), store.get("managed")["base:djmix"]["fingerprint"])
             self.assertEqual("正常", managed_playlist_rows(engine)[0]["status"])
 

@@ -310,6 +310,26 @@ class DailyFixedPlaylistTests(unittest.TestCase):
         self.assertEqual({"3", "4"}, {row["id"] for row in restored["items"]})
         self.assertIn(engine.marker("daily"), restored["summary"])
 
+    def test_next_daily_publish_restores_app_removed_song_despite_legacy_exclusion(self):
+        from helper.playlist_hub import edit_playlist_track
+
+        plex = _DailyPlex(existing=True)
+        store, engine = self.make_engine(plex)
+        with patch("helper.daily.recommend_rotating", side_effect=_recommendation):
+            first = engine.preview_daily(now=1_800_000_000)
+            engine.publish_daily(first["id"], now=1_800_000_010)
+            for index, row in enumerate(plex.playlists_by_id["900"]["items"], 1):
+                row["item_id"] = str(index)
+            edit_playlist_track(engine, "daily", "daily", "1", "remove")
+            self.assertEqual(["2"], [row["id"] for row in plex.playlist_state("900")["items"]])
+            store.set("playlist_manual_edits", {"daily:daily": {"exclude": ["1"], "include": ["5"]}})
+            second = engine.preview_daily(now=1_800_086_400)
+            result = engine.publish_daily(second["id"], now=1_800_086_410)
+
+        self.assertEqual("900", result["playlist_id"])
+        self.assertEqual({"1", "2"}, {row["id"] for row in plex.playlist_state("900")["items"]})
+        self.assertEqual(0, plex.create_calls)
+
     def test_summary_changed_during_rename_is_restored_before_membership_replacement(self):
         plex = _UnconfirmedRenameDailyPlex()
         _store, engine = self.make_engine(plex)

@@ -198,6 +198,9 @@ class BaseSystemAuthorityTests(unittest.TestCase):
         self.plex.tracks_data = self.tracks
 
     def test_next_category_update_restores_an_owned_playlist_changed_in_plex(self):
+        self.store.set("playlist_manual_edits", {
+            "category:" + self.cid: {"exclude": ["2"], "updated_at": 1},
+        })
         self.plex.state["title"] = "Plex 手工改名"
         self.plex.state["summary"] = "人工说明"
         self.plex.state["items"] = [
@@ -292,6 +295,9 @@ class BaseSystemAuthorityTests(unittest.TestCase):
 
     def test_next_theme_update_restores_an_owned_playlist_changed_in_plex(self):
         cid = "theme:work"
+        self.store.set("playlist_manual_edits", {
+            "category:" + cid: {"exclude": ["2"], "updated_at": 1},
+        })
         self.plex.state.update(
             title="Plex 手工改名",
             summary=self.engine.marker(cid),
@@ -335,6 +341,32 @@ class BaseSystemAuthorityTests(unittest.TestCase):
         self.assertEqual(["2"], result["added_ids"])
         self.assertEqual("工作陪伴", self.plex.state["title"])
         self.assertEqual(["1", "2"], [row["id"] for row in self.plex.state["items"]])
+
+    def test_upgrade_rejects_a_theme_preview_that_already_applied_legacy_exclusions(self):
+        from helper.engine import SafetyError
+
+        cid = "theme:work"
+        self.plex.state.update(title="工作陪伴", summary=self.engine.marker(cid))
+        self.store.set("managed", {cid: {"id": "700", "title": "工作陪伴", "fingerprint": fingerprint(self.plex.state)}})
+        self.store.set("sources", [{"id": cid, "name": "工作陪伴", "kind": "theme", "enabled": True, "approved": True}])
+        self.store.set("playlist_manual_edits", {"category:" + cid: {"exclude": ["2"]}})
+        old_plan = {
+            "id": "legacy-theme-plan", "created_at": time.time(),
+            "signature": self.engine.signature(), "machine": "machine-a",
+            "discovery_policy": DISCOVERY_POLICY, "library_count": len(self.tracks),
+            "track_fingerprints": {row["id"]: track_fingerprint(row) for row in self.tracks},
+            "applied": False,
+            "groups": [{"id": cid, "title": "工作陪伴", "desired": ["1"],
+                        "add": [], "blocked": [], "before": copy.deepcopy(self.plex.state)}],
+        }
+        self.store.set("plan", old_plan)
+        before = copy.deepcopy(self.plex.state)
+        upgraded = LibraryEngine(self.store, plex_factory=lambda _cfg: self.plex)
+
+        with self.assertRaises(SafetyError):
+            upgraded.apply(old_plan["id"])
+        self.assertEqual(before, self.plex.state)
+        self.assertNotIn("category:" + cid, self.store.get("playlist_manual_edits", {}))
 
 
 if __name__ == "__main__":
