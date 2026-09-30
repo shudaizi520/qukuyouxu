@@ -193,6 +193,158 @@ class ExternalServiceV130Tests(unittest.TestCase):
         self.service.retry_pending_orders()
         self.plex.tracks.assert_called_once()
 
+    def test_empty_catalog_order_retry_caps_at_daily_and_recovers_without_recreating(self):
+        imported = self.service.import_source(value=QQ_URL)
+        published = self.service.publish(imported["id"], "百万收藏", imported["revision"])
+        record = self.service.repository.get_managed("default", imported["id"])
+        self.service.repository.save_managed("default", imported["id"], {
+            **record, "order_pending": True,
+        })
+        catalog = copy.deepcopy(self.plex.catalog)
+        original = copy.deepcopy(self.plex.states)
+        mutations = list(self.plex.mutations)
+        self.plex.catalog = []
+
+        for failures, delay in enumerate((900, 3600, 21600, 86400, 86400, 86400), 1):
+            with self.subTest(failures=failures):
+                outcome = self.service.retry_pending_orders()
+                self.assertEqual(0, outcome["updated"])
+                self.assertEqual(1, len(outcome["errors"]))
+                source = self.service.repository.get_source("default", imported["id"])
+                self.assertEqual(failures, source["failure_count"])
+                self.assertEqual(self.now + delay, source["next_retry_at"])
+                self.assertFalse(source["needs_confirmation"])
+                self.assertEqual(original, self.plex.states)
+                self.assertEqual(mutations, self.plex.mutations)
+                runs = self.service.repository.list_runs("default", imported["id"])
+                self.assertEqual("error", runs[0]["status"])
+                self.assertEqual("order_retry", runs[0]["kind"])
+                self.now = source["next_retry_at"] - 1
+                self.assertEqual([], self.service.pending_order_sources())
+                self.assertEqual({"updated": 0, "errors": []}, self.service.retry_pending_orders())
+                self.assertEqual(runs, self.service.repository.list_runs("default", imported["id"]))
+                self.now += 1
+                self.assertEqual(1, len(self.service.pending_order_sources()))
+
+        self.plex.catalog = catalog
+        outcome = self.service.retry_pending_orders()
+
+        self.assertEqual({"updated": 1, "errors": []}, outcome)
+        self.assertEqual(["10", "30"], self.plex.playlist_ids(published["playlist_id"]))
+        self.assertEqual(1, len(self.plex.created))
+        managed = self.service.repository.get_managed("default", imported["id"])
+        self.assertFalse(managed["order_pending"])
+        self.assertFalse(managed["order_attention"])
+        source = self.service.repository.get_source("default", imported["id"])
+        self.assertEqual(0, source["failure_count"])
+        self.assertEqual("", source["last_error"])
+        self.assertIsNone(source["next_retry_at"])
+        self.assertEqual([], self.service.pending_order_sources())
+        self.assertEqual(1, self.providers.calls)
+
+    def test_order_retry_with_no_eligible_members_after_manual_edits_backs_off(self):
+        imported = self.service.import_source(value=QQ_URL)
+        self.service.publish(imported["id"], "百万收藏", imported["revision"])
+        record = self.service.repository.get_managed("default", imported["id"])
+        self.service.repository.save_managed("default", imported["id"], {
+            **record, "order_attention": True,
+        })
+        self.store.set("playlist_manual_edits", {
+            "external:" + imported["id"]: {"exclude": ["10", "30"]},
+        })
+        original = copy.deepcopy(self.plex.states)
+
+        outcome = self.service.retry_pending_orders()
+
+        self.assertEqual(1, len(outcome["errors"]))
+        source = self.service.repository.get_source("default", imported["id"])
+        self.assertEqual(self.now + 900, source["next_retry_at"])
+        self.assertEqual(original, self.plex.states)
+        self.assertEqual([], self.service.pending_order_sources())
+
+    def test_empty_catalog_order_retry_reports_waiting_in_scheduler(self):
+        from helper.profile_runtime import ProfileRuntime
+
+        imported = self.service.import_source(value=QQ_URL)
+        self.service.publish(imported["id"], "百万收藏", imported["revision"])
+        record = self.service.repository.get_managed("default", imported["id"])
+        self.service.repository.save_managed("default", imported["id"], {
+            **record, "order_pending": True,
+        })
+        self.plex.catalog = []
+        runtime = ProfileRuntime(self.base, self.registry)
+        try:
+            engine = runtime.engine("default")
+            engine.external = self.service
+            runtime.sync_external_orders_due(self.now)
+            self.assertFalse(engine.job["running"])
+            self.assertEqual("歌单排序等待自动重试", engine.job["message"])
+            self.assertFalse(runtime.job_gate.locked())
+            self.assertFalse(runtime.operation_gate.locked())
+            source = self.service.repository.get_source("default", imported["id"])
+            self.assertEqual(self.now + 900, source["next_retry_at"])
+            runtime.sync_external_orders_due(self.now + 60)
+            self.assertEqual(source, self.service.repository.get_source("default", imported["id"]))
+        finally:
+            runtime.close()
+
+    def test_pending_order_refresh_keeps_daily_backoff_until_local_matches_recover(self):
+        from helper.clients import PlexError
+
+        imported = self.service.import_source(value=QQ_URL)
+        published = self.service.publish(imported["id"], "百万收藏", imported["revision"])
+        record = self.service.repository.get_managed("default", imported["id"])
+        self.service.repository.save_managed("default", imported["id"], {
+            **record, "order_pending": True,
+        })
+        for _ in range(4):
+            self.service.repository.record_failure("default", imported["id"], "等待重试", self.now)
+        catalog = copy.deepcopy(self.plex.catalog)
+        original = copy.deepcopy(self.plex.states)
+        self.plex.catalog = []
+        self.providers.results.append(snapshot(revision="still-empty"))
+
+        with self.assertRaises(PlexError):
+            self.service.refresh(imported["id"], bypass_retry=True)
+
+        source = self.service.repository.get_source("default", imported["id"])
+        self.assertEqual("still-empty", source["revision"])
+        self.assertEqual(5, source["failure_count"])
+        self.assertEqual(self.now + 86400, source["next_retry_at"])
+        self.assertEqual(original, self.plex.states)
+        self.assertEqual("error", self.service.repository.list_runs("default", imported["id"])[0]["status"])
+        self.plex.catalog = catalog
+        self.providers.results.append(snapshot(revision="recovered"))
+
+        outcome = self.service.refresh(imported["id"], bypass_retry=True)
+
+        self.assertEqual("updated", outcome["sync"]["status"])
+        source = self.service.repository.get_source("default", imported["id"])
+        self.assertEqual(0, source["failure_count"])
+        self.assertIsNone(source["next_retry_at"])
+        self.assertEqual("", source["last_error"])
+        self.assertFalse(self.service.repository.get_managed("default", imported["id"])["order_pending"])
+        self.assertEqual(["10", "30"], self.plex.playlist_ids(published["playlist_id"]))
+        self.assertEqual(1, len(self.plex.created))
+
+    def test_rematching_an_empty_pending_order_does_not_report_it_updated(self):
+        imported = self.service.import_source(value=QQ_URL)
+        self.service.publish(imported["id"], "百万收藏", imported["revision"])
+        record = self.service.repository.get_managed("default", imported["id"])
+        self.service.repository.save_managed("default", imported["id"], {
+            **record, "order_pending": True,
+        })
+        before = self.service.repository.record_failure("default", imported["id"], "等待重试", self.now)
+        self.plex.catalog = []
+        original = copy.deepcopy(self.plex.states)
+
+        outcome = self.service.rematch_missing()
+
+        self.assertEqual([], outcome["sources"])
+        self.assertEqual(1, len(outcome["errors"]))
+        self.assertEqual(before, self.service.repository.get_source("default", imported["id"]))
+        self.assertEqual(original, self.plex.states)
+
     def test_ordering_reports_verified_progress_for_scheduler_heartbeat(self):
         from helper.external_service import ExternalPlaylistService
 

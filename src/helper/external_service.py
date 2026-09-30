@@ -43,6 +43,12 @@ def _counts(rows):
     return result
 
 
+def _no_matches(managed):
+    if managed.get("order_pending") or managed.get("order_attention"):
+        raise PlexError("暂无可同步的匹配歌曲，保留原歌单，等待自动重试")
+    return {"status": "no_matches", "playlist_id": managed["id"]}
+
+
 class ExternalPlaylistService:
     def __init__(self, store, plex_factory, providers, clock=time.time, *, progress=None):
         self.store = store
@@ -148,6 +154,9 @@ class ExternalPlaylistService:
                 self._adopt_live_managed(source, plex)
         source = self.repository.replace_snapshot_and_matches(
             self.profile_id, source["id"], snapshot, self.clock(), rows, catalog_revision,
+            reset_failure=not bool(legacy_managed and (
+                legacy_managed.get("order_pending") or legacy_managed.get("order_attention")
+            )),
         )
         sync = self._sync_managed(source, plex, rows)
         self._record(source["id"], kind, "completed", started, "刷新完成", counts=_counts(rows))
@@ -167,12 +176,12 @@ class ExternalPlaylistService:
                 desired.append(track_id)
                 seen.add(track_id)
         if not desired:
-            return {"status": "no_matches", "playlist_id": managed["id"]}
+            return _no_matches(managed)
         source_ids = list(desired)
         from .playlist_hub import apply_manual_edits
         desired = apply_manual_edits(self.store, "external", source["id"], desired)
         if not desired:
-            return {"status": "no_matches", "playlist_id": managed["id"]}
+            return _no_matches(managed)
         sync_source = {**source, "title": managed["title"]}
         after, revised = self._reconcile(plex, sync_source, managed, desired, source_ids)
         if managed.get("order_pending") or managed.get("order_attention"):

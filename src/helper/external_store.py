@@ -438,7 +438,7 @@ class ExternalRepository:
 
     def replace_snapshot_and_matches(
         self, profile_id: str, source_id: str, snapshot: dict, now: float,
-        rows: list[dict], catalog_revision: str,
+        rows: list[dict], catalog_revision: str, *, reset_failure: bool = True,
     ) -> dict:
         """Atomically publish a validated source snapshot and its Plex matches."""
         profile_id = self._profile(profile_id)
@@ -452,11 +452,14 @@ class ExternalRepository:
             current = self._require_source(db, profile_id, source_id)
             if (snapshot["provider"], snapshot["external_id"]) != (current["provider"], current["external_id"]):
                 raise ValueError("刷新结果与原外部歌单不一致")
+            failure = ("", 0, None) if reset_failure else (
+                current["last_error"], current["failure_count"], current["next_retry_at"],
+            )
             db.execute(
                 """UPDATE external_source SET source_url=?,title=?,revision=?,fetched_at=?,
-                    last_error='',failure_count=0,next_retry_at=NULL,needs_confirmation=0
+                    last_error=?,failure_count=?,next_retry_at=?,needs_confirmation=0
                     WHERE profile_id=? AND id=?""",
-                (snapshot["url"], snapshot["title"], snapshot["revision"], now, profile_id, source_id),
+                (snapshot["url"], snapshot["title"], snapshot["revision"], now, *failure, profile_id, source_id),
             )
             self._replace_tracks(db, profile_id, source_id, snapshot["tracks"])
             self._replace_match_rows(db, profile_id, source_id, clean)
