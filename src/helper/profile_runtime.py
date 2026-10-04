@@ -145,6 +145,8 @@ class ProfileRuntime:
         self.sync_external_orders_due(now)
         self.sync_builtin_toplists_due(now)
         settings = automation_settings(self.base_store, self.registry, self, now=now)
+        if settings["library"]["enabled"]:
+            self.sync_external_refreshes_due(now)
         results = []
         profiles = [row for row in self.registry.list_public()
                     if row.get("enabled") is not False
@@ -246,6 +248,59 @@ class ProfileRuntime:
         if settings["library"]["enabled"]:
             self.sync_library_shares_due(now)
         return results
+
+    def sync_external_refreshes_due(self, now):
+        """Recover failed source refreshes between daily library slots."""
+        from .engine import safe_error
+        from .library_sharing import sync_qq_toplists_across_libraries
+
+        if self.job_gate.locked() or self.operation_gate.locked():
+            return
+        for profile in self.registry.list_public(enabled_only=True):
+            engine = self.engine(profile["id"])
+            external = getattr(engine, "external", None)
+            pending = getattr(external, "pending_refresh_sources", None)
+            cfg = engine.store.get("settings", {}) or {}
+            if (engine.store.get("profile_removal_v1") or not callable(pending)
+                    or not all(cfg.get(key) for key in ("plex_url", "plex_token", "section"))):
+                continue
+            sources = pending(now)
+            if not sources:
+                continue
+
+            def resume(engine=engine, sources=sources):
+                with self.operation_gate:
+                    result = engine.external.retry_failed_refreshes(now=now)
+                    charts = {source["id"]: source for source in sources
+                              if source.get("provider") == "qq"
+                              and "/toplist/" in str(source.get("source_url") or "")}
+                    updated = {row["source_id"] for row in result.get("sources") or []
+                               if row.get("status") == "updated" and row.get("source_id") in charts}
+                    if updated:
+                        try:
+                            result["charts"] = sync_qq_toplists_across_libraries(self, engine.store.profile_id)
+                        except Exception as exc:
+                            result["charts"] = {"errors": [
+                                {"source_id": source_id, "message": safe_error(exc)}
+                                for source_id in updated]}
+                        failed = {row["source_id"]: row for row in result["charts"].get("errors") or []
+                                  if row.get("source_id") in updated}
+                        for source_id, error in failed.items():
+                            engine.external.repository.record_failure(
+                                engine.store.profile_id, source_id,
+                                "榜单跨曲库同步等待重试：" + str(error.get("message") or error.get("error") or "临时失败")[:200],
+                                engine.external.clock(),
+                                previous_failures=charts[source_id].get("failure_count") or 0,
+                            )
+                    return result
+
+            try:
+                outcome = self._run_job(engine, "external_refresh_retry", resume, now)
+                if outcome.get("errors") or (outcome.get("charts") or {}).get("errors"):
+                    with engine.status_lock:
+                        engine.job["message"] = "歌单来源刷新等待自动重试"
+            except Exception as exc:
+                engine.store.log("歌单来源刷新将在下次自动重试：" + safe_error(exc), "error")
 
     def sync_external_orders_due(self, now):
         """Resume interrupted orders under the same serial mutation gates."""

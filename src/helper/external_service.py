@@ -360,7 +360,10 @@ class ExternalPlaylistService:
             snapshot = self.providers.fetch(recognized)
             return self._apply_snapshot(source, snapshot, force=force, started=started, kind="refresh")
         except Exception as exc:
-            self.repository.record_failure(self.profile_id, source["id"], str(exc)[:300] or type(exc).__name__, self.clock())
+            self.repository.record_failure(
+                self.profile_id, source["id"], str(exc)[:300] or type(exc).__name__, self.clock(),
+                previous_failures=source.get("failure_count") or 0,
+            )
             self._record(source["id"], "refresh", "error", started, str(exc)[:300])
             raise
 
@@ -445,19 +448,44 @@ class ExternalPlaylistService:
         return result
 
     def auto_refresh(self):
+        return self._refresh_sources(source for source in self.repository.list_sources(self.profile_id)
+                                     if source.get("follow_updates"))
+
+    def _refresh_sources(self, sources):
         result = {"sources": [], "updated": 0, "errors": 0}
-        for source in self.repository.list_sources(self.profile_id):
-            if not source.get("follow_updates"):
-                continue
+        for source in sources:
             try:
                 row = self.refresh(source["id"])
                 result["sources"].append(row)
                 if row.get("status") == "updated":
                     result["updated"] += 1
             except Exception as exc:
+                # refresh owns the failure checkpoint and audit record. A
+                # broken upstream must not prevent other sources recovering.
                 result["errors"] += 1
                 result["sources"].append({"source_id": source["id"], "status": "error", "error": type(exc).__name__})
         return result
+
+    def pending_refresh_sources(self, now=None):
+        """Select overdue remote-source failures, not healthy or ordering work."""
+        now = self.clock() if now is None else float(now)
+        pending = []
+        for source in self.repository.list_sources(self.profile_id):
+            retry_at = source.get("next_retry_at")
+            if (not source.get("follow_updates")
+                    or source.get("provider") not in ("qq", "netease")
+                    or source.get("needs_confirmation")
+                    or not source.get("failure_count") or not retry_at
+                    or float(retry_at) > now):
+                continue
+            managed = self.repository.get_managed(self.profile_id, source["id"]) or {}
+            if not (managed.get("order_pending") or managed.get("order_attention")):
+                pending.append(source)
+        return pending
+
+    def retry_failed_refreshes(self, now=None):
+        """Retry only due failed reads using the existing persistent backoff."""
+        return self._refresh_sources(self.pending_refresh_sources(now))
 
     def public_source(self, source_id):
         source = self.repository.get_source(self.profile_id, source_id)

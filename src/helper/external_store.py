@@ -291,13 +291,17 @@ class ExternalRepository:
             self._replace_tracks(db, profile_id, source_id, snapshot["tracks"])
             return self._require_source(db, profile_id, source_id)
 
-    def record_failure(self, profile_id: str, source_id: str, message: str, now: float) -> dict:
+    def record_failure(self, profile_id: str, source_id: str, message: str, now: float,
+                       *, previous_failures: int = 0) -> dict:
         profile_id = self._profile(profile_id)
         message = _bounded_text(message, "来源错误", 300, required=True)
         now = _number(now, "失败时间")
+        previous_failures = _number(previous_failures, "之前失败次数", integer=True)
         with self.store.lock, self.store._db() as db:
             current = self._require_source(db, profile_id, source_id)
-            failures = int(current["failure_count"] or 0) + 1
+            # A successful read may clear the count before downstream syncing
+            # fails. Keep the whole recovery attempt on the same backoff.
+            failures = max(int(current["failure_count"] or 0), previous_failures) + 1
             delay = RETRY_DELAYS[min(failures - 1, len(RETRY_DELAYS) - 1)]
             db.execute(
                 "UPDATE external_source SET last_error=?,failure_count=?,next_retry_at=? "
